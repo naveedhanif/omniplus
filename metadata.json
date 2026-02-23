@@ -1,0 +1,5 @@
+{
+  "name": "OmniPOS - Multi-Tenant EPOS",
+  "description": "A dynamic multi-tenant EPOS system for Hardware, Medical, and Restaurant sectors with a configurable admin panel and Supabase backend architecture.",
+  "requestFramePermissions": []
+}
