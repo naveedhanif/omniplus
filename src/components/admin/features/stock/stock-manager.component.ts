@@ -61,6 +61,53 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
                 </div>
             </div>
 
+            <!-- Dashboard Summary Cards -->
+            <div class="grid grid-cols-4 gap-4">
+                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+                     (click)="viewMode.set('LEVELS')">
+                    <div class="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                        <span class="material-symbols-rounded text-[24px]">inventory_2</span>
+                    </div>
+                    <div>
+                        <div class="text-sm opacity-60 font-medium">Total Inventory Value</div>
+                        <div class="text-2xl font-bold">{{ totalInventoryValue() | currency:storeService.currency() }}</div>
+                    </div>
+                </div>
+                
+                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-red-500 transition-colors cursor-pointer"
+                     (click)="viewMode.set('REORDER')">
+                    <div class="w-12 h-12 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center">
+                        <span class="material-symbols-rounded text-[24px]">warning</span>
+                    </div>
+                    <div>
+                        <div class="text-sm opacity-60 font-medium">Low Stock Alerts</div>
+                        <div class="text-2xl font-bold" [class.text-red-600]="lowStockAlerts().length > 0">{{ lowStockAlerts().length }}</div>
+                    </div>
+                </div>
+
+                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+                     (click)="viewMode.set('TRANSFERS')">
+                    <div class="w-12 h-12 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                        <span class="material-symbols-rounded text-[24px]">local_shipping</span>
+                    </div>
+                    <div>
+                        <div class="text-sm opacity-60 font-medium">Active Transfers</div>
+                        <div class="text-2xl font-bold">{{ activeTransfersCount() }}</div>
+                    </div>
+                </div>
+
+                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+                     (click)="viewMode.set('LOCATIONS')">
+                    <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <span class="material-symbols-rounded text-[24px]">store</span>
+                    </div>
+                    <div>
+                        <div class="text-sm opacity-60 font-medium">Total Locations</div>
+                        <div class="text-2xl font-bold">{{ locations().length }}</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- View Tabs -->
             <div class="flex gap-2 border-b border-slate-200 dark:border-slate-700">
                 <button 
@@ -190,51 +237,132 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
 
             <!-- Transfers View -->
             @if (viewMode() === 'TRANSFERS') {
-                <div class="grid gap-4">
+                <div class="grid gap-6">
                     @for (transfer of transfers(); track transfer.id) {
-                        <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
+                        <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col gap-6">
                             <div class="flex justify-between items-start">
                                 <div>
-                                    <div class="font-bold text-lg">{{ transfer.transfer_number }}</div>
-                                    <div class="text-sm opacity-60">
+                                    <h3 class="font-bold text-xl flex items-center gap-2">
+                                        <span class="material-symbols-rounded text-slate-400">local_shipping</span>
+                                        {{ transfer.transfer_number }}
+                                    </h3>
+                                    <div class="text-sm opacity-60 mt-2 flex items-center gap-2 font-medium">
                                         {{ getLocationName(transfer.from_location_id) }} 
-                                        <span class="material-symbols-rounded text-xs mx-1">arrow_forward</span>
+                                        <span class="material-symbols-rounded text-sm text-[var(--primary-color)]">arrow_forward</span>
                                         {{ getLocationName(transfer.to_location_id) }}
                                     </div>
-                                    <div class="text-xs opacity-40 mt-1">{{ transfer.created_at | date:'medium' }}</div>
+                                    <div class="text-xs opacity-40 mt-1 flex items-center gap-1">
+                                        <span class="material-symbols-rounded text-[14px]">schedule</span> {{ transfer.created_at | date:'medium' }}
+                                    </div>
+                                    @if (transfer.notes) {
+                                        <div class="mt-3 text-sm italic bg-slate-50 dark:bg-slate-800/30 p-2 rounded border border-slate-100 dark:border-slate-700">
+                                            "{{ transfer.notes }}"
+                                        </div>
+                                    }
                                 </div>
-                                <div class="flex flex-col items-end gap-2">
-                                    <span class="px-3 py-1 rounded-full text-xs font-bold"
+                                <div class="flex flex-col items-end gap-3">
+                                    <span class="px-4 py-1.5 rounded-full text-sm font-bold shadow-sm"
                                           [class]="getTransferStatusClass(transfer.status)">
                                         {{ transfer.status }}
                                     </span>
-                                    @if (transfer.status === 'PENDING') {
-                                        <button 
-                                            (click)="approveTransfer(transfer.id)"
-                                            class="px-3 py-1 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
-                                            Approve
-                                        </button>
-                                    }
-                                    @if (transfer.status === 'APPROVED') {
-                                        <button 
-                                            (click)="shipTransfer(transfer.id)"
-                                            class="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700">
-                                            Ship
-                                        </button>
-                                    }
-                                    @if (transfer.status === 'IN_TRANSIT') {
-                                        <button 
-                                            (click)="receiveTransfer(transfer.id)"
-                                            class="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700">
-                                            Receive
-                                        </button>
-                                    }
+                                    <div class="flex gap-2">
+                                        @if (transfer.status === 'PENDING') {
+                                            <button 
+                                                (click)="approveTransfer(transfer.id)"
+                                                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm transition-all flex items-center gap-1">
+                                                <span class="material-symbols-rounded text-[18px]">verified</span> Approve
+                                            </button>
+                                        }
+                                        @if (transfer.status === 'APPROVED') {
+                                            <button 
+                                                (click)="shipTransfer(transfer.id)"
+                                                class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 shadow-sm transition-all flex items-center gap-1">
+                                                <span class="material-symbols-rounded text-[18px]">outbox</span> Ship
+                                            </button>
+                                        }
+                                        @if (transfer.status === 'IN_TRANSIT') {
+                                            <button 
+                                                (click)="receiveTransfer(transfer.id)"
+                                                class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 shadow-sm transition-all flex items-center gap-1">
+                                                <span class="material-symbols-rounded text-[18px]">inbox</span> Receive
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Visual Status Stepper -->
+                            <div class="border-t border-slate-200 dark:border-slate-700 pt-6 mt-2 relative">
+                                <div class="absolute top-[38px] left-10 right-10 h-1 bg-slate-200 dark:bg-slate-700 -z-10 rounded-full"></div>
+                                <div class="absolute top-[38px] left-10 h-1 bg-[var(--primary-color)] -z-10 transition-all duration-500 rounded-full"
+                                     [style.width]="transfer.status === 'PENDING' ? '0%' : transfer.status === 'APPROVED' ? '33%' : transfer.status === 'IN_TRANSIT' ? '66%' : transfer.status === 'RECEIVED' ? '100%' : '0%'"></div>
+                                
+                                <div class="flex justify-between px-4">
+                                    <!-- Pending Step -->
+                                    <div class="flex flex-col items-center gap-2">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors"
+                                             [class.bg-[var(--primary-color)]]="transfer.status !== 'CANCELLED'"
+                                             [class.text-white]="transfer.status !== 'CANCELLED'"
+                                             [class.bg-slate-200]="transfer.status === 'CANCELLED'"
+                                             [class.dark:bg-slate-700]="transfer.status === 'CANCELLED'">
+                                            1
+                                        </div>
+                                        <span class="text-xs font-bold" [class.text-[var(--primary-color)]]="transfer.status !== 'CANCELLED'">Pending</span>
+                                    </div>
+
+                                    <!-- Approved Step -->
+                                    <div class="flex flex-col items-center gap-2">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors"
+                                             [class.bg-[var(--primary-color)]]="transfer.status === 'APPROVED' || transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'"
+                                             [class.text-white]="transfer.status === 'APPROVED' || transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'"
+                                             [class.bg-slate-200]="transfer.status === 'PENDING' || transfer.status === 'CANCELLED'"
+                                             [class.dark:bg-slate-700]="transfer.status === 'PENDING' || transfer.status === 'CANCELLED'">
+                                            2
+                                        </div>
+                                        <span class="text-xs font-bold" [class.text-[var(--primary-color)]]="transfer.status === 'APPROVED' || transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'">Approved</span>
+                                    </div>
+
+                                    <!-- Shipped Step -->
+                                    <div class="flex flex-col items-center gap-2">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors"
+                                             [class.bg-[var(--primary-color)]]="transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'"
+                                             [class.text-white]="transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'"
+                                             [class.bg-slate-200]="transfer.status === 'PENDING' || transfer.status === 'APPROVED' || transfer.status === 'CANCELLED'"
+                                             [class.dark:bg-slate-700]="transfer.status === 'PENDING' || transfer.status === 'APPROVED' || transfer.status === 'CANCELLED'">
+                                            3
+                                        </div>
+                                        <span class="text-xs font-bold" [class.text-[var(--primary-color)]]="transfer.status === 'IN_TRANSIT' || transfer.status === 'RECEIVED'">In Transit</span>
+                                    </div>
+
+                                    <!-- Received Step -->
+                                    <div class="flex flex-col items-center gap-2">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors"
+                                             [class.bg-[var(--primary-color)]]="transfer.status === 'RECEIVED'"
+                                             [class.bg-red-500]="transfer.status === 'CANCELLED'"
+                                             [class.text-white]="transfer.status === 'RECEIVED' || transfer.status === 'CANCELLED'"
+                                             [class.bg-slate-200]="transfer.status !== 'RECEIVED' && transfer.status !== 'CANCELLED'"
+                                             [class.dark:bg-slate-700]="transfer.status !== 'RECEIVED' && transfer.status !== 'CANCELLED'">
+                                            @if (transfer.status === 'CANCELLED') {
+                                                <span class="material-symbols-rounded text-[16px]">close</span>
+                                            } @else {
+                                                4
+                                            }
+                                        </div>
+                                        <span class="text-xs font-bold" 
+                                              [class.text-red-500]="transfer.status === 'CANCELLED'"
+                                              [class.text-[var(--primary-color)]]="transfer.status === 'RECEIVED'"
+                                        >
+                                            {{ transfer.status === 'CANCELLED' ? 'Cancelled' : 'Received' }}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     } @empty {
-                        <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-12 text-center opacity-50 italic">
-                            No transfers found
+                        <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-16 flex flex-col items-center justify-center opacity-50 text-slate-500">
+                            <span class="material-symbols-rounded text-6xl mb-4 opacity-50">swap_horiz</span>
+                            <span class="text-lg font-medium">No transfers found</span>
+                            <span class="text-sm">Create a new transfer to move stock between locations</span>
                         </div>
                     }
                 </div>
@@ -390,29 +518,66 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
                 <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-md p-6">
                     <h3 class="text-lg font-bold mb-4">New Stock Transfer</h3>
                     <form [formGroup]="transferForm" (ngSubmit)="submitTransfer()" class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">From Location</label>
-                            <select formControlName="from_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                                <option value="">Select source...</option>
-                                @for (loc of locations(); track loc.id) {
-                                    <option [value]="loc.id">{{ loc.name }}</option>
-                                }
-                            </select>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">From Location</label>
+                                <select formControlName="from_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
+                                    <option value="">Select source...</option>
+                                    @for (loc of locations(); track loc.id) {
+                                        <option [value]="loc.id">{{ loc.name }}</option>
+                                    }
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">To Location</label>
+                                <select formControlName="to_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
+                                    <option value="">Select destination...</option>
+                                    @for (loc of locations(); track loc.id) {
+                                        <option [value]="loc.id">{{ loc.name }}</option>
+                                    }
+                                </select>
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">To Location</label>
-                            <select formControlName="to_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                                <option value="">Select destination...</option>
-                                @for (loc of locations(); track loc.id) {
-                                    <option [value]="loc.id">{{ loc.name }}</option>
+
+                        <!-- Transfer Items FormArray -->
+                        <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-800/20">
+                            <div class="flex justify-between items-center mb-3">
+                                <label class="block text-sm font-bold">Transfer Items</label>
+                                <button type="button" (click)="addTransferItem()" class="text-xs font-bold text-[var(--primary-color)] flex items-center hover:opacity-80">
+                                    <span class="material-symbols-rounded text-sm mr-1">add_circle</span> Add Item
+                                </button>
+                            </div>
+                            <div formArrayName="items" class="space-y-3">
+                                @for (item of transferItems.controls; track item; let i = $index) {
+                                    <div [formGroupName]="i" class="flex gap-2 items-end">
+                                        <div class="flex-1">
+                                            <label class="block text-xs font-medium mb-1 opacity-70">Product</label>
+                                            <select formControlName="product_id" class="w-full bg-white dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm">
+                                                <option value="">Select product...</option>
+                                                @for (product of products(); track product.id) {
+                                                    <option [value]="product.id">{{ product.name }}</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="w-24">
+                                            <label class="block text-xs font-medium mb-1 opacity-70">Qty</label>
+                                            <input type="number" formControlName="quantity" class="w-full bg-white dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-center">
+                                        </div>
+                                        @if (transferItems.length > 1) {
+                                            <button type="button" (click)="removeTransferItem(i)" class="p-2 text-slate-400 hover:text-red-500 transition-colors mb-[2px]">
+                                                <span class="material-symbols-rounded text-[20px]">delete</span>
+                                            </button>
+                                        }
+                                    </div>
                                 }
-                            </select>
+                            </div>
                         </div>
+
                         <div>
-                            <label class="block text-sm font-medium mb-1">Notes</label>
+                            <label class="block text-sm font-medium mb-1 mt-2">Notes</label>
                             <textarea formControlName="notes" rows="2" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2"></textarea>
                         </div>
-                        <div class="flex gap-2 pt-4">
+                        <div class="flex gap-2 pt-2">
                             <button type="button" (click)="showTransferModal.set(false)" class="flex-1 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium">Cancel</button>
                             <button type="submit" [disabled]="!transferForm.valid" class="flex-1 py-2 bg-[var(--primary-color)] text-white rounded-lg font-bold disabled:opacity-50">Create Transfer</button>
                         </div>
@@ -537,6 +702,20 @@ export class StockManagerComponent implements OnInit {
     );
     products = toSignal(this.products$, { initialValue: [] as Product[] });
 
+    // Computed Dashboard Metrics
+    totalInventoryValue = computed(() => {
+        const levels = this.stockLevels() as any[];
+        const prods = this.products();
+        return levels.reduce((acc: number, level: any) => {
+            const product = prods.find(p => p.id === level.product_id);
+            return acc + ((level.physical_quantity || 0) * (product?.price || 0));
+        }, 0);
+    });
+
+    activeTransfersCount = computed(() => {
+        return this.transfers().filter(t => t.status === 'PENDING' || t.status === 'APPROVED' || t.status === 'IN_TRANSIT').length;
+    });
+
     // AG Grid Setup
     private gridApi!: GridApi;
     isDarkMode = signal(document.documentElement.classList.contains('dark'));
@@ -617,8 +796,32 @@ export class StockManagerComponent implements OnInit {
     transferForm = this.fb.group({
         from_location_id: ['', Validators.required],
         to_location_id: ['', Validators.required],
-        notes: ['']
+        notes: [''],
+        items: this.fb.array([
+            this.createTransferItem()
+        ], Validators.required)
     });
+
+    get transferItems() {
+        return this.transferForm.get('items') as any; // any to bypass strict type checking for FormArray
+    }
+
+    createTransferItem() {
+        return this.fb.group({
+            product_id: ['', Validators.required],
+            quantity: [1, [Validators.required, Validators.min(1)]]
+        });
+    }
+
+    addTransferItem() {
+        this.transferItems.push(this.createTransferItem());
+    }
+
+    removeTransferItem(index: number) {
+        if (this.transferItems.length > 1) {
+            this.transferItems.removeAt(index);
+        }
+    }
 
     locationForm = this.fb.group({
         name: ['', Validators.required],
@@ -725,6 +928,17 @@ export class StockManagerComponent implements OnInit {
         if (!this.adjustmentForm.valid) return;
         const formValue = this.adjustmentForm.value;
         const quantity = formValue.movement_type === 'ADJUSTMENT_IN' ? Math.abs(formValue.quantity!) : -Math.abs(formValue.quantity!);
+
+        // Validation for ADJUSTMENT_OUT
+        if (formValue.movement_type === 'ADJUSTMENT_OUT' || formValue.movement_type === 'DAMAGE_WRITE_OFF') {
+            const currentLevel = this.stockLevels().find(l => l.product_id === formValue.product_id && l.location_id === formValue.location_id);
+            const available = currentLevel?.available_quantity || 0;
+            if (Math.abs(quantity) > available) {
+                this.dialog.alert('Insufficient Stock', `You are trying to remove ${Math.abs(quantity)} units, but only ${available} are available at this location.`);
+                return;
+            }
+        }
+
         this.stockService.createMovement({
             movement_type: formValue.movement_type as MovementType,
             product_id: formValue.product_id!,
@@ -736,7 +950,7 @@ export class StockManagerComponent implements OnInit {
             next: () => {
                 this.dialog.alert('Success', 'Adjustment recorded');
                 this.showAdjustmentModal.set(false);
-                this.adjustmentForm.reset();
+                this.adjustmentForm.reset({ movement_type: 'ADJUSTMENT_IN', quantity: 0 });
                 this.refreshStockLevels();
             },
             error: (err) => this.dialog.alert('Error', err.message)
@@ -746,19 +960,40 @@ export class StockManagerComponent implements OnInit {
     submitTransfer() {
         if (!this.transferForm.valid) return;
         const formValue = this.transferForm.value;
+
+        // Ensure from and to locations are different
+        if (formValue.from_location_id === formValue.to_location_id) {
+            this.dialog.alert('Invalid Transfer', 'Source and destination locations cannot be the same.');
+            return;
+        }
+
+        // Validate stock availability for each item
+        const items = formValue.items as any[];
+        for (const item of items) {
+            const currentLevel = this.stockLevels().find(l => l.product_id === item.product_id && l.location_id === formValue.from_location_id);
+            const available = currentLevel?.available_quantity || 0;
+            if (item.quantity > available) {
+                const productName = this.getProductName(item.product_id);
+                this.dialog.alert('Insufficient Stock', `Not enough stock for ${productName}. Requested: ${item.quantity}, Available: ${available} at source location.`);
+                return;
+            }
+        }
+
         this.stockService.createTransfer({
             from_location_id: formValue.from_location_id!,
             to_location_id: formValue.to_location_id!,
             requested_by: '00000000-0000-0000-0000-000000000000',
-            items: [],
+            items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
             notes: formValue.notes || undefined
         }).subscribe({
             next: () => {
-                this.dialog.alert('Success', 'Transfer created');
+                this.dialog.alert('Success', 'Transfer created successfully');
                 this.showTransferModal.set(false);
                 this.transferForm.reset();
+                this.transferForm.setControl('items', this.fb.array([this.createTransferItem()]));
+                this.refreshAll();
             },
-            error: (err) => this.dialog.alert('Error', err.message)
+            error: (err) => this.dialog.alert('Error', err.message || 'Failed to create transfer')
         });
     }
 
