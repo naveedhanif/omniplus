@@ -35,137 +35,94 @@ import { SupplierManagerComponent } from './features/suppliers/supplier-manager.
     SupplierManagerComponent
   ],
   template: `
-    <div class="min-h-screen p-6 transition-colors duration-300">
-      <header class="mb-8 flex justify-between items-center">
-        <div>
-          <h1 class="text-3xl font-bold mb-2">Admin Dashboard</h1>
-          <p class="opacity-70">Manage your stores, settings, and inventory</p>
+    <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+      
+      <!-- Rail Navigation (Auto-Collapsing Drawer) -->
+      <nav class="group relative z-50 h-full transition-all duration-300 ease-in-out flex-shrink-0 w-[72px] hover:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col pt-6 shadow-[4px_0_24px_rgba(0,0,0,0)] hover:shadow-[4px_0_24px_rgba(0,0,0,0.05)]">
+        
+        <!-- Logo / App Icon Area -->
+        <div class="px-[20px] mb-8 flex items-center overflow-hidden whitespace-nowrap h-8">
+          <div class="w-8 h-8 rounded-xl bg-[var(--primary-color)] text-white flex items-center justify-center flex-shrink-0 shadow-lg shadow-[var(--primary-color)]/30 group-hover:rotate-12 transition-transform duration-300">
+             <span class="material-symbols-rounded text-[20px]">api</span>
+          </div>
+          <span class="ml-4 font-black tracking-widest text-[15px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 pointer-events-none">OMNIPLUS</span>
+        </div>
+
+        <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-3 space-y-1">
+          <!-- Navigation Items -->
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'stores', icon: 'store', label: 'Stores', disabled: false }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'config', icon: 'settings', label: 'Configuration', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'categories', icon: 'category', label: 'Categories', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'inventory', icon: 'inventory_2', label: 'Inventory Manager', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'stock', icon: 'warehouse', label: 'Stock Management', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'customers', icon: 'group', label: 'Customers & CRM', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'suppliers', icon: 'local_shipping', label: 'Suppliers', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'purchase-orders', icon: 'shopping_cart', label: 'Purchase Orders', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'history', icon: 'receipt_long', label: 'Sales History', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'auditing', icon: 'analytics', label: 'Activity Audit', disabled: allStores().length === 0 }"></ng-container>
+        </div>
+
+        <div class="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
+           <ng-container *ngTemplateOutlet="navItem; context: { id: 'schema', icon: 'database', label: 'Database Schema', disabled: false }"></ng-container>
         </div>
         
-        @if (allStores().length > 0) {
-          <div class="flex gap-4 items-center bg-[var(--card-bg)] p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
-            <span class="text-sm font-medium">Switch Store Context:</span>
-            <select 
-              [value]="storeService.currentStore()?.id" 
-              (change)="switchStore($event)"
-              class="bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors">
-              @for (store of allStores(); track store.id) {
-                <option [value]="store.id">{{ store.name }} ({{ store.type }})</option>
-              }
-            </select>
-          </div>
-        }
-      </header>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Sidebar Navigation -->
-        <div class="lg:col-span-3">
-          <nav class="flex flex-col gap-2 sticky top-6">
-             <button 
-              (click)="activeTab.set('stores')"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'stores'"
-              [class.text-white]="activeTab() === 'stores'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <span class="material-symbols-rounded">store</span>
-              Stores
-            </button>
+        <!-- Reusable Nav Item Template -->
+        <ng-template #navItem let-id="id" let-icon="icon" let-label="label" let-disabled="disabled">
             <button 
-              (click)="activeTab.set('config')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'config'"
-              [class.text-white]="activeTab() === 'config'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">settings</span>
-              Configuration
-            </button>
-             <button 
-              (click)="activeTab.set('categories')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'categories'"
-              [class.text-white]="activeTab() === 'categories'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">category</span>
-              Categories
-            </button>
-            <button 
-              (click)="activeTab.set('inventory')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'inventory'"
-              [class.text-white]="activeTab() === 'inventory'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">inventory_2</span>
-              Inventory Manager
-            </button>
-            <button 
-              (click)="activeTab.set('stock')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'stock'"
-              [class.text-white]="activeTab() === 'stock'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">warehouse</span>
-              Stock Management
-            </button>
-             <button 
-              (click)="activeTab.set('customers')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'customers'"
-              [class.text-white]="activeTab() === 'customers'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">group</span>
-              Customers & CRM
-            </button>
-            <button 
-              (click)="activeTab.set('suppliers')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'suppliers'"
-              [class.text-white]="activeTab() === 'suppliers'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">local_shipping</span>
-              Suppliers
-            </button>
-            <button 
-              (click)="activeTab.set('purchase-orders')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'purchase-orders'"
-              [class.text-white]="activeTab() === 'purchase-orders'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">shopping_cart</span>
-              Purchase Orders
-            </button>
-            <button 
-              (click)="activeTab.set('history')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'history'"
-              [class.text-white]="activeTab() === 'history'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">receipt_long</span>
-              Sales History
-            </button>
-            <button 
-              (click)="activeTab.set('auditing')"
-              [disabled]="allStores().length === 0"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'auditing'"
-              [class.text-white]="activeTab() === 'auditing'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span class="material-symbols-rounded">analytics</span>
-              Activity Audit
-            </button>
-            <div class="border-t border-slate-200 dark:border-slate-700 my-2"></div>
-            <button 
-              (click)="activeTab.set('schema')"
-              [class.bg-[var(--primary-color)]]="activeTab() === 'schema'"
-              [class.text-white]="activeTab() === 'schema'"
-              class="text-left px-4 py-3 rounded-lg font-medium transition-colors hover:bg-opacity-80 flex items-center gap-3 bg-[var(--card-bg)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 justify-between">
-              <div class="flex items-center gap-3">
-                <span class="material-symbols-rounded">database</span>
-                Database Schema
+              (click)="activeTab.set(id)"
+              [disabled]="disabled"
+              [class.bg-[var(--primary-color)]]="activeTab() === id"
+              [class.text-white]="activeTab() === id"
+              [class.shadow-md]="activeTab() === id"
+              [class.text-slate-500]="activeTab() !== id"
+              [class.dark:text-slate-400]="activeTab() !== id"
+              class="w-full flex items-center h-12 rounded-[14px] transition-all duration-200 relative hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed">
+              
+              <!-- Icon Container (Fixed Width) -->
+              <div class="w-[48px] h-full flex items-center justify-center flex-shrink-0">
+                 <span class="material-symbols-rounded text-[22px]"
+                       [class.text-white]="activeTab() === id">{{ icon }}</span>
+              </div>
+              
+              <!-- Label Container (Expands with hover) -->
+              <div class="flex-1 whitespace-nowrap overflow-hidden text-left font-bold text-[13px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                {{ label }}
               </div>
             </button>
-          </nav>
-        </div>
+        </ng-template>
 
-        <!-- Main Content Area -->
-        <div class="lg:col-span-9">
+      </nav>
+
+      <!-- Main Content Area -->
+      <div class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Header -->
+        <header class="px-6 pt-6 pb-6 flex-shrink-0 flex justify-between items-center bg-transparent z-10">
+          <div>
+            <h1 class="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Admin Dashboard</h1>
+            <p class="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1">Manage your enterprise</p>
+          </div>
+          
+          @if (allStores().length > 0) {
+            <div class="flex items-center bg-white dark:bg-slate-800 p-1 rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-slate-200 dark:border-slate-700">
+              <div class="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 border-r border-slate-100 dark:border-slate-700">Context</div>
+              <div class="relative cursor-pointer">
+                <select 
+                  [value]="storeService.currentStore()?.id" 
+                  (change)="switchStore($event)"
+                  class="bg-transparent border-none rounded-lg pl-4 pr-8 py-2 text-xs font-black text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[var(--primary-color)]/30 outline-none transition-all appearance-none cursor-pointer">
+                  @for (store of allStores(); track store.id) {
+                    <option [value]="store.id">{{ store.name }} ({{ store.type }})</option>
+                  }
+                </select>
+                <span class="material-symbols-rounded absolute right-2 top-1/2 -translate-y-1/2 text-[16px] text-slate-400 pointer-events-none">expand_content</span>
+              </div>
+            </div>
+          }
+        </header>
+
+        <!-- Dynamic Feature Component Loading -->
+        <main class="flex-1 overflow-auto px-6 pb-6 w-full">
           @switch (activeTab()) {
             @case ('stores') { <app-store-manager /> }
             @case ('config') { <app-configuration-manager /> }
@@ -179,7 +136,7 @@ import { SupplierManagerComponent } from './features/suppliers/supplier-manager.
             @case ('suppliers') { <app-supplier-manager /> }
             @case ('schema') { <app-database-schema /> }
           }
-        </div>
+        </main>
       </div>
     </div>
   `

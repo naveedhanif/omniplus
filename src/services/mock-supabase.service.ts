@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
-import { from, Observable, BehaviorSubject, of, forkJoin, delay } from 'rxjs';
-import { map, switchMap, tap } from 'rxjs/operators';
+import { from, Observable, BehaviorSubject, Subject, of, forkJoin, delay } from 'rxjs';
+import { map, switchMap, tap, debounceTime } from 'rxjs/operators';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 
@@ -67,6 +67,7 @@ export interface Supplier {
     contact_person?: string;
     email?: string;
     phone?: string;
+    whatsapp?: string;       // optional — separate WhatsApp number (may differ from phone)
     address?: string;
     lead_time_days: number;
     notes?: string;
@@ -311,6 +312,14 @@ export class MockSupabaseService {
     private suppliers$ = new BehaviorSubject<Supplier[]>([]);
     private taxProfiles$ = new BehaviorSubject<TaxProfile[]>([]);
     private staff$ = new BehaviorSubject<Staff[]>([]);
+    // P0-B Fix: POs are now a live BehaviorSubject, not a one-shot cold observable
+    private purchaseOrders$ = new BehaviorSubject<PurchaseOrder[]>([]);
+    private _lastPoStoreId: string | null = null;
+
+    // Debounce subjects — one per table — so rapid realtime events collapse into a single refresh
+    private _supplierRefresh$ = new Subject<void>();
+    private _poRefresh$ = new Subject<void>();
+    private _productRefresh$ = new Subject<void>();
 
     constructor() {
         if (!environment.supabaseUrl || !environment.supabaseKey || environment.supabaseUrl.includes('YOUR_SUPABASE_URL')) {
@@ -320,6 +329,12 @@ export class MockSupabaseService {
             return;
         }
         this.supabase = createClient(environment.supabaseUrl, environment.supabaseKey);
+
+        // Wire up debounced refresh pipelines (300ms window collapses rapid events into one fetch)
+        this._supplierRefresh$.pipe(debounceTime(300)).subscribe(() => this.refreshSuppliers());
+        this._poRefresh$.pipe(debounceTime(300)).subscribe(() => this.refreshPOs());
+        this._productRefresh$.pipe(debounceTime(300)).subscribe(() => this.refreshProducts());
+
         this.fetchAllData();
         this.listenToChanges();
     }
@@ -446,10 +461,26 @@ export class MockSupabaseService {
         }
     }
     private listenToChanges() {
-        this.supabase.channel('public:tables')
-            .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-                // Debounce or optimized update could go here, for now simple refetch
-                this.fetchAllData();
+        // ✅ FIX: Targeted per-table listeners instead of nuclear fetchAllData().
+        // Each table change only refreshes its own BehaviorSubject, via a debounced Subject
+        // so rapid-fire events (e.g. bulk inserts) collapse into a single network request.
+        this.supabase.channel('omniplus:targeted')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+                this._supplierRefresh$.next();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => {
+                this._poRefresh$.next();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_items' }, () => {
+                this._poRefresh$.next(); // PO items changing means PO totals changed too
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+                this._productRefresh$.next();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+                // Categories rarely change — a simple targeted fetch is fine
+                this.supabase.from('categories').select('*').order('sort_order')
+                    .then(({ data }) => { if (data) this.categories$.next(data); });
             })
             .subscribe();
     }
@@ -1537,6 +1568,49 @@ export class MockSupabaseService {
     }
 
     // --- Supplier Management ---
+
+    /** Re-fetches ALL suppliers from DB and pushes into the shared BehaviorSubject. */
+    private async refreshSuppliers(): Promise<void> {
+        try {
+            const { data, error } = await this.supabase.from('suppliers').select('*');
+            if (error) throw error;
+            this.suppliers$.next(data || []);
+        } catch (err) {
+            console.error('Failed to refresh suppliers:', err);
+        }
+    }
+
+    /** Re-fetches ALL products from DB with client-side joins and pushes into the shared BehaviorSubject. */
+    private async refreshProducts(): Promise<void> {
+        try {
+            const { data, error } = await this.supabase.from('products').select('*');
+            if (error) throw error;
+            const currentCats = this.categories$.getValue();
+            const currentSuppliers = this.suppliers$.getValue();
+            const joined = (data || []).map((p: any) => ({
+                ...p,
+                category: currentCats.find((c: any) => c.id === p.category_id),
+                supplier: currentSuppliers.find((s: any) => s.id === p.supplier_id)
+            }));
+            this.products$.next(joined);
+        } catch (err) {
+            console.error('Failed to refresh products:', err);
+        }
+    }
+
+    /**
+     * Backed by suppliers$ BehaviorSubject — updates automatically whenever
+     * any mutation (add/update/delete) calls refreshSuppliers().
+     */
+    getSuppliers(storeId: string): Observable<Supplier[]> {
+        // ✅ FIX: Removed eager refreshSuppliers() here. Data is already loaded during
+        // fetchAllData() at startup and kept live by the targeted realtime listener.
+        // Calling refresh on every subscription was causing a blink on navigation.
+        return this.suppliers$.pipe(
+            map(all => all.filter(s => s.store_id === storeId))
+        );
+    }
+
     addSupplier(supplier: Omit<Supplier, 'id' | 'created_at'>): Observable<Supplier> {
         const promise = this.supabase
             .from('suppliers')
@@ -1545,19 +1619,12 @@ export class MockSupabaseService {
             .single()
             .then(({ data, error }) => {
                 if (error) throw error;
+                // ✅ OPTIMISTIC UPDATE: Push directly into BehaviorSubject — zero wait,
+                // zero blink. The realtime listener will also fire but the debounce means
+                // it won't cause a visible re-render since the data is already correct.
+                const current = this.suppliers$.getValue();
+                this.suppliers$.next([...current, data as Supplier]);
                 return data as Supplier;
-            });
-        return from(promise);
-    }
-
-    getSuppliers(storeId: string): Observable<Supplier[]> {
-        const promise = this.supabase
-            .from('suppliers')
-            .select('*')
-            .eq('store_id', storeId)
-            .then(({ data, error }) => {
-                if (error) throw error;
-                return data as Supplier[];
             });
         return from(promise);
     }
@@ -1571,7 +1638,11 @@ export class MockSupabaseService {
             .single()
             .then(({ data, error }) => {
                 if (error) throw error;
-                return data as Supplier;
+                // ✅ OPTIMISTIC UPDATE: Replace the matching entry in-place — no full refetch
+                const updated = data as Supplier;
+                const current = this.suppliers$.getValue();
+                this.suppliers$.next(current.map(s => s.id === id ? updated : s));
+                return updated;
             });
         return from(promise);
     }
@@ -1583,6 +1654,9 @@ export class MockSupabaseService {
             .eq('id', id)
             .then(({ error }) => {
                 if (error) throw error;
+                // ✅ OPTIMISTIC UPDATE: Filter out the deleted supplier immediately
+                const current = this.suppliers$.getValue();
+                this.suppliers$.next(current.filter(s => s.id !== id));
                 return;
             });
         return from(promise);
@@ -1623,17 +1697,32 @@ export class MockSupabaseService {
     // --- Purchase Order Methods ---
 
     getPurchaseOrders(storeId: string): Observable<PurchaseOrder[]> {
-        const promise = this.supabase
-            .from('purchase_orders')
-            .select('*, supplier:suppliers(*)')
-            .eq('store_id', storeId)
-            .order('created_at', { ascending: false })
-            .then(({ data, error }) => {
-                if (error && error.code === '42P01') return [];
-                if (error) throw error;
-                return data as PurchaseOrder[];
-            });
-        return from(promise);
+        // ✅ FIX: Only trigger an initial refresh if this is the first time we're loading
+        // POs for this store, or if the store has changed. This prevents a blink every
+        // time the component subscribes (e.g. on navigation) when data is already loaded.
+        if (this._lastPoStoreId !== storeId) {
+            this._lastPoStoreId = storeId;
+            this.refreshPOs(storeId);
+        }
+        return this.purchaseOrders$.asObservable();
+    }
+
+    /** Re-fetches POs for the tracked store and pushes the result into purchaseOrders$. */
+    private async refreshPOs(storeId?: string): Promise<void> {
+        const id = storeId ?? this._lastPoStoreId;
+        if (!id) return;
+        try {
+            const { data, error } = await this.supabase
+                .from('purchase_orders')
+                .select('*, supplier:suppliers(*)')
+                .eq('store_id', id)
+                .order('created_at', { ascending: false });
+            if (error && error.code === '42P01') { this.purchaseOrders$.next([]); return; }
+            if (error) throw error;
+            this.purchaseOrders$.next((data as PurchaseOrder[]) ?? []);
+        } catch (err) {
+            console.error('Failed to refresh PO list:', err);
+        }
     }
 
     getPurchaseOrderItems(poId: string): Observable<PurchaseOrderItem[]> {
@@ -1669,9 +1758,15 @@ export class MockSupabaseService {
                     .from('purchase_order_items')
                     .insert(poItems);
 
-                if (itemsError) throw itemsError;
+                if (itemsError) {
+                    // P0-A: If items insert fails, roll back the orphaned PO header
+                    await this.supabase.from('purchase_orders').delete().eq('id', newPO.id);
+                    throw itemsError;
+                }
 
                 resolve(newPO as PurchaseOrder);
+                // P0-B: Refresh the live list so the new PO appears immediately
+                this.refreshPOs();
             } catch (err) {
                 console.error('PO Creation Error:', err);
                 reject(err);
@@ -1687,9 +1782,55 @@ export class MockSupabaseService {
             .eq('id', id)
             .then(({ error }) => {
                 if (error) throw error;
+                this.refreshPOs(); // P1: refresh list so status badge updates instantly
                 return true;
             });
         return from(promise);
+    }
+
+    /** P1: Update a DRAFT PO's header and replace its line items entirely. */
+    updatePurchaseOrder(
+        poId: string,
+        data: Partial<PurchaseOrder>,
+        items: Omit<PurchaseOrderItem, 'id' | 'po_id'>[]
+    ): Observable<void> {
+        return from(new Promise<void>(async (resolve, reject) => {
+            try {
+                // 1. Update the PO header
+                const { error: poErr } = await this.supabase
+                    .from('purchase_orders')
+                    .update({
+                        supplier_id: data.supplier_id,
+                        total_amount: data.total_amount,
+                        expected_arrival: data.expected_arrival ?? null,
+                        notes: data.notes ?? null
+                    })
+                    .eq('id', poId);
+                if (poErr) throw poErr;
+
+                // 2. Delete all existing line items so we can re-insert cleanly
+                const { error: deleteErr } = await this.supabase
+                    .from('purchase_order_items')
+                    .delete()
+                    .eq('po_id', poId);
+                if (deleteErr) throw deleteErr;
+
+                // 3. Insert updated line items
+                if (items.length > 0) {
+                    const poItems = items.map(item => ({ ...item, po_id: poId }));
+                    const { error: insertErr } = await this.supabase
+                        .from('purchase_order_items')
+                        .insert(poItems);
+                    if (insertErr) throw insertErr;
+                }
+
+                resolve();
+                this.refreshPOs(); // Keep list in sync
+            } catch (err) {
+                console.error('PO Update Error:', err);
+                reject(err);
+            }
+        }));
     }
 
     receivePO(poId: string, itemsToReceive: { item_id: string, product_id: string, received_amount: number, unit_cost: number, serial_numbers?: string[] }[]): Observable<{ success: boolean, newStatus: POStatus }> {
@@ -1830,9 +1971,17 @@ export class MockSupabaseService {
                 }
 
                 // 5. Finalize PO status
-                await this.supabase.from('purchase_orders').update({ status: finalStatus }).eq('id', poId);
+                const { error: statusErr } = await this.supabase
+                    .from('purchase_orders')
+                    .update({ status: finalStatus })
+                    .eq('id', poId);
+                if (statusErr) throw statusErr;
 
-                // 6. Refresh local memory service state
+                // 6. P0-B Fix: Push the updated PO list into the live BehaviorSubject
+                //    so every toSignal() subscriber (e.g. the PO list view) sees the
+                //    new status badge without requiring a page navigation.
+                await this.refreshPOs();
+                // Also refresh products so updated stock_warehouse is visible elsewhere
                 this.fetchAllData();
 
                 resolve({ success: true, newStatus: finalStatus });
@@ -1874,24 +2023,6 @@ export class MockSupabaseService {
             await this.supabase.from('products').update({ image_url: mockUrl }).eq('id', productId);
             resolve(mockUrl);
         }));
-    }
-
-    updatePurchaseOrderStatus(poId: string, status: POStatus): Observable<void> {
-        const promise = new Promise<void>(async (resolve, reject) => {
-            try {
-                const { error } = await this.supabase
-                    .from('purchase_orders')
-                    .update({ status })
-                    .eq('id', poId);
-
-                if (error) throw error;
-                resolve();
-            } catch (err) {
-                console.error('PO Status Update Error:', err);
-                reject(err);
-            }
-        });
-        return from(promise);
     }
 
     // --- In-App Inventory Transfer Logic ---
