@@ -2,8 +2,8 @@ import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter, withHashLocation } from '@angular/router';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 
-import { EposComponent } from '../components/epos/epos.component';
-import { AdminDashboardComponent } from '../components/admin/admin-dashboard.component';
+import { EposComponent } from './features/pos/components/epos.component';
+import { AdminDashboardComponent } from './features/admin/components/admin-dashboard.component';
 
 export const appConfig: ApplicationConfig = {
   providers: [

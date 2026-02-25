@@ -1,8 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { StoreConfigService } from '../services/store-config.service';
-import { MockSupabaseService } from '../services/mock-supabase.service';
-import { DialogModalComponent } from '../components/shared/dialog-modal.component';
+import { StoreConfigService } from './core/services/store-config.service';
+import { MockSupabaseService } from './core/services/mock-supabase.service';
+import { DialogModalComponent } from './shared/components/dialog-modal.component';
 
 @Component({
   selector: 'app-root',
