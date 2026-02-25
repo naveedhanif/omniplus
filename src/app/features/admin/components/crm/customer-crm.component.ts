@@ -22,268 +22,445 @@ import { DialogService } from '../../../../core/services/dialog.service';
     template: `
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
       <!-- Left: Customer List -->
-      <div class="lg:col-span-4 bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
-        <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-bold">Customers</h2>
-            <button (click)="crmViewMode.set('CREATE')" class="p-2 bg-[var(--primary-color)] text-white rounded-lg hover:brightness-110 active:scale-95 transition-all">
-              <span class="material-symbols-rounded">person_add</span>
+      <div class="lg:col-span-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/50 dark:border-slate-700/50 flex flex-col overflow-hidden">
+        <div class="p-5 border-b border-slate-200/50 dark:border-slate-700/50">
+          <div class="flex justify-between items-center mb-5">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <span class="material-symbols-rounded text-[var(--primary-color)]">groups</span>
+                Customers
+            </h2>
+            <button (click)="crmViewMode.set('CREATE')" class="w-8 h-8 flex items-center justify-center bg-[var(--primary-color)] text-white rounded-full shadow-lg shadow-primary/30 hover:scale-105 active:scale-95 transition-all">
+              <span class="material-symbols-rounded text-sm">add</span>
             </button>
           </div>
           <div class="relative">
-            <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+            <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
             <input 
               [formControl]="customerSearchControl"
               type="text" 
-              placeholder="Search by name or phone..." 
-              class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors">
+              placeholder="Search customers..." 
+              class="w-full bg-slate-100/50 dark:bg-slate-800/50 border-none rounded-xl pl-9 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--primary-color)] outline-none transition-all placeholder:text-slate-400">
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <div class="flex-1 overflow-y-auto p-3 space-y-2">
           @for (customer of filteredCustomerList(); track customer.id) {
             <button 
               (click)="selectCustomer(customer)"
               [ngClass]="{
-                'bg-blue-50': selectedCustomer()?.id === customer.id,
-                'dark:bg-blue-900/20': selectedCustomer()?.id === customer.id,
-                'border-blue-200': selectedCustomer()?.id === customer.id,
-                'dark:border-blue-800': selectedCustomer()?.id === customer.id
+                'bg-white dark:bg-slate-800 shadow-sm border-slate-200 dark:border-slate-700 ring-1 ring-[var(--primary-color)]/20': selectedCustomer()?.id === customer.id,
+                'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50': selectedCustomer()?.id !== customer.id
               }"
-              class="w-full text-left p-3 rounded-lg border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex justify-between items-center group"
+              class="w-full text-left p-3.5 rounded-xl border transition-all flex justify-between items-center group"
             >
-              <div>
-                <div class="font-bold text-sm">{{ customer.full_name }}</div>
-                <div class="text-xs opacity-60">{{ customer.phone || 'No phone' }}</div>
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 shadow-inner">
+                    {{ customer.full_name[0] | uppercase }}
+                </div>
+                <div>
+                  <div class="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                      {{ customer.full_name }}
+                      @if (customer.is_vip) {
+                         <span class="material-symbols-rounded text-[14px] text-amber-500" title="VIP Customer">stars</span>
+                      }
+                  </div>
+                  <div class="text-xs opacity-60 mt-0.5">{{ customer.phone || 'No phone' }}</div>
+                </div>
               </div>
               <div class="text-right">
-                <div class="text-xs font-bold" [class.text-red-500]="customer.current_balance < 0" [class.text-green-600]="customer.current_balance >= 0">
+                <div class="text-xs font-bold px-2 py-1 rounded-md" [ngClass]="getBalanceBadgeClass(customer.current_balance)">
                   {{ customer.current_balance | currency:storeService.currency() }}
                 </div>
-                @if (customer.is_vip) {
-                  <span class="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold uppercase tracking-tighter">VIP</span>
-                }
               </div>
             </button>
           } @empty {
-            <div class="p-8 text-center opacity-50 italic text-sm">No customers found.</div>
+            <div class="p-8 text-center flex flex-col items-center justify-center opacity-50">
+                <span class="material-symbols-rounded text-4xl mb-2">person_off</span>
+                <span class="text-sm font-medium">No customers found</span>
+            </div>
           }
         </div>
       </div>
 
       <!-- Right: Form or Details -->
-      <div class="lg:col-span-8 bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+      <div class="lg:col-span-9 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden relative">
         @if (crmViewMode() === 'CREATE') {
-          <div class="p-8 max-w-2xl mx-auto w-full">
-            <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
-              <span class="material-symbols-rounded text-[var(--primary-color)]">person_add</span>
-              Register New Customer
-            </h2>
-            <form [formGroup]="customerForm" (ngSubmit)="addCustomer()" class="space-y-4">
-              <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                  <label class="block text-sm font-medium mb-1">Full Name</label>
-                  <input formControlName="full_name" type="text" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+          <div class="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-blue-900/10 dark:to-indigo-900/10 pointer-events-none"></div>
+          <div class="p-12 max-w-2xl mx-auto w-full relative z-10 flex flex-col h-full justify-center">
+            
+            <div class="text-center mb-10">
+                <div class="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl shadow-xl flex items-center justify-center mx-auto mb-6 transform -rotate-3 border border-slate-100 dark:border-slate-700">
+                    <span class="material-symbols-rounded text-4xl text-[var(--primary-color)] font-light">person_add</span>
                 </div>
+                <h2 class="text-3xl font-extrabold tracking-tight">New Customer</h2>
+                <p class="text-slate-500 mt-2">Create a new profile to track loyalty, credit, and history.</p>
+            </div>
+
+            <form [formGroup]="customerForm" (ngSubmit)="addCustomer()" class="space-y-6 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700">
+              <div class="space-y-4">
                 <div>
-                  <label class="block text-sm font-medium mb-1">Phone Number</label>
-                  <input formControlName="phone" type="tel" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+                  <input formControlName="full_name" type="text" class="w-full bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl p-4 font-medium outline-none focus:ring-2 focus:ring-[var(--primary-color)] transition-all" placeholder="e.g. Jane Doe">
                 </div>
-                <div>
-                  <label class="block text-sm font-medium mb-1">Credit Limit</label>
-                  <input formControlName="credit_limit" type="number" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone</label>
+                      <input formControlName="phone" type="tel" class="w-full bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl p-4 font-medium outline-none focus:ring-2 focus:ring-[var(--primary-color)] transition-all" placeholder="+1 (555) 000-0000">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Credit Limit</label>
+                      <div class="relative">
+                          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{{ storeService.currency() }}</span>
+                          <input formControlName="credit_limit" type="number" class="w-full bg-slate-50 dark:bg-slate-900/50 border-none rounded-xl py-4 pl-8 pr-4 font-medium outline-none focus:ring-2 focus:ring-[var(--primary-color)] transition-all" placeholder="0.00">
+                      </div>
+                    </div>
                 </div>
               </div>
-              <div class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <input formControlName="is_vip" type="checkbox" id="is_vip" class="w-4 h-4 text-[var(--primary-color)] rounded">
-                <label for="is_vip" class="text-sm font-medium">Mark as VIP Customer</label>
+              
+              <div class="flex justify-between items-center p-4 bg-[var(--primary-color)]/5 rounded-xl border border-[var(--primary-color)]/20">
+                <div>
+                    <div class="font-bold text-[var(--primary-color)] text-sm">VIP Status</div>
+                    <div class="text-xs text-slate-500">Enable special perks and discounts</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input formControlName="is_vip" type="checkbox" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary-color)]"></div>
+                </label>
               </div>
-              <button type="submit" [disabled]="customerForm.invalid" class="w-full py-3 bg-[var(--primary-color)] text-white font-bold rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 mt-4">
-                Register Customer
+
+              <button type="submit" [disabled]="customerForm.invalid" class="w-full py-4 text-sm bg-[var(--primary-color)] text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none mt-4">
+                Create Customer Profile
               </button>
             </form>
           </div>
         } @else {
           @if (selectedCustomer(); as customer) {
-            <!-- Customer Details Header -->
-            <div class="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50">
-              <div class="flex gap-4 items-center">
-                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-lg shadow-blue-500/20">
-                  {{ customer.full_name[0] }}
+            
+            <!-- 360 HERO HEADER -->
+            <div class="relative p-8 pb-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+                <div class="flex justify-between items-start mb-8">
+                    <div class="flex gap-6 items-center">
+                        <div class="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-4xl font-extrabold shadow-xl shadow-blue-500/30 transform rotate-3">
+                            {{ customer.full_name[0] | uppercase }}
+                        </div>
+                        <div class="flex flex-col justify-center">
+                            <div class="flex items-center gap-3 mb-1">
+                                <h2 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{{ customer.full_name }}</h2>
+                                @if (customer.is_vip) {
+                                    <span class="flex items-center gap-1 text-[11px] bg-gradient-to-r from-amber-200 to-yellow-400 text-amber-900 px-2.5 py-1 rounded-full font-bold uppercase shadow-sm">
+                                        <span class="material-symbols-rounded text-[14px]">stars</span> VIP
+                                    </span>
+                                }
+                            </div>
+                            <div class="flex items-center gap-4 text-sm font-medium text-slate-500">
+                                <span class="flex items-center gap-1.5"><span class="material-symbols-rounded text-lg">call</span> {{ customer.phone || 'No phone' }}</span>
+                                <span class="flex items-center gap-1.5"><span class="material-symbols-rounded text-lg">calendar_today</span> Joined {{ customer.created_at | date:'MMM yyyy' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                         <button (click)="openPaymentTab()" class="px-5 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold text-sm shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
+                             <span class="material-symbols-rounded text-lg">payments</span> Log Payment
+                         </button>
+                         <button (click)="deleteCustomer(customer.id)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-800 text-red-500 border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors tooltip-trigger" title="Delete Profile">
+                             <span class="material-symbols-rounded">delete</span>
+                         </button>
+                    </div>
                 </div>
-                <div>
-                  @if (isEditingCustomer()) {
-                      <div class="flex flex-col gap-2">
-                           <input [formControl]="customerForm.controls.full_name" type="text" class="text-2xl font-bold bg-white dark:bg-slate-800 border rounded px-2 py-1 outline-none ring-2 ring-blue-500">
-                           <input [formControl]="customerForm.controls.phone" type="text" class="text-sm opacity-70 bg-white dark:bg-slate-800 border rounded px-2 py-0.5 outline-none">
-                      </div>
-                  } @else {
-                      <h2 class="text-2xl font-bold flex items-center gap-2">
-                          {{ customer.full_name }}
-                          @if (customer.is_vip) {
-                              <span class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold uppercase">VIP</span>
-                          }
-                      </h2>
-                      <p class="text-sm opacity-60 flex items-center gap-1 group">
-                          <span class="material-symbols-rounded text-base">call</span>
-                          {{ customer.phone || 'No phone provided' }}
-                          @if (customer.phone) {
-                              <a [href]="getWhatsAppLink(customer.phone)" target="_blank" class="opacity-0 group-hover:opacity-100 transition-opacity text-green-600 font-bold ml-2">WhatsApp</a>
-                          }
-                      </p>
-                  }
+
+                <!-- FINANCIAL METRICS CARDS -->
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <!-- Balance Card -->
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/20 p-5 rounded-2xl shadow-lg shadow-blue-500/20 border border-blue-100 dark:border-blue-800/50 flex flex-col justify-between relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/30">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
+                        <div class="flex justify-between items-start mb-2 relative z-10">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Balance</span>
+                            <span class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-50 dark:bg-slate-700">
+                                <span class="material-symbols-rounded text-slate-400 text-sm">account_balance</span>
+                            </span>
+                        </div>
+                        <div class="text-3xl font-mono font-bold tracking-tight" 
+                             [class.text-red-500]="customer.current_balance < 0" 
+                             [class.text-green-600]="customer.current_balance > 0">
+                            {{ customer.current_balance | currency:storeService.currency() }}
+                        </div>
+                        <div class="text-xs mt-2 font-medium" [ngClass]="getBalanceTextClass(customer.current_balance)">
+                            {{ getBalanceDescription(customer.current_balance) }}
+                        </div>
+                    </div>
+
+                    <!-- Credit Limit Form/Card -->
+                    <div class="bg-gradient-to-br from-purple-50 to-fuchsia-50 dark:from-purple-900/40 dark:to-fuchsia-900/20 p-5 rounded-2xl shadow-lg shadow-purple-500/20 border border-purple-100 dark:border-purple-800/50 flex flex-col justify-between relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-500/30">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-colors duration-500"></div>
+                        <div class="flex justify-between items-start mb-2 relative z-10">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Credit Limit</span>
+                            <span class="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/20">
+                                <span class="material-symbols-rounded text-blue-500 text-sm">credit_score</span>
+                            </span>
+                        </div>
+                        
+                        @if (isEditingCustomer()) {
+                            <input [formControl]="customerForm.controls.credit_limit" type="number" class="text-2xl font-mono font-bold bg-slate-50 dark:bg-slate-900 border-none rounded-xl px-3 py-1 outline-none ring-2 ring-blue-500 w-full mb-1">
+                        } @else {
+                            <div class="text-3xl font-mono font-bold tracking-tight text-slate-700 dark:text-slate-200 group flex items-center gap-2 cursor-pointer" (click)="startEditingCustomer()">
+                                {{ customer.credit_limit | currency:storeService.currency() }}
+                                <span class="material-symbols-rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity text-blue-500">edit</span>
+                            </div>
+                        }
+
+                        <!-- Progress Bar -->
+                        <div class="mt-2 text-xs font-medium text-slate-500 flex flex-col gap-1.5">
+                            <div class="flex justify-between">
+                                <span>Utilization</span>
+                                <span>{{ getCreditUtilization(customer) }}%</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all duration-500"
+                                     [ngClass]="getCreditBarColor(customer)"
+                                     [style.width.%]="getCreditUtilization(customer)"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lifetime Value -->
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/40 dark:to-teal-900/20 p-5 rounded-2xl shadow-lg shadow-emerald-500/20 border border-emerald-100 dark:border-emerald-800/50 flex flex-col justify-between relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/30">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
+                        <div class="flex justify-between items-start mb-2 relative z-10">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Lifetime Value</span>
+                            <span class="w-8 h-8 rounded-full flex items-center justify-center bg-green-50 dark:bg-green-900/20">
+                                <span class="material-symbols-rounded text-green-500 text-sm">trending_up</span>
+                            </span>
+                        </div>
+                        <div class="text-3xl font-mono font-bold tracking-tight text-slate-700 dark:text-slate-200 relative z-10">
+                            {{ customerTotalSpend() | currency:storeService.currency() }}
+                        </div>
+                        <div class="text-xs mt-2 font-medium text-slate-400 flex items-center gap-1 relative z-10">
+                             Total spend across {{ customerTransactions().length }} orders
+                        </div>
+                    </div>
                 </div>
-              </div>
-              
-              <div class="flex gap-2">
-                 @if (isEditingCustomer()) {
-                     <button (click)="saveCustomerChanges()" class="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm shadow hover:bg-green-700 transition-colors">Save</button>
-                     <button (click)="cancelEditingCustomer()" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg font-bold text-sm hover:bg-slate-300 transition-colors">Cancel</button>
-                 } @else {
-                     <button (click)="startEditingCustomer()" class="p-2 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400">
-                       <span class="material-symbols-rounded">edit</span>
-                     </button>
-                     <button (click)="deleteCustomer(customer.id)" class="p-2 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
-                       <span class="material-symbols-rounded">delete</span>
-                     </button>
-                 }
-              </div>
+
+                <!-- TABS NAVIGATION -->
+                <div class="flex gap-6 mt-4">
+                    <button (click)="activeTab.set('ACTIVITY')" [class.border-[var(--primary-color)]]="activeTab() === 'ACTIVITY'" [class.text-[var(--primary-color)]]="activeTab() === 'ACTIVITY'" [class.border-transparent]="activeTab() !== 'ACTIVITY'" [class.text-slate-500]="activeTab() !== 'ACTIVITY'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
+                        Activity & Ledger
+                    </button>
+                    <button (click)="activeTab.set('DETAILS')" [class.border-[var(--primary-color)]]="activeTab() === 'DETAILS'" [class.text-[var(--primary-color)]]="activeTab() === 'DETAILS'" [class.border-transparent]="activeTab() !== 'DETAILS'" [class.text-slate-500]="activeTab() !== 'DETAILS'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
+                        Profile Details
+                    </button>
+                    <button (click)="activeTab.set('COLLECT')" [class.border-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.text-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.border-transparent]="activeTab() !== 'COLLECT'" [class.text-slate-500]="activeTab() !== 'COLLECT'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
+                        Collect Payment
+                    </button>
+                </div>
             </div>
 
-            <!-- Master Detail Grid for Financials -->
-            <div class="flex-1 grid grid-cols-1 md:grid-cols-2 overflow-hidden">
-              <!-- Left: Ledger & Payments -->
-              <div class="border-r border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
-                  <div class="p-4 bg-slate-100 dark:bg-slate-900/30 flex justify-between items-center">
-                      <h3 class="font-bold text-sm flex items-center gap-2">
-                          <span class="material-symbols-rounded text-base text-blue-500">account_balance_wallet</span>
-                          Balance Summary
-                      </h3>
-                      <div class="text-right">
-                          <div class="text-xs opacity-60 uppercase font-bold tracking-tighter">Current Debt</div>
-                          <div class="text-xl font-mono font-bold" [class.text-red-500]="customer.current_balance < 0" [class.text-green-600]="customer.current_balance >= 0">
-                              {{ customer.current_balance | currency:storeService.currency() }}
-                          </div>
-                      </div>
-                  </div>
+            <!-- TAB CONTENT CONTAINER -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/30 dark:bg-black/10">
+                
+                <!-- TAB 1: ACTIVITY & LEDGER -->
+                @if (activeTab() === 'ACTIVITY') {
+                    <div class="p-6">
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mt-2">
+                            <!-- Timeline Feed -->
+                            <div class="p-6">
+                                <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+                                    <span class="material-symbols-rounded text-slate-400">timeline</span> 
+                                    Recent Activity
+                                </h3>
+                                
+                                <div class="relative border-l-2 border-slate-100 dark:border-slate-700 ml-3 space-y-8 pb-4">
+                                    <!-- Iterate through merged timeline of transactions and ledger entries -->
+                                    @for (activity of getMergedTimeline(); track activity.id) {
+                                        <div class="relative pl-6">
+                                            <!-- Timeline Dot -->
+                                            <div class="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 shadow-sm"
+                                                 [ngClass]="getActivityDotColor(activity)">
+                                            </div>
+                                            
+                                            <!-- Content Card -->
+                                            <div class="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700/50 hover:shadow-md transition-shadow group flex justify-between items-start"
+                                                 [style.cursor]="activity.type === 'SALE_TX' ? 'pointer' : 'default'"
+                                                 (click)="activity.type === 'SALE_TX' ? viewTransactionDetails(activity.raw) : null">
+                                                
+                                                <div>
+                                                    <div class="flex items-center gap-2 mb-1">
+                                                        <span class="font-bold text-sm" [ngClass]="getActivityTextColor(activity)">{{ activity.title }}</span>
+                                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded text-slate-500 bg-slate-200 dark:bg-slate-700">
+                                                            {{ activity.date | date:'shortTime' }}
+                                                        </span>
+                                                        @if (activity.type === 'SALE_TX') {
+                                                            <span class="material-symbols-rounded text-[14px] text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">open_in_new</span>
+                                                        }
+                                                    </div>
+                                                    <p class="text-xs text-slate-500">{{ activity.subtitle }}</p>
+                                                    <p class="text-[10px] text-slate-400 mt-2 font-mono">{{ activity.date | date:'mediumDate' }}</p>
+                                                </div>
+                                                
+                                                <div class="text-right">
+                                                    <div class="font-mono font-bold" [ngClass]="getActivityAmountColor(activity)">
+                                                        {{ activity.amount > 0 ? '+' : '' }}{{ activity.amount | currency:storeService.currency() }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    } @empty {
+                                        <div class="pl-6 py-6 text-slate-400 italic text-sm">No activity recorded yet.</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
 
-                  <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-blue-50/50 dark:bg-blue-900/5">
-                      <h4 class="text-xs font-bold uppercase text-blue-600 dark:text-blue-400 mb-3 tracking-widest">Post Ledger Entry</h4>
-                      <form [formGroup]="paymentForm" (ngSubmit)="submitLedgerEntry()" class="space-y-3">
-                          <div class="grid grid-cols-2 gap-2">
-                              <select formControlName="type" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm outline-none">
-                                  <option value="PAYMENT">Customer Payment (+)</option>
-                                  <option value="SALE">Manual Charge (-)</option>
-                                  <option value="ADJUSTMENT">Balance Correction</option>
-                              </select>
-                              <input formControlName="amount" type="number" step="0.01" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm font-mono outline-none" placeholder="Amount">
-                          </div>
-                          <div class="flex gap-2">
-                              <input formControlName="notes" type="text" placeholder="Note (e.g. Bank Transfer Ref...)" class="flex-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm outline-none">
-                              <button type="submit" [disabled]="paymentForm.invalid" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm shadow hover:bg-blue-700 transition-all active:scale-95">Post</button>
-                          </div>
-                      </form>
-                  </div>
+                <!-- TAB 2: PROFILE DETAILS -->
+                @if (activeTab() === 'DETAILS') {
+                    <div class="p-6 max-w-2xl">
+                        <form [formGroup]="customerForm" class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-bold">Personal Information</h3>
+                                @if (isEditingCustomer()) {
+                                    <div class="flex gap-2">
+                                        <button (click)="cancelEditingCustomer()" type="button" class="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
+                                        <button (click)="saveCustomerChanges()" type="button" class="px-3 py-1.5 text-xs font-bold bg-green-500 text-white rounded-lg shadow hover:bg-green-600 transition-colors">Save Changes</button>
+                                    </div>
+                                } @else {
+                                    <button (click)="startEditingCustomer()" type="button" class="px-3 py-1.5 text-xs font-bold border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1">
+                                        <span class="material-symbols-rounded text-[14px]">edit</span> Edit
+                                    </button>
+                                }
+                            </div>
 
-                  <div class="flex-1 overflow-y-auto p-0">
-                      <table class="w-full text-xs text-left">
-                          <thead class="bg-slate-50 dark:bg-slate-800 sticky top-0 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
-                              <tr>
-                                  <th class="p-3">Date</th>
-                                  <th class="p-3">Activity</th>
-                                  <th class="p-3 text-right">Amount</th>
-                              </tr>
-                          </thead>
-                          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                              @for (entry of currentLedger(); track entry.id) {
-                                  <tr>
-                                      <td class="p-3 opacity-60">{{ entry.created_at | date:'MMM d, HH:mm' }}</td>
-                                      <td class="p-3">
-                                          <div class="font-bold">{{ entry.type }}</div>
-                                          @if(entry.notes){ <div class="opacity-50 text-[10px] italic">{{ entry.notes }}</div> }
-                                      </td>
-                                      <td class="p-3 text-right font-mono font-bold" [class.text-green-600]="entry.amount > 0" [class.text-red-500]="entry.amount < 0">
-                                          {{ entry.amount | currency:storeService.currency() }}
-                                      </td>
-                                  </tr>
-                              } @empty {
-                                  <tr><td colspan="3" class="p-10 text-center opacity-40 italic">No ledger history.</td></tr>
-                              }
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
+                                    @if(isEditingCustomer()) {
+                                        <input formControlName="full_name" type="text" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                                    } @else {
+                                        <div class="p-2.5 font-medium">{{ customer.full_name }}</div>
+                                    }
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Phone Number</label>
+                                    @if(isEditingCustomer()) {
+                                        <input formControlName="phone" type="text" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                                    } @else {
+                                        <div class="p-2.5 font-medium flex items-center gap-2">
+                                            {{ customer.phone || '—' }}
+                                            @if (customer.phone) {
+                                                <a [href]="getWhatsAppLink(customer.phone)" target="_blank" class="w-6 h-6 flex items-center justify-center bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors tooltip-trigger" title="Message on WhatsApp">
+                                                    <span class="material-symbols-rounded text-[14px]">chat</span>
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <hr class="border-slate-100 dark:border-slate-700">
+                            
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="font-bold text-sm">VIP Status</div>
+                                    <div class="text-xs text-slate-500">VIPs may receive special reporting metrics.</div>
+                                </div>
+                                
+                                @if(isEditingCustomer()) {
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                      <input formControlName="is_vip" type="checkbox" class="sr-only peer">
+                                      <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary-color)]"></div>
+                                    </label>
+                                } @else {
+                                    <div class="px-3 py-1 rounded-full text-xs font-bold shadow-sm" [class.bg-gradient-to-r]="customer.is_vip" [class.from-amber-200]="customer.is_vip" [class.to-yellow-400]="customer.is_vip" [class.text-amber-900]="customer.is_vip" [class.bg-slate-100]="!customer.is_vip" [class.text-slate-500]="!customer.is_vip">
+                                        {{ customer.is_vip ? 'Active VIP' : 'Standard' }}
+                                    </div>
+                                }
+                            </div>
+                        </form>
+                    </div>
+                }
 
-              <!-- Right: Sales History -->
-              <div class="flex flex-col overflow-hidden bg-slate-50/50 dark:bg-black/10">
-                  <div class="p-4 bg-slate-100 dark:bg-slate-900/30 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
-                      <h3 class="font-bold text-sm flex items-center gap-2">
-                          <span class="material-symbols-rounded text-base text-orange-500">history</span>
-                          Purchase History
-                      </h3>
-                      <div class="text-right">
-                          <div class="text-xs opacity-60 uppercase font-bold tracking-tighter">Total Lifetime Spend</div>
-                          <div class="text-lg font-mono font-bold text-[var(--primary-color)]">
-                              {{ customerTotalSpend() | currency:storeService.currency() }}
-                          </div>
-                      </div>
-                  </div>
+                <!-- TAB 3: COLLECT PAYMENT -->
+                @if (activeTab() === 'COLLECT') {
+                    <div class="p-6">
+                        <div class="bg-gradient-to-br from-indigo-500 via-blue-600 to-blue-700 rounded-[2rem] shadow-2xl p-10 text-white relative overflow-hidden max-w-4xl mx-auto w-full border border-blue-400/20 my-4">
+                            <div class="absolute -right-20 -top-20 opacity-10 blur-sm pointer-events-none">
+                                <span class="material-symbols-rounded text-[20rem] transform rotate-12">price_check</span>
+                            </div>
+                            
+                            <div class="text-center mb-10 relative z-10">
+                                <h3 class="text-3xl font-extrabold tracking-tight mb-2">Process Customer Payment</h3>
+                                <p class="text-blue-100 text-base max-w-md mx-auto">Settle outstanding debt or add store credit to the customer ledger instantly.</p>
+                            </div>
+                            
+                            <form [formGroup]="paymentForm" (ngSubmit)="submitLedgerEntry()" class="space-y-6 relative z-10 max-w-2xl mx-auto w-full">
+                                <!-- Type Selector -->
+                                <div class="bg-black/20 backdrop-blur-md p-1.5 rounded-2xl flex shadow-inner border border-white/10">
+                                    <button type="button" (click)="paymentForm.patchValue({type: 'PAYMENT'})" 
+                                            [ngClass]="paymentForm.value.type === 'PAYMENT' ? 'bg-white text-blue-600 shadow-lg' : 'text-white hover:bg-white/10'"
+                                            class="flex-1 py-3 text-sm font-bold rounded-xl transition-all">
+                                        Receive Money (+)
+                                    </button>
+                                    <button type="button" (click)="paymentForm.patchValue({type: 'SALE'})" 
+                                            [ngClass]="paymentForm.value.type === 'SALE' ? 'bg-white text-blue-600 shadow-lg' : 'text-white hover:bg-white/10'"
+                                            class="flex-1 py-3 text-sm font-bold rounded-xl transition-all">
+                                        Charge Account (-)
+                                    </button>
+                                </div>
 
-                  <div class="p-4 border-b border-slate-200 dark:border-slate-700">
-                      <div class="relative">
-                          <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-                          <input 
-                              [formControl]="transactionSearchControl"
-                              type="text" 
-                              placeholder="Filter orders..." 
-                              class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg pl-9 pr-4 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/50">
-                      </div>
-                  </div>
+                                <!-- Amount Input -->
+                                <div>
+                                    <label class="block text-sm font-bold text-blue-100 uppercase tracking-widest mb-3 pl-2">Payment Amount</label>
+                                    <div class="relative">
+                                        <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-3xl">{{ storeService.currency() }}</span>
+                                        <input formControlName="amount" type="number" step="0.01" 
+                                               class="w-full bg-white border-none rounded-2xl py-6 pl-14 pr-6 font-mono font-black text-4xl text-slate-900 outline-none focus:ring-4 focus:ring-blue-400/50 transition-all pointer-events-auto shadow-inner" 
+                                               placeholder="0.00">
+                                    </div>
+                                    @if (customer.current_balance < 0 && paymentForm.value.type === 'PAYMENT') {
+                                        <div class="mt-3 flex justify-end">
+                                            <button type="button" (click)="paymentForm.patchValue({amount: -customer.current_balance})" 
+                                                    class="text-sm font-bold text-blue-200 hover:text-white transition-colors flex items-center gap-1 bg-white/10 px-3 py-1.5 rounded-lg hover:bg-white/20">
+                                                <span class="material-symbols-rounded text-base">check_circle</span>
+                                                Settle full balance ({{ -customer.current_balance | currency:storeService.currency() }})
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
 
-                  <div class="flex-1 overflow-y-auto">
-                      <table class="w-full text-xs text-left">
-                          <thead class="bg-slate-50 dark:bg-slate-800 sticky top-0 text-slate-500 font-bold">
-                              <tr>
-                                  <th class="p-3">Order ID</th>
-                                  <th class="p-3 text-right">Total</th>
-                                  <th class="p-3 text-right">Pay Method</th>
-                              </tr>
-                          </thead>
-                          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                              @for (tx of filteredTransactions(); track tx.id) {
-                                  <tr (click)="viewTransactionDetails(tx)" class="hover:bg-white dark:hover:bg-slate-800 cursor-pointer transition-colors group">
-                                      <td class="p-3">
-                                          <div class="font-mono text-[var(--primary-color)] group-hover:underline">#{{ tx.id.substring(0,8) }}</div>
-                                          <div class="opacity-50 text-[10px]">{{ tx.created_at | date:'short' }}</div>
-                                      </td>
-                                      <td class="p-3 text-right font-bold">{{ tx.total_amount | currency:storeService.currency() }}</td>
-                                      <td class="p-3 text-right">
-                                          <span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
-                                              {{ tx.payment_method }}
-                                          </span>
-                                          @if (tx.metadata?.status === 'VOID') {
-                                              <span class="block text-red-500 font-bold text-[9px] uppercase mt-1">VOIDED</span>
-                                          }
-                                      </td>
-                                  </tr>
-                              } @empty {
-                                  <tr><td colspan="3" class="p-10 text-center opacity-40 italic">No transactions recorded.</td></tr>
-                              }
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
+                                <!-- Notes Input -->
+                                <div>
+                                    <label class="block text-sm font-bold text-blue-100 uppercase tracking-widest mb-3 pl-2">Optional Note / Reference</label>
+                                    <input formControlName="notes" type="text" placeholder="e.g. Bank Transfer TXN-123456..." 
+                                           class="w-full bg-white/10 border border-white/20 rounded-2xl p-5 text-white placeholder:text-blue-200 outline-none focus:bg-white/20 focus:border-white/50 transition-all text-lg">
+                                </div>
+
+                                <!-- Submit -->
+                                <button type="submit" [disabled]="paymentForm.invalid" 
+                                        class="w-full py-5 text-lg bg-green-400 hover:bg-green-300 text-green-950 font-black tracking-wide uppercase rounded-2xl shadow-xl hover:shadow-green-500/50 hover:-translate-y-1 active:scale-[0.98] transition-all disabled:opacity-50 disabled:shadow-none mt-6 flex items-center justify-center gap-2">
+                                    <span class="material-symbols-rounded">gavel</span>
+                                    {{ paymentForm.value.type === 'PAYMENT' ? 'Log Payment Received' : 'Post Manual Charge' }}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
             </div>
           } @else {
-             <div class="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-50">
-               <span class="material-symbols-rounded text-6xl mb-4">group</span>
-               <h3 class="text-xl font-bold">Customer CRM</h3>
-               <p class="max-w-xs">Select a customer from the sidebar to view their balance, history, and debt details.</p>
+             <!-- Empty State for Details Panel -->
+             <div class="absolute inset-0 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center p-12 text-center">
+               <div class="w-32 h-32 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center mb-6 transform -rotate-6 border border-slate-100 dark:border-slate-700">
+                   <span class="material-symbols-rounded text-6xl text-slate-300 dark:text-slate-600">group</span>
+               </div>
+               <h3 class="text-2xl font-bold tracking-tight mb-2">Customer 360° Profile</h3>
+               <p class="max-w-sm text-slate-500">Select a customer from the sidebar to view their balance, history, and debt details, or register a new one.</p>
              </div>
           }
         }
       </div>
     </div>
+
+
 
     <!-- Transaction Details modal -->
       @if (showTransactionDetailModal()) {
@@ -475,6 +652,7 @@ export class CustomerCRMComponent {
     customerTransactions = signal<Transaction[]>([]);
     customerTotalSpend = signal(0);
     crmViewMode = signal<'DETAILS' | 'CREATE'>('CREATE');
+    activeTab = signal<'ACTIVITY' | 'DETAILS' | 'COLLECT'>('ACTIVITY');
 
     showTransactionDetailModal = signal(false);
     selectedTransactionItems = signal<TransactionItem[]>([]);
@@ -706,4 +884,107 @@ export class CustomerCRMComponent {
         const number = phone.replace(/[^0-9]/g, '');
         return `https://wa.me/${number}`;
     }
+
+    // --- View Helpers ---
+
+    getCreditUtilization(customer: Customer): number {
+        if (!customer.credit_limit || customer.credit_limit <= 0) return 0;
+        if (customer.current_balance >= 0) return 0; // No debt
+
+        const debt = Math.abs(customer.current_balance);
+        const ratio = (debt / customer.credit_limit) * 100;
+        return Math.min(Math.round(ratio), 100);
+    }
+
+    getBalanceBadgeClass(balance: number): string {
+        if (balance < 0) return 'bg-red-50 text-red-600 dark:bg-red-900/20';
+        if (balance > 0) return 'bg-green-50 text-green-600 dark:bg-green-900/20';
+        return 'text-slate-400';
+    }
+
+    getBalanceTextClass(balance: number): string {
+        if (balance < 0) return 'text-red-400';
+        if (balance > 0) return 'text-green-500';
+        return 'text-slate-400';
+    }
+
+    getBalanceDescription(balance: number): string {
+        if (balance < 0) return 'Customer owes you';
+        if (balance > 0) return 'Store credit available';
+        return 'Account settled';
+    }
+
+    getCreditBarColor(customer: Customer): string {
+        const util = this.getCreditUtilization(customer);
+        if (util < 50) return 'bg-blue-500';
+        if (util < 85) return 'bg-orange-400';
+        return 'bg-red-500';
+    }
+
+    openPaymentTab() {
+        this.activeTab.set('COLLECT');
+    }
+
+    // --- Timeline Merger ---
+    // Merges transactions and ledger items into a single sortable feed array
+    getMergedTimeline() {
+        const items: any[] = [];
+
+        // Map Transactions
+        this.customerTransactions().forEach(tx => {
+            items.push({
+                id: `TX-${tx.id}`,
+                type: 'SALE_TX',
+                date: new Date(tx.created_at),
+                title: 'Purchase Made',
+                subtitle: `Order #${tx.id.substring(0, 8)} • Paid via ${tx.payment_method}`,
+                amount: tx.total_amount, // Positive conceptually as volume
+                raw: tx
+            });
+        });
+
+        // Map Ledger
+        this.currentLedger().forEach(entry => {
+            // Avoid double counting if a transaction automatically generated a ledger entry (if you do that)
+            // But usually 'ON_ACCOUNT' sales generate negative ledger.
+            items.push({
+                id: `LED-${entry.id}`,
+                type: `LEDGER_${entry.type}`,
+                date: new Date(entry.created_at),
+                title: entry.type === 'PAYMENT' ? 'Payment Received' : (entry.type === 'SALE' ? 'Manual Charge' : 'Balance Adjust'),
+                subtitle: entry.notes || 'No description',
+                amount: entry.amount, // Keep sign to show if it helped or hurt balance
+                raw: entry
+            });
+        });
+
+        // Sort by Date Descending
+        return items.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
+
+    getActivityIcon(activity: any): string {
+        if (activity.type === 'SALE_TX') return 'shopping_cart';
+        if (activity.type === 'LEDGER_PAYMENT') return 'payments';
+        return 'tune';
+    }
+
+    getActivityDotColor(activity: any): string {
+        if (activity.type === 'SALE_TX') return 'bg-blue-500';
+        if (activity.type === 'LEDGER_PAYMENT') return 'bg-green-500';
+        if (activity.amount < 0) return 'bg-orange-500';
+        return 'bg-slate-400';
+    }
+
+    getActivityTextColor(activity: any): string {
+        if (activity.type === 'SALE_TX') return 'text-blue-600 dark:text-blue-400';
+        if (activity.type === 'LEDGER_PAYMENT') return 'text-green-600 dark:text-green-400';
+        return 'text-slate-700 dark:text-slate-300';
+    }
+
+    getActivityAmountColor(activity: any): string {
+        if (activity.type === 'SALE_TX') return 'text-slate-600 dark:text-slate-300'; // Neutral for purchases
+        if (activity.amount > 0) return 'text-green-600';
+        return 'text-orange-500';
+    }
 }
+
