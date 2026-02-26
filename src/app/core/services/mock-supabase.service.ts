@@ -58,7 +58,42 @@ export interface Category {
     color: string;
     sort_order: number;
     parent_id?: string; // Phase 3: Hierarchy
+    path_ltree?: string; // Phase 4 (Spare Parts): Ltree materialized path
 }
+
+// --- Phase 4 (Spare Parts) Dynamic Schema Engines ---
+export interface AttributeDefinition {
+    id: string;
+    store_id: string;
+    category_id: string;
+    name: string;
+    json_key: string;
+    data_type: 'NUMBER' | 'STRING' | 'BOOLEAN';
+    is_required: boolean;
+    created_at?: string;
+}
+
+export interface ApplianceBrand {
+    id: string;
+    store_id: string;
+    name: string;
+}
+
+export interface ApplianceModel {
+    id: string;
+    store_id: string;
+    brand_id: string;
+    brand?: ApplianceBrand;
+    model_number: string;
+    appliance_type?: 'WASHING_MACHINE' | 'REFRIGERATOR' | 'AC' | string;
+}
+
+export interface ProductCompatibility {
+    product_id: string;
+    appliance_model_id: string;
+    model?: ApplianceModel;
+}
+// ----------------------------------------------------
 
 export interface Supplier {
     id: string;
@@ -159,6 +194,13 @@ export interface Product {
     id: string;
     store_id: string;
     name: string;
+    description?: string;
+
+    // Phase 4 (Spare Parts): Variant Structure
+    is_variant: boolean;
+    parent_product_id?: string;
+    parent_product?: Product;
+
     price: number;
     cost_price: number;
     category_id?: string | null;
@@ -171,6 +213,12 @@ export interface Product {
     supplier_id?: string;
     supplier?: Supplier; // Joined data
     supplier_sku?: string;
+
+    // Phase 4 (Spare Parts): CRITICAL
+    manufacturer_part_number?: string;
+    attribute_data?: Record<string, any>; // JSONB GIN Indexed Payload
+    compatible_models?: string[]; // Loaded via product_compatibility join
+
     reorder_point: number;
     reorder_quantity: number;
     warehouse_location?: string;
@@ -178,14 +226,13 @@ export interface Product {
     units_per_package: number;
     image_url?: string;
     metadata: any;
-    parent_id?: string;
-    is_variant: boolean;
-    attributes?: Record<string, string>;
+
     tax_rate: number; // Legacy percentage
     tax_profile_id?: string;
     tax_profile?: TaxProfile;
     brand?: string;
-    compatible_models?: string[];
+
+    // Legacy / Phase 1 fields that should eventually migrate into attribute_data JSONB
     voltage?: '110V' | '220V' | 'UNIVERSAL' | null;
     oem_aftermarket?: 'OEM' | 'AFTERMARKET' | null;
     warranty_period?: string;
@@ -375,8 +422,15 @@ export class MockSupabaseService {
             this.suppliers$.next(suppliers || []);
         }
 
-        // 3. Fetch Products and join client-side for robustness
-        const { data: products, error: productsError } = await this.supabase.from('products').select('*');
+        // 3. Fetch Products, join relations, and get compatibility strings
+        const { data: products, error: productsError } = await this.supabase
+            .from('products')
+            .select(`
+                *,
+                product_compatibility!left(
+                    appliance_models(model_number)
+                )
+            `);
         if (productsError) {
             console.error('Error fetching products:', productsError);
             this.products$.next([]); // Set to empty on error
@@ -386,7 +440,9 @@ export class MockSupabaseService {
             const joinedProducts = (products || []).map((p: any) => ({
                 ...p,
                 category: currentCats.find(c => c.id === p.category_id),
-                supplier: currentSuppliers.find(s => s.id === p.supplier_id)
+                supplier: currentSuppliers.find(s => s.id === p.supplier_id),
+                // Map the joined relational data down to a simple array of strings for quick search
+                compatible_models: (p.product_compatibility || []).map((pc: any) => pc.appliance_models?.model_number).filter(Boolean)
             }));
             this.products$.next(joinedProducts);
         }
@@ -579,27 +635,31 @@ export class MockSupabaseService {
         );
     }
 
-    addCategory(data: Omit<Category, 'id'>): Observable<Category> {
+    addCategory(cat: Omit<Category, 'id' | 'created_at'>): Observable<Category> {
         const promise = this.supabase
             .from('categories')
-            .insert(data as any)
+            .insert(cat)
             .select()
             .single()
             .then(({ data, error }) => {
                 if (error) throw error;
+                this.refreshCategories();
                 return data as Category;
             });
         return from(promise);
     }
 
-    addBulkCategories(categories: Omit<Category, 'id'>[]): Observable<Category[]> {
+    updateCategory(id: string, updates: Partial<Category>): Observable<Category> {
         const promise = this.supabase
             .from('categories')
-            .insert(categories as any)
+            .update(updates)
+            .eq('id', id)
             .select()
+            .single()
             .then(({ data, error }) => {
                 if (error) throw error;
-                return data as Category[];
+                this.refreshCategories();
+                return data as Category;
             });
         return from(promise);
     }
@@ -611,7 +671,156 @@ export class MockSupabaseService {
             .eq('id', id)
             .then(({ error }) => {
                 if (error) throw error;
+                this.refreshCategories();
                 return true;
+            });
+        return from(promise);
+    }
+
+    private async refreshCategories(): Promise<void> {
+        try {
+            const { data, error } = await this.supabase.from('categories').select('*');
+            if (error) throw error;
+            this.categories$.next(data || []);
+        } catch (err) {
+            console.error('Failed to refresh categories:', err);
+        }
+    }
+
+    // --- Attribute Generation Methods (Phase 4 Spare Parts) ---
+    getAttributeDefinitions(storeId: string, categoryId: string): Observable<AttributeDefinition[]> {
+        // Find matching attributes for store & category
+        const promise = this.supabase
+            .from('attribute_definitions')
+            .select('*')
+            .eq('store_id', storeId)
+            .eq('category_id', categoryId)
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as AttributeDefinition[];
+            });
+        return from(promise);
+    }
+
+    addAttributeDefinition(def: any): Observable<any> {
+        const promise = this.supabase
+            .from('attribute_definitions')
+            .insert(def)
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data;
+            });
+        return from(promise);
+    }
+
+    deleteAttributeDefinition(id: string): Observable<boolean> {
+        const promise = this.supabase
+            .from('attribute_definitions')
+            .delete()
+            .eq('id', id)
+            .then(({ error }) => {
+                if (error) throw error;
+                return true;
+            });
+        return from(promise);
+    }
+
+    // --- Phase 3 Compatibility Engine Methods ---
+
+    getApplianceBrands(storeId: string): Observable<ApplianceBrand[]> {
+        const promise = this.supabase
+            .from('appliance_brands')
+            .select('*')
+            .eq('store_id', storeId)
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as ApplianceBrand[];
+            });
+        return from(promise);
+    }
+
+    getApplianceModels(storeId: string): Observable<ApplianceModel[]> {
+        const promise = this.supabase
+            .from('appliance_models')
+            .select('*, brand:appliance_brands(*)')
+            .eq('store_id', storeId)
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as ApplianceModel[];
+            });
+        return from(promise);
+    }
+
+    getProductCompatibility(productId: string): Observable<ProductCompatibility[]> {
+        const promise = this.supabase
+            .from('product_compatibility')
+            .select('*, model:appliance_models(*, brand:appliance_brands(*))')
+            .eq('product_id', productId)
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as ProductCompatibility[];
+            });
+        return from(promise);
+    }
+
+    addProductCompatibility(productId: string, modelId: string): Observable<ProductCompatibility> {
+        const promise = this.supabase
+            .from('product_compatibility')
+            .insert({ product_id: productId, appliance_model_id: modelId })
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as ProductCompatibility;
+            });
+        return from(promise);
+    }
+
+    removeProductCompatibility(productId: string, modelId: string): Observable<boolean> {
+        const promise = this.supabase
+            .from('product_compatibility')
+            .delete()
+            .eq('product_id', productId)
+            .eq('appliance_model_id', modelId)
+            .then(({ error }) => {
+                if (error) throw error;
+                return true;
+            });
+        return from(promise);
+    }
+
+    // --- Phase 4 Variant System Methods ---
+
+    getProductVariants(parentId: string): Observable<Product[]> {
+        const promise = this.supabase
+            .from('products')
+            .select('*')
+            .eq('parent_product_id', parentId)
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as Product[];
+            });
+        return from(promise);
+    }
+
+    linkVariant(parentId: string, childId: string): Observable<Product> {
+        return this.updateProduct(childId, { parent_product_id: parentId, is_variant: true });
+    }
+
+    unlinkVariant(childId: string): Observable<Product> {
+        return this.updateProduct(childId, { parent_product_id: undefined, is_variant: false });
+    }
+
+    addBulkCategories(categories: Omit<Category, 'id'>[]): Observable<Category[]> {
+        const promise = this.supabase
+            .from('categories')
+            .insert(categories as any)
+            .select()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as Category[];
             });
         return from(promise);
     }
@@ -1002,7 +1211,7 @@ export class MockSupabaseService {
                     }
                     // Increment non-serialized stock
                     stockUpdates.push(
-                        this.supabase.rpc('decrement_stock', { p_id: item.product_id, p_quantity: -item.quantity })
+                        this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product_id, p_quantity: -item.quantity })
                     );
                 }
 
@@ -1219,7 +1428,7 @@ export class MockSupabaseService {
 
     adjustStock(storeId: string, productId: string, change: number, reason: string, note: string): Observable<boolean> {
         const promise = this.supabase
-            .rpc('decrement_stock', { p_id: productId, p_quantity: -change }) // decrement by negative = increment
+            .rpc('deduct_stock_fifo', { p_product_id: productId, p_quantity: -change }) // decrement by negative = increment
             .then(({ error }) => {
                 if (error) throw error;
                 // In a real app, we would also INSERT into stock_logs table here
@@ -1398,7 +1607,7 @@ export class MockSupabaseService {
                         serializedProductIds.add(item.product_id);
                     } else {
                         stockUpdates.push(
-                            this.supabase.rpc('decrement_stock', { p_id: item.product_id, p_quantity: -item.quantity })
+                            this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product_id, p_quantity: -item.quantity })
                         );
                     }
                 }
@@ -1471,7 +1680,7 @@ export class MockSupabaseService {
                                     .eq('id', serial.id)
                             );
                         }
-                        stockUpdates.push(this.supabase.rpc('decrement_stock', { p_id: item.product.id, p_quantity: item.serials.length }));
+                        stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.serials.length }));
                     } else {
                         txItemsData.push({
                             transaction_id: tx.id,
@@ -1479,7 +1688,7 @@ export class MockSupabaseService {
                             quantity: item.quantity,
                             price_at_sale: item.product.price,
                         });
-                        stockUpdates.push(this.supabase.rpc('decrement_stock', { p_id: item.product.id, p_quantity: item.quantity }));
+                        stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.quantity }));
                     }
                 }
 
@@ -1583,14 +1792,22 @@ export class MockSupabaseService {
     /** Re-fetches ALL products from DB with client-side joins and pushes into the shared BehaviorSubject. */
     private async refreshProducts(): Promise<void> {
         try {
-            const { data, error } = await this.supabase.from('products').select('*');
+            const { data, error } = await this.supabase
+                .from('products')
+                .select(`
+                    *,
+                    product_compatibility!left(
+                        appliance_models(model_number)
+                    )
+                `);
             if (error) throw error;
             const currentCats = this.categories$.getValue();
             const currentSuppliers = this.suppliers$.getValue();
             const joined = (data || []).map((p: any) => ({
                 ...p,
                 category: currentCats.find((c: any) => c.id === p.category_id),
-                supplier: currentSuppliers.find((s: any) => s.id === p.supplier_id)
+                supplier: currentSuppliers.find((s: any) => s.id === p.supplier_id),
+                compatible_models: (p.product_compatibility || []).map((pc: any) => pc.appliance_models?.model_number).filter(Boolean)
             }));
             this.products$.next(joined);
         } catch (err) {
@@ -1902,16 +2119,26 @@ export class MockSupabaseService {
                             const newWhouse = (product.stock_warehouse || 0) + receivePayload.received_amount;
                             const newTotal = (product.stock_quantity || 0) + receivePayload.received_amount;
 
-                            // Calculate Moving Average Cost (MAC)
+                            // Calculate Moving Average Cost (MAC) for legacy data
                             const currentTotalQty = product.stock_quantity || 0;
                             const currentTotalVal = currentTotalQty * (product.cost_price || 0);
                             const incomingVal = receivePayload.received_amount * receivePayload.unit_cost;
                             const newMAC = newTotal > 0 ? ((currentTotalVal + incomingVal) / newTotal) : 0;
 
-                            // B.1: Update Product Flat quantities and MAC
+                            // B.1 FIFO Engine: Insert new batch into `stock_batches`
+                            await this.supabase.from('stock_batches').insert({
+                                store_id: po.store_id,
+                                product_id: receivePayload.product_id,
+                                supplier_id: po.supplier_id,
+                                po_id: po.id,
+                                unit_cost: receivePayload.unit_cost,
+                                initial_quantity: receivePayload.received_amount,
+                                remaining_quantity: receivePayload.received_amount,
+                                batch_number: `PO-${po.id.substring(0, 8)}`
+                            });
+
+                            // B.1.1 Update Legacy Product flat values (for UI that hasn't migrated to read from batches yet)
                             await this.supabase.from('products').update({
-                                stock_warehouse: newWhouse,
-                                stock_quantity: newTotal,
                                 cost_price: newMAC
                             }).eq('id', receivePayload.product_id);
 
@@ -1930,11 +2157,22 @@ export class MockSupabaseService {
                             }
 
                             // B.2: Update Advanced Stock (stock_levels) mapping
+
+                            // Get current stock level to calculate new warehouse total accurately
+                            const { data: currentLevel } = await this.supabase.from('stock_levels')
+                                .select('quantity')
+                                .eq('product_id', receivePayload.product_id)
+                                .eq('location_id', warehouseId)
+                                .single();
+
+                            const currentWhouseQty = currentLevel ? currentLevel.quantity : 0;
+                            const updatedWhouseQty = currentWhouseQty + receivePayload.received_amount;
+
                             await this.supabase.from('stock_levels').upsert({
                                 store_id: po.store_id,
                                 product_id: receivePayload.product_id,
                                 location_id: warehouseId,
-                                quantity: newWhouse
+                                quantity: updatedWhouseQty
                             }, { onConflict: 'product_id,location_id' });
 
                             // B.3: Ledger Entry
@@ -1943,7 +2181,7 @@ export class MockSupabaseService {
                                 product_id: receivePayload.product_id,
                                 location_id: warehouseId,
                                 quantity_change: receivePayload.received_amount,
-                                balance_after: newWhouse,
+                                balance_after: updatedWhouseQty,
                                 reason: 'RECEIVE_PO',
                                 reference_id: po.id,
                                 notes: `Partial/Full Receive PO #${po.id.substring(0, 8)}`

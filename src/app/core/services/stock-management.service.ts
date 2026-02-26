@@ -596,9 +596,22 @@ export class StockManagementService {
             .order('created_at', { ascending: false })
             .then(({ data, error }) => {
                 if (error) throw error;
+                // If we have an optimistic cache, favor it over DB during the transition
+                const cached = this.manualTransfersCache();
+                if (cached) {
+                    this.manualTransfersCache.set(null); // Clear it after use
+                    return cached;
+                }
                 return data as StockTransfer[];
             });
         return from(promise);
+    }
+
+    // Support Optimistic UI
+    private manualTransfersCache = signal<StockTransfer[] | null>(null);
+
+    overrideTransfers(transfers: StockTransfer[]) {
+        this.manualTransfersCache.set(transfers);
     }
 
     // =====================================================
@@ -709,6 +722,9 @@ export class StockManagementService {
     private refreshStockLevels(): void {
         // In production, this would be handled by triggers or scheduled jobs
         // For now, we'll use RPC to refresh the materialized view
-        this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' });
+        this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' })
+            .then(({ error }) => {
+                if (error) console.error('Error refreshing stock levels view:', error);
+            });
     }
 }

@@ -382,66 +382,182 @@ import { DialogService } from '../../../../core/services/dialog.service';
 
                 <!-- TAB 3: COLLECT PAYMENT -->
                 @if (activeTab() === 'COLLECT') {
-                    <div class="p-6">
-                        <div class="bg-gradient-to-br from-indigo-500 via-blue-600 to-blue-700 rounded-[2rem] shadow-2xl p-10 text-white relative overflow-hidden max-w-4xl mx-auto w-full border border-blue-400/20 my-4">
-                            <div class="absolute -right-20 -top-20 opacity-10 blur-sm pointer-events-none">
-                                <span class="material-symbols-rounded text-[20rem] transform rotate-12">price_check</span>
-                            </div>
+                    <div class="p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="flex flex-col lg:flex-row gap-8 max-w-6xl mx-auto">
                             
-                            <div class="text-center mb-10 relative z-10">
-                                <h3 class="text-3xl font-extrabold tracking-tight mb-2">Process Customer Payment</h3>
-                                <p class="text-blue-100 text-base max-w-md mx-auto">Settle outstanding debt or add store credit to the customer ledger instantly.</p>
-                            </div>
-                            
-                            <form [formGroup]="paymentForm" (ngSubmit)="submitLedgerEntry()" class="space-y-6 relative z-10 max-w-2xl mx-auto w-full">
-                                <!-- Type Selector -->
-                                <div class="bg-black/20 backdrop-blur-md p-1.5 rounded-2xl flex shadow-inner border border-white/10">
-                                    <button type="button" (click)="paymentForm.patchValue({type: 'PAYMENT'})" 
-                                            [ngClass]="paymentForm.value.type === 'PAYMENT' ? 'bg-white text-blue-600 shadow-lg' : 'text-white hover:bg-white/10'"
-                                            class="flex-1 py-3 text-sm font-bold rounded-xl transition-all">
-                                        Receive Money (+)
-                                    </button>
-                                    <button type="button" (click)="paymentForm.patchValue({type: 'SALE'})" 
-                                            [ngClass]="paymentForm.value.type === 'SALE' ? 'bg-white text-blue-600 shadow-lg' : 'text-white hover:bg-white/10'"
-                                            class="flex-1 py-3 text-sm font-bold rounded-xl transition-all">
-                                        Charge Account (-)
-                                    </button>
+                            <!-- Left Side: Interactive Form -->
+                            <div class="flex-1 space-y-8">
+                                <div class="space-y-2">
+                                    <h2 class="text-3xl font-black tracking-tight text-slate-800 dark:text-white flex items-center gap-3">
+                                        <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                                            <span class="material-symbols-rounded text-white text-2xl">account_balance_wallet</span>
+                                        </div>
+                                        Post Transaction
+                                    </h2>
+                                    <p class="text-slate-500 font-medium">Capture payments, issue store credit, or charge the customer's account ledger.</p>
                                 </div>
 
-                                <!-- Amount Input -->
-                                <div>
-                                    <label class="block text-sm font-bold text-blue-100 uppercase tracking-widest mb-3 pl-2">Payment Amount</label>
-                                    <div class="relative">
-                                        <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-3xl">{{ storeService.currency() }}</span>
-                                        <input formControlName="amount" type="number" step="0.01" 
-                                               class="w-full bg-white border-none rounded-2xl py-6 pl-14 pr-6 font-mono font-black text-4xl text-slate-900 outline-none focus:ring-4 focus:ring-blue-400/50 transition-all pointer-events-auto shadow-inner" 
-                                               placeholder="0.00">
-                                    </div>
-                                    @if (customer.current_balance < 0 && paymentForm.value.type === 'PAYMENT') {
-                                        <div class="mt-3 flex justify-end">
-                                            <button type="button" (click)="paymentForm.patchValue({amount: -customer.current_balance})" 
-                                                    class="text-sm font-bold text-blue-200 hover:text-white transition-colors flex items-center gap-1 bg-white/10 px-3 py-1.5 rounded-lg hover:bg-white/20">
-                                                <span class="material-symbols-rounded text-base">check_circle</span>
-                                                Settle full balance ({{ -customer.current_balance | currency:storeService.currency() }})
+                                <form [formGroup]="paymentForm" (ngSubmit)="submitLedgerEntry()" class="space-y-8">
+                                    <!-- Segmented Control for Type -->
+                                    <div class="space-y-3">
+                                        <label class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Transaction Type</label>
+                                        <div class="bg-slate-200/50 dark:bg-slate-800/50 p-1.5 rounded-2xl flex border border-slate-200 dark:border-slate-700 shadow-inner">
+                                            <button type="button" (click)="paymentForm.patchValue({type: 'PAYMENT'})" 
+                                                    [class.bg-white]="paymentForm.value.type === 'PAYMENT'"
+                                                    [class.dark:bg-slate-700]="paymentForm.value.type === 'PAYMENT'"
+                                                    [class.text-blue-600]="paymentForm.value.type === 'PAYMENT'"
+                                                    [class.shadow-xl]="paymentForm.value.type === 'PAYMENT'"
+                                                    [class.text-slate-500]="paymentForm.value.type !== 'PAYMENT'"
+                                                    class="flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 flex items-center justify-center gap-2 group">
+                                                <span class="material-symbols-rounded text-[18px]" [class.text-blue-500]="paymentForm.value.type === 'PAYMENT'">add_circle</span>
+                                                Receive Money
+                                            </button>
+                                            <button type="button" (click)="paymentForm.patchValue({type: 'SALE'})" 
+                                                    [class.bg-white]="paymentForm.value.type === 'SALE'"
+                                                    [class.dark:bg-slate-700]="paymentForm.value.type === 'SALE'"
+                                                    [class.text-orange-600]="paymentForm.value.type === 'SALE'"
+                                                    [class.shadow-xl]="paymentForm.value.type === 'SALE'"
+                                                    [class.text-slate-500]="paymentForm.value.type !== 'SALE'"
+                                                    class="flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 flex items-center justify-center gap-2">
+                                                <span class="material-symbols-rounded text-[18px]" [class.text-orange-500]="paymentForm.value.type === 'SALE'">remove_circle</span>
+                                                Charge Account
                                             </button>
                                         </div>
-                                    }
-                                </div>
+                                    </div>
 
-                                <!-- Notes Input -->
-                                <div>
-                                    <label class="block text-sm font-bold text-blue-100 uppercase tracking-widest mb-3 pl-2">Optional Note / Reference</label>
-                                    <input formControlName="notes" type="text" placeholder="e.g. Bank Transfer TXN-123456..." 
-                                           class="w-full bg-white/10 border border-white/20 rounded-2xl p-5 text-white placeholder:text-blue-200 outline-none focus:bg-white/20 focus:border-white/50 transition-all text-lg">
-                                </div>
+                                    <!-- Amount with Quick Chips -->
+                                    <div class="space-y-4">
+                                        <div class="flex justify-between items-end">
+                                            <label class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Amount to Post</label>
+                                            <div class="flex gap-2">
+                                                @for (amt of [10, 50, 100, 500]; track amt) {
+                                                    <button type="button" (click)="paymentForm.patchValue({amount: amt})"
+                                                            class="px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[10px] font-bold rounded-lg transition-all text-slate-600 dark:text-slate-400">
+                                                        +{{ amt }}
+                                                    </button>
+                                                }
+                                                @if (customer.current_balance < 0) {
+                                                    <button type="button" (click)="paymentForm.patchValue({amount: -customer.current_balance})"
+                                                            class="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-[10px] font-black rounded-lg transition-all border border-blue-100 dark:border-blue-900/50">
+                                                        SETTLE FULL
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="relative group">
+                                            <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 font-black text-3xl transition-colors font-mono">{{ storeService.currency() }}</span>
+                                            <input formControlName="amount" type="number" step="0.01" 
+                                                   class="w-full bg-slate-50 dark:bg-slate-900/50 border-2 border-slate-100 dark:border-slate-800 rounded-3xl py-8 pl-16 pr-8 font-mono font-black text-5xl text-slate-800 dark:text-white outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 shadow-sm transition-all" 
+                                                   placeholder="0.00">
+                                        </div>
+                                    </div>
 
-                                <!-- Submit -->
-                                <button type="submit" [disabled]="paymentForm.invalid" 
-                                        class="w-full py-5 text-lg bg-green-400 hover:bg-green-300 text-green-950 font-black tracking-wide uppercase rounded-2xl shadow-xl hover:shadow-green-500/50 hover:-translate-y-1 active:scale-[0.98] transition-all disabled:opacity-50 disabled:shadow-none mt-6 flex items-center justify-center gap-2">
-                                    <span class="material-symbols-rounded">gavel</span>
-                                    {{ paymentForm.value.type === 'PAYMENT' ? 'Log Payment Received' : 'Post Manual Charge' }}
-                                </button>
-                            </form>
+                                    <!-- Internal Reference -->
+                                    <div class="space-y-3">
+                                        <label class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Internal Reference / Notes</label>
+                                        <div class="relative">
+                                            <span class="material-symbols-rounded absolute left-4 top-4 text-slate-300 font-semibold">notes</span>
+                                            <textarea formControlName="notes" rows="3" placeholder="Describe the reason for this adjustment or record a manual receipt number..." 
+                                                   class="w-full bg-slate-50 dark:bg-slate-900/50 border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 pl-12 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-medium"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <!-- Submit Button -->
+                                    <button type="submit" [disabled]="paymentForm.invalid || paymentForm.value.amount <= 0" 
+                                            class="w-full py-6 text-lg rounded-3xl font-black uppercase tracking-widest shadow-2xl transition-all active:scale-[0.98] disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-3 overflow-hidden group relative"
+                                            [ngClass]="paymentForm.value.type === 'PAYMENT' ? 'bg-blue-600 text-white shadow-blue-500/20 hover:shadow-blue-500/40' : 'bg-orange-500 text-white shadow-orange-500/20 hover:shadow-orange-500/40'">
+                                        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                        <span class="material-symbols-rounded text-2xl relative z-10">{{ paymentForm.value.type === 'PAYMENT' ? 'download_done' : 'upload_file' }}</span>
+                                        <span class="relative z-10">Confirm & Record {{ paymentForm.value.type === 'PAYMENT' ? 'Payment' : 'Charge' }}</span>
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Right Side: Live Balance Preview Card -->
+                            <div class="w-full lg:w-[400px] flex-shrink-0">
+                                <div class="sticky top-8 space-y-4">
+                                    <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2.5rem] p-8 text-white shadow-2xl border border-white/5 relative overflow-hidden group">
+                                        <!-- Decorative Sparkles -->
+                                        <div class="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] grayscale pointer-events-none"></div>
+                                        
+                                        <div class="relative z-10">
+                                            <div class="flex justify-between items-center mb-10">
+                                                <div class="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                                                    <span class="material-symbols-rounded text-white text-3xl">insights</span>
+                                                </div>
+                                                <div class="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Balance Projection</div>
+                                            </div>
+
+                                            <div class="space-y-10">
+                                                <div>
+                                                    <div class="text-white/50 text-[10px] font-bold uppercase mb-2">Current Standing</div>
+                                                    <div class="text-3xl font-mono font-black" [class.text-green-400]="customer.current_balance > 0" [class.text-red-400]="customer.current_balance < 0">
+                                                        {{ customer.current_balance | currency:storeService.currency() }}
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex items-center gap-4 py-6 border-y border-white/10">
+                                                    <div class="w-10 h-10 rounded-full flex items-center justify-center"
+                                                         [ngClass]="paymentForm.value.type === 'PAYMENT' ? 'bg-green-500' : 'bg-orange-500'">
+                                                        <span class="material-symbols-rounded text-white text-base">
+                                                            {{ paymentForm.value.type === 'PAYMENT' ? 'add' : 'remove' }}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-white/50 text-[10px] font-bold uppercase">Pending Movement</div>
+                                                        <div class="text-2xl font-mono font-bold">
+                                                            {{ (paymentFormValue().amount || 0) | currency:storeService.currency() }}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <div class="text-white/50 text-[10px] font-bold uppercase mb-2">Resulting Balance</div>
+                                                    <div class="text-5xl font-mono font-black tracking-tighter" [class.text-blue-400]="projectedBalance() > customer.current_balance" [class.text-orange-400]="projectedBalance() < customer.current_balance">
+                                                        {{ projectedBalance() | currency:storeService.currency() }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="mt-12 flex items-start gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 italic">
+                                                <span class="material-symbols-rounded text-white/30 text-lg">info</span>
+                                                <p class="text-[10px] text-white/60 leading-relaxed font-medium">
+                                                    This adjustment will be logged in the permanent ledger and cannot be deleted. Balance updates are immediate.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Ambient Glow -->
+                                        <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-blue-500/20 rounded-full blur-[80px]"></div>
+                                        <div class="absolute -top-20 -right-20 w-40 h-40 bg-purple-500/20 rounded-full blur-[80px]"></div>
+                                    </div>
+
+                                    <!-- Quick History Mini-View -->
+                                    <div class="bg-white dark:bg-slate-800 rounded-[2rem] p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                        <h4 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 px-2">Recent ledger Events</h4>
+                                        <div class="space-y-3">
+                                            @for (entry of currentLedger().slice(0, 3); track entry.id) {
+                                                <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs"
+                                                             [ngClass]="entry.type === 'PAYMENT' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                                                            {{ entry.type === 'PAYMENT' ? 'IN' : 'OT' }}
+                                                        </div>
+                                                        <div>
+                                                            <div class="text-xs font-bold">{{ entry.type }}</div>
+                                                            <div class="text-[10px] opacity-40">{{ entry.created_at | date:'MMM d' }}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="text-xs font-mono font-bold" [class.text-green-600]="entry.amount > 0" [class.text-red-600]="entry.amount < 0">
+                                                        {{ entry.amount | currency:storeService.currency() }}
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 }
@@ -661,6 +777,8 @@ export class CustomerCRMComponent {
 
     customerForm: FormGroup;
     paymentForm: FormGroup;
+    paymentFormValue!: Signal<any>;
+    projectedBalance: Signal<number>;
 
     constructor() {
         this.crmViewMode.set('CREATE');
@@ -677,6 +795,23 @@ export class CustomerCRMComponent {
             amount: [0.01, [Validators.required, Validators.min(0.01)]],
             notes: ['']
         });
+        // Track payment form value as a signal for real-time UI updates
+        this.paymentFormValue = toSignal(this.paymentForm.valueChanges, {
+            initialValue: { type: 'PAYMENT', amount: 0, notes: '' }
+        });
+
+        // Computed projected balance for the Payment Tab
+        this.projectedBalance = computed(() => {
+            const customer = this.selectedCustomer();
+            const form = this.paymentFormValue();
+            if (!customer) return 0;
+
+            let amount = form.amount || 0;
+            if (form.type === 'SALE') amount = -Math.abs(amount);
+            else if (form.type === 'PAYMENT') amount = Math.abs(amount);
+
+            return customer.current_balance + amount;
+        });
 
         // Effect to reset when store changes
         effect(() => {
@@ -685,6 +820,7 @@ export class CustomerCRMComponent {
             this.crmViewMode.set('CREATE');
         }, { allowSignalWrites: true });
     }
+
 
     addCustomer() {
         const currentStore = this.storeService.currentStore();
@@ -699,7 +835,10 @@ export class CustomerCRMComponent {
                 this.refreshCustomersTrigger.next();
                 this.selectCustomer(createdCust);
             },
-            error: (err) => this.dialog.alert('Error', 'Failed to add customer.')
+            error: (err) => {
+                console.error('Add customer error:', err);
+                this.dialog.alert('Registration Failed', err.message || 'Check your database connection or schema.');
+            }
         });
     }
 
@@ -732,7 +871,10 @@ export class CustomerCRMComponent {
                 this.selectCustomer(updatedCust);
                 this.refreshCustomersTrigger.next();
             },
-            error: (err) => this.dialog.alert('Error', 'Failed to update customer.')
+            error: (err) => {
+                console.error('Update customer error:', err);
+                this.dialog.alert('Update Failed', err.message || 'Check your database connection.');
+            }
         });
     }
 

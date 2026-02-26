@@ -11,12 +11,16 @@ import {
   StockLog,
   SerialNumber,
   StockReason,
-  Supplier
+  Supplier,
+  ApplianceBrand,
+  ApplianceModel,
+  ProductCompatibility
 } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
 import { LabelPrintComponent } from '../../../../shared/components/label-print.component';
 import { ImageUploadComponent } from '../../../../shared/components/image-upload.component';
+import { ProductAttributesFormComponent } from '../product-attributes-form/product-attributes-form.component';
 
 // Declare PapaParse from CDN
 declare var Papa: any;
@@ -24,7 +28,7 @@ declare var Papa: any;
 @Component({
   selector: 'app-inventory-manager',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe, LabelPrintComponent, ImageUploadComponent],
+  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe, LabelPrintComponent, ImageUploadComponent, ProductAttributesFormComponent],
   template: `
     <div class="flex gap-0 h-[calc(100vh-180px)] bg-[var(--card-bg)] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden relative">
 
@@ -320,6 +324,139 @@ declare var Papa: any;
                       }
                     </div>
                   }
+
+                  <!-- Compatibility Engine Tab -->
+                  @if (activeDetailTab() === 'COMPATIBILITY') {
+                    <div class="p-6 space-y-6 animate-in fade-in duration-200">
+                      
+                      <!-- Add New Link -->
+                      <div class="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
+                        <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                           <span class="material-symbols-rounded text-sm">link</span> Link Appliance Model
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <div class="flex-1">
+                                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Brand</label>
+                                <select [ngModel]="selectedBrandToAdd()" (ngModelChange)="selectedBrandToAdd.set($event); selectedModelToAdd.set(null)" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm font-bold focus:border-[var(--primary-color)] outline-none">
+                                    <option [value]="null">Select Brand...</option>
+                                    @for (b of applianceBrandsSignal(); track b.id) { <option [value]="b.id">{{ b.name }}</option> }
+                                </select>
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Model</label>
+                                <select [ngModel]="selectedModelToAdd()" (ngModelChange)="selectedModelToAdd.set($event)" [disabled]="!selectedBrandToAdd()" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm font-bold focus:border-[var(--primary-color)] outline-none disabled:opacity-50">
+                                    <option [value]="null">Select Model...</option>
+                                    @for (m of applianceModelsSignal(); track m.id) {
+                                        @if (m.brand_id === selectedBrandToAdd()) {
+                                            <option [value]="m.id">{{ m.model_number }} ({{ m.appliance_type || 'Unknown' }})</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <button (click)="addCompatibility()" [disabled]="!selectedModelToAdd()" class="px-4 py-2 bg-[var(--primary-color)] text-white text-sm font-bold rounded-lg shadow disabled:opacity-50 transition-all flex items-center justify-center flex-shrink-0">
+                                <span class="material-symbols-rounded text-sm mr-1">add</span> Add
+                            </button>
+                        </div>
+                      </div>
+
+                      <!-- Current Links -->
+                      <div class="space-y-2">
+                         <div class="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Fits These Models:</div>
+                         @for (comp of currentCompatibility(); track comp.appliance_model_id) {
+                            <div class="flex justify-between items-center p-3 border border-slate-100 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                                <div>
+                                    <div class="text-sm font-bold text-slate-800 dark:text-slate-100">{{ comp.model?.model_number }}</div>
+                                    <div class="text-[10px] font-black text-slate-400 mt-0.5">{{ comp.model?.brand?.name }} · {{ comp.model?.appliance_type }}</div>
+                                </div>
+                                <button (click)="removeCompatibility(comp.appliance_model_id)" class="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                    <span class="material-symbols-rounded text-lg">close</span>
+                                </button>
+                            </div>
+                         } @empty {
+                            <div class="py-10 text-center opacity-40 italic text-sm">No compatibility links found.</div>
+                         }
+                      </div>
+
+                    </div>
+                  }
+
+                  <!-- Variants Tab -->
+                  @if (activeDetailTab() === 'VARIANTS') {
+                    <div class="p-6 space-y-6 animate-in fade-in duration-200">
+                        @if (currentParentProduct()) {
+                            <!-- Mode A: This product IS a variant -->
+                            <div class="p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded-xl space-y-2">
+                                <div class="text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                                    <span class="material-symbols-rounded text-sm">info</span> Variant Child
+                                </div>
+                                <p class="text-xs text-orange-800 dark:text-orange-300 font-medium leading-relaxed">
+                                    This product is considered a variant (e.g., Aftermarket, Generic, or older generation) of a master product.
+                                </p>
+                            </div>
+
+                            <div class="pt-4">
+                               <div class="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1 mb-2">Master Product:</div>
+                               <button (click)="selectProduct(currentParentProduct()!)" class="w-full text-left p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:shadow-md transition-all group flex items-center justify-between">
+                                  <div>
+                                      <div class="font-bold text-slate-800 dark:text-slate-100 group-hover:text-[var(--primary-color)] transition-colors">{{ currentParentProduct()!.name }}</div>
+                                      <div class="text-[10px] font-mono text-slate-400 mt-1">{{ currentParentProduct()!.supplier_sku || currentParentProduct()!.barcode }}</div>
+                                  </div>
+                                  <span class="material-symbols-rounded text-slate-400 group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                               </button>
+                            </div>
+                        } @else {
+                            <!-- Mode B: This product is a master/parent (or standard) -->
+                            
+                            <!-- Search & Link -->
+                            <div class="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
+                                <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                <span class="material-symbols-rounded text-sm">link</span> Link Alternative Version
+                                </div>
+                                <div class="relative">
+                                    <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+                                    <input type="text" [ngModel]="variantSearchQuery()" (ngModelChange)="variantSearchQuery.set($event)" placeholder="Search product to link as variant..." class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm font-bold focus:border-[var(--primary-color)] outline-none">
+                                </div>
+                                @if (variantSearchResults().length > 0) {
+                                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                                        @for (res of variantSearchResults(); track res.id) {
+                                            <div class="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div>
+                                                    <div class="text-xs font-bold text-slate-800 dark:text-slate-100">{{ res.name }}</div>
+                                                    <div class="text-[10px] text-slate-400">{{ res.supplier_sku || res.barcode }}</div>
+                                                </div>
+                                                <button (click)="linkVariant(res)" class="px-3 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 transition-colors rounded text-xs font-bold whitespace-nowrap">Link Variant</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- List Active Variants -->
+                            <div class="space-y-2">
+                                <div class="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Linked Variants ({{ currentVariants().length }}):</div>
+                                @for (v of currentVariants(); track v.id) {
+                                    <div class="flex flex-col gap-2 p-3 border border-slate-100 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                                        <div class="flex justify-between items-start">
+                                            <div class="flex-1 min-w-0 pr-4">
+                                                <div class="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{{ v.name }}</div>
+                                                <div class="text-[10px] font-black text-slate-400 mt-0.5">{{ v.supplier_sku || v.barcode }}</div>
+                                            </div>
+                                            <button (click)="unlinkVariant(v.id)" class="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors flex-shrink-0">
+                                                <span class="material-symbols-rounded text-lg">link_off</span>
+                                            </button>
+                                        </div>
+                                        <div class="flex items-center gap-4 text-[10px] font-bold mt-1 bg-slate-50 dark:bg-slate-900/50 rounded p-1.5 px-3">
+                                            <div class="flex items-center gap-1.5"><span class="material-symbols-rounded text-[14px] text-slate-400">payments</span> {{ v.price | currency:storeService.currency() }}</div>
+                                            <div class="flex items-center gap-1.5"><span class="material-symbols-rounded text-[14px] text-slate-400">inventory_2</span> {{ v.stock_quantity }} {{ v.unit_type || 'PCS' }}</div>
+                                        </div>
+                                    </div>
+                                } @empty {
+                                    <div class="py-10 text-center opacity-40 italic text-sm border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">No variants linked to this product.</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                  }
                 </div>
               </div>
             </div>
@@ -378,13 +515,22 @@ declare var Papa: any;
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Brand</label>
                         <input formControlName="brand" type="text" placeholder="e.g. Samsung" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
-                      <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Barcode</label>
-                        <input formControlName="barcode" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
+                      <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                          <label class="block text-xs font-black uppercase tracking-widest text-slate-400">Barcode</label>
+                          <button type="button" (click)="generateBarcode('ADD')" class="text-[10px] font-black text-[var(--primary-color)] hover:underline flex items-center gap-1">
+                            <span class="material-symbols-rounded text-sm">magic_button</span> Auto Generate
+                          </button>
+                        </div>
+                        <input formControlName="barcode" type="text" placeholder="Scan or Click Generate..." class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
                       <div>
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">SKU</label>
                         <input formControlName="supplier_sku" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">MPN (Manufacturer Part #)</label>
+                        <input formControlName="manufacturer_part_number" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
                       <div>
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Unit Type</label>
@@ -405,6 +551,14 @@ declare var Papa: any;
                       </div>
                     </div>
                   </div>
+                  
+                  <!-- Dynamic Attributes -->
+                  <app-product-attributes-form
+                    [attributes]="categoryAttributes()"
+                    [selectedCategoryId]="productForm.get('category_id')?.value"
+                    (valueChange)="onAttributeValueChange($event, 'ADD')"
+                    (validityChange)="onAttributeValidityChange($event, 'ADD')">
+                  </app-product-attributes-form>
 
                   <!-- Pricing -->
                   <div class="space-y-4">
@@ -485,13 +639,22 @@ declare var Papa: any;
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Brand</label>
                         <input formControlName="brand" type="text" placeholder="e.g. Samsung" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
-                      <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Barcode</label>
-                        <input formControlName="barcode" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
+                      <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                          <label class="block text-xs font-black uppercase tracking-widest text-slate-400">Barcode</label>
+                          <button type="button" (click)="generateBarcode('EDIT')" class="text-[10px] font-black text-[var(--primary-color)] hover:underline flex items-center gap-1">
+                            <span class="material-symbols-rounded text-sm">magic_button</span> Auto Generate
+                          </button>
+                        </div>
+                        <input formControlName="barcode" type="text" placeholder="Scan or Click Generate..." class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
                       <div>
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">SKU</label>
                         <input formControlName="supplier_sku" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">MPN (Manufacturer Part #)</label>
+                        <input formControlName="manufacturer_part_number" type="text" class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 text-sm font-mono font-bold focus:border-[var(--primary-color)] outline-none transition-all">
                       </div>
                       <div>
                         <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Unit Type</label>
@@ -512,6 +675,15 @@ declare var Papa: any;
                       </div>
                     </div>
                   </div>
+                  
+                  <!-- Dynamic Attributes -->
+                  <app-product-attributes-form
+                    [attributes]="categoryAttributes()"
+                    [initialValues]="selectedProduct()?.attribute_data || {}"
+                    [selectedCategoryId]="editProductForm.get('category_id')?.value"
+                    (valueChange)="onAttributeValueChange($event, 'EDIT')"
+                    (validityChange)="onAttributeValidityChange($event, 'EDIT')">
+                  </app-product-attributes-form>
 
                   <!-- Pricing -->
                   <div class="space-y-4">
@@ -569,12 +741,12 @@ declare var Papa: any;
               <div class="flex gap-3">
                 <button type="button" (click)="cancelPanel()" class="px-6 py-2.5 text-sm font-black text-slate-400 hover:text-slate-700 uppercase tracking-widest transition-colors">Cancel</button>
                 @if (panelState() === 'EDIT') {
-                  <button type="button" (click)="saveProductChanges()" [disabled]="editProductForm.invalid"
+                  <button type="button" (click)="saveProductChanges()" [disabled]="editProductForm.invalid || !editAttributesValid"
                           class="px-10 py-2.5 bg-[var(--primary-color)] text-white text-sm font-black rounded-xl shadow-xl hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 uppercase tracking-widest">
                     <span class="material-symbols-rounded text-sm">save</span> Save Changes
                   </button>
                 } @else {
-                  <button type="button" (click)="addProduct()" [disabled]="productForm.invalid"
+                  <button type="button" (click)="addProduct()" [disabled]="productForm.invalid || !addAttributesValid"
                           class="px-10 py-2.5 bg-[var(--primary-color)] text-white text-sm font-black rounded-xl shadow-xl hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 uppercase tracking-widest">
                     <span class="material-symbols-rounded text-sm">add_circle</span> Add Product
                   </button>
@@ -733,9 +905,15 @@ export class InventoryManagerComponent {
   parsedData = signal<{ data: any, isValid: boolean, error?: string, isNewCategory?: boolean }[]>([]);
   selectedImageFile = signal<File | null>(null);
 
+  // Dynamic Attributes State
+  categoryAttributes = signal<any[]>([]);
+  addAttributesValid = true;
+  editAttributesValid = true;
+  currentAttributeData: Record<string, any> = {};
+
   // ── NEW 3-column panel state ──────────────────────────────────────────
   panelState = signal<'EMPTY' | 'DETAIL' | 'ADD' | 'EDIT'>('EMPTY');
-  activeDetailTab = signal<'GENERAL' | 'STOCK' | 'HISTORY'>('GENERAL');
+  activeDetailTab = signal<'GENERAL' | 'STOCK' | 'HISTORY' | 'COMPATIBILITY' | 'VARIANTS'>('GENERAL');
 
   stockFilters = [
     { value: 'ALL', label: 'All' },
@@ -748,6 +926,8 @@ export class InventoryManagerComponent {
     { id: 'GENERAL', label: 'General' },
     { id: 'STOCK', label: 'Stock' },
     { id: 'HISTORY', label: 'History' },
+    { id: 'COMPATIBILITY', label: 'Fits In' },
+    { id: 'VARIANTS', label: 'Variants' }
   ];
 
   kpiStyles = {
@@ -762,6 +942,8 @@ export class InventoryManagerComponent {
     this.selectedProduct.set(product);
     this.activeDetailTab.set('GENERAL');
     this.fetchStockLogs(product);
+    this.fetchCompatibility(product.id);
+    this.fetchVariants(product);
     this.panelState.set('DETAIL');
   }
 
@@ -771,9 +953,12 @@ export class InventoryManagerComponent {
       category_id: null, barcode: '', reorder_point: 5, unit_type: 'PIECE',
       brand: '', compatible_models: [], voltage: null, oem_aftermarket: null,
       warranty_period: '', supplier_id: null, tax_rate: 0, wholesale_price: 0,
-      is_serialized: false, metadata: { prescriptionRequired: false, ingredients: '', aisle: '' }
+      is_serialized: false, metadata: { prescriptionRequired: false, ingredients: '', aisle: '' },
+      is_variant: false, parent_product_id: null, manufacturer_part_number: ''
     });
     this.panelState.set('ADD');
+    this.categoryAttributes.set([]);
+    this.currentAttributeData = {};
   }
 
   openEditProductPanel(product: Product) {
@@ -788,9 +973,18 @@ export class InventoryManagerComponent {
       compatible_models: product.compatible_models || [],
       voltage: product.voltage || null,
       oem_aftermarket: product.oem_aftermarket || null,
-      warranty_period: product.warranty_period || ''
+      warranty_period: product.warranty_period || '',
+      is_variant: product.is_variant || false,
+      parent_product_id: product.parent_product_id || null,
+      manufacturer_part_number: product.manufacturer_part_number || ''
     });
     this.panelState.set('EDIT');
+
+    if (product.category_id) {
+      this.loadAttributesForCategory(product.category_id);
+    } else {
+      this.categoryAttributes.set([]);
+    }
   }
 
   cancelPanel() {
@@ -837,6 +1031,42 @@ export class InventoryManagerComponent {
     switchMap(store => store ? this.supabase.getSuppliers(store.id) : of([]))
   );
   suppliersSignal: Signal<Supplier[]> = toSignal(this.suppliers$, { initialValue: [] as Supplier[] });
+
+  // Appliance Brands and Models
+  private applianceBrands$ = this.storeService.currentStore$.pipe(
+    switchMap(store => store ? this.supabase.getApplianceBrands(store.id) : of([]))
+  );
+  applianceBrandsSignal: Signal<ApplianceBrand[]> = toSignal(this.applianceBrands$, { initialValue: [] as ApplianceBrand[] });
+
+  private applianceModels$ = this.storeService.currentStore$.pipe(
+    switchMap(store => store ? this.supabase.getApplianceModels(store.id) : of([]))
+  );
+  applianceModelsSignal: Signal<ApplianceModel[]> = toSignal(this.applianceModels$, { initialValue: [] as ApplianceModel[] });
+
+  currentCompatibility = signal<ProductCompatibility[]>([]);
+  selectedBrandToAdd = signal<string | null>(null);
+  selectedModelToAdd = signal<string | null>(null);
+
+  // Variants State
+  currentVariants = signal<Product[]>([]);
+  currentParentProduct = signal<Product | null>(null);
+  variantSearchQuery = signal('');
+
+  variantSearchResults = computed(() => {
+    const q = this.variantSearchQuery().toLowerCase().trim();
+    if (!q || q.length < 2) return [];
+
+    const all = this.productsSignal();
+    const currentProd = this.selectedProduct();
+    if (!currentProd) return [];
+
+    return all.filter(p =>
+      p.id !== currentProd.id &&
+      !p.is_variant &&
+      p.id !== currentProd.parent_product_id &&
+      (p.name.toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q) || (p.supplier_sku || '').toLowerCase().includes(q))
+    ).slice(0, 10);
+  });
 
   filteredProducts = computed(() => {
     const all = this.productsSignal();
@@ -956,6 +1186,9 @@ export class InventoryManagerComponent {
       oem_aftermarket: [null],
       warranty_period: [''],
       supplier_id: [null],       // Approach A: tag a Primary Supplier directly on the product
+      is_variant: [false],
+      parent_product_id: [null],
+      manufacturer_part_number: [''],
       metadata: this.fb.group({
         prescriptionRequired: [false],
         ingredients: [''],
@@ -980,6 +1213,32 @@ export class InventoryManagerComponent {
       this.inventoryStockFilter();
       this.currentPage.set(1);
     }, { allowSignalWrites: true });
+
+    // Watch for Add Product category change
+    this.productForm.get('category_id')?.valueChanges.subscribe(catId => {
+      if (catId) {
+        this.loadAttributesForCategory(catId);
+      } else {
+        this.categoryAttributes.set([]);
+      }
+    });
+
+    // Watch for Edit Product category change
+    this.editProductForm.get('category_id')?.valueChanges.subscribe(catId => {
+      if (catId) {
+        this.loadAttributesForCategory(catId);
+      } else {
+        this.categoryAttributes.set([]);
+      }
+    });
+  }
+
+  generateBarcode(formType: 'ADD' | 'EDIT') {
+    const form = formType === 'ADD' ? this.productForm : this.editProductForm;
+    // Standard EAN-style prefix '88' for internal codes + random digits for uniqueness
+    const randomPart = Math.floor(Math.random() * 90000000) + 10000000;
+    const generated = `88${randomPart}`;
+    form.patchValue({ barcode: generated });
   }
 
   nextPage() { this.currentPage.update(p => Math.min(p + 1, this.totalPages())); }
@@ -1011,7 +1270,8 @@ export class InventoryManagerComponent {
       cost_price: parseFloat(formVal.cost_price || '0'),
       stock_shop: stock_shop,
       stock_warehouse: stock_warehouse,
-      stock_quantity: totalStock
+      stock_quantity: totalStock,
+      attribute_data: this.currentAttributeData
     };
 
     // Explicitly fix date issue: DELETE key if invalid
@@ -1043,7 +1303,8 @@ export class InventoryManagerComponent {
         this.productForm.reset({
           name: '', price: 0, cost_price: 0, stock_shop: 0, stock_warehouse: 0,
           category_id: null, barcode: '', reorder_point: 5, unit_type: 'PIECE',
-          brand: '', compatible_models: [], voltage: null, oem_aftermarket: null, warranty_period: ''
+          brand: '', compatible_models: [], voltage: null, oem_aftermarket: null, warranty_period: '',
+          is_variant: false, parent_product_id: null, manufacturer_part_number: ''
         });
         this.panelState.set('EMPTY');
       },
@@ -1066,7 +1327,10 @@ export class InventoryManagerComponent {
       compatible_models: product.compatible_models || [],
       voltage: product.voltage || null,
       oem_aftermarket: product.oem_aftermarket || null,
-      warranty_period: product.warranty_period || ''
+      warranty_period: product.warranty_period || '',
+      is_variant: product.is_variant || false,
+      parent_product_id: product.parent_product_id || null,
+      manufacturer_part_number: product.manufacturer_part_number || ''
     });
     this.activeDrawerTab.set('GENERAL');
     this.showDetailDrawer.set(true);
@@ -1075,6 +1339,88 @@ export class InventoryManagerComponent {
 
   fetchStockLogs(product: Product) {
     this.supabase.getStockLogs(product.id).subscribe(logs => this.currentStockLogs.set(logs));
+  }
+
+  fetchCompatibility(productId: string) {
+    this.supabase.getProductCompatibility(productId).subscribe(data => this.currentCompatibility.set(data));
+  }
+
+  fetchVariants(product: Product) {
+    if (product.is_variant && product.parent_product_id) {
+      // It's a child. Show who its parent is.
+      const parent = this.productsSignal().find(p => p.id === product.parent_product_id);
+      this.currentParentProduct.set(parent || null);
+      this.currentVariants.set([]);
+    } else {
+      // It's potentially a master part. Fetch its children.
+      this.supabase.getProductVariants(product.id).subscribe(variants => {
+        this.currentVariants.set(variants);
+        this.currentParentProduct.set(null);
+      });
+    }
+  }
+
+  linkVariant(child: Product) {
+    const parent = this.selectedProduct();
+    if (!parent) return;
+    this.supabase.linkVariant(parent.id, child.id).subscribe({
+      next: () => {
+        this.fetchVariants(parent);
+        this.variantSearchQuery.set('');
+      },
+      error: (err) => this.dialog.alert('Error', 'Could not link variant')
+    });
+  }
+
+  unlinkVariant(childId: string) {
+    const parent = this.selectedProduct();
+    if (!parent) return;
+    this.supabase.unlinkVariant(childId).subscribe({
+      next: () => {
+        this.fetchVariants(parent);
+      },
+      error: (err) => this.dialog.alert('Error', 'Could not unlink variant')
+    });
+  }
+
+  addCompatibility() {
+    const product = this.selectedProduct();
+    const modelId = this.selectedModelToAdd();
+    if (!product || !modelId) return;
+
+    // Check if already exists locally
+    if (this.currentCompatibility().some(c => c.appliance_model_id === modelId)) {
+      this.dialog.alert('Duplicate', 'This model is already linked to this product.');
+      return;
+    }
+
+    this.supabase.addProductCompatibility(product.id, modelId).subscribe({
+      next: (newItem) => {
+        // refetch fully to get joined data (brand/model names)
+        this.fetchCompatibility(product.id);
+        this.selectedBrandToAdd.set(null);
+        this.selectedModelToAdd.set(null);
+      },
+      error: (err) => {
+        console.error(err);
+        this.dialog.alert('Error', 'Failed to add compatibility link.');
+      }
+    });
+  }
+
+  removeCompatibility(modelId: string) {
+    const product = this.selectedProduct();
+    if (!product) return;
+
+    this.supabase.removeProductCompatibility(product.id, modelId).subscribe({
+      next: () => {
+        this.currentCompatibility.update(list => list.filter(c => c.appliance_model_id !== modelId));
+      },
+      error: (err) => {
+        console.error(err);
+        this.dialog.alert('Error', 'Failed to remove compatibility link.');
+      }
+    });
   }
 
   saveProductChanges() {
@@ -1098,6 +1444,7 @@ export class InventoryManagerComponent {
       compatible_models: typeof raw.compatible_models === 'string'
         ? raw.compatible_models.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
         : (raw.compatible_models || []),
+      attribute_data: this.currentAttributeData
     };
 
     // Postgres rejects empty strings for date columns
@@ -1272,6 +1619,31 @@ export class InventoryManagerComponent {
     } finally {
       this.isImporting.set(true); // Wait, should be false
       this.isImporting.set(false);
+    }
+  }
+
+  // --- Dynamic Attributes Methods ---
+  loadAttributesForCategory(categoryId: string) {
+    const storeId = this.storeService.currentStore()?.id;
+    if (!storeId || !categoryId) {
+      this.categoryAttributes.set([]);
+      return;
+    }
+
+    this.supabase.getAttributeDefinitions(storeId, categoryId).subscribe(attrs => {
+      this.categoryAttributes.set(attrs);
+    });
+  }
+
+  onAttributeValueChange(value: Record<string, any>, formType: 'ADD' | 'EDIT') {
+    this.currentAttributeData = value;
+  }
+
+  onAttributeValidityChange(isValid: boolean, formType: 'ADD' | 'EDIT') {
+    if (formType === 'ADD') {
+      this.addAttributesValid = isValid;
+    } else {
+      this.editAttributesValid = isValid;
     }
   }
 }

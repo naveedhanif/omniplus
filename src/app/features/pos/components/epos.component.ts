@@ -224,7 +224,7 @@ import { FormsModule } from '@angular/forms';
                             <h3 class="font-bold text-base line-clamp-2 leading-tight mb-2">{{ product.name }}</h3>
                             
                             <!-- Dynamic Badges -->
-                            <div class="flex flex-wrap gap-1">
+                            <div class="flex flex-wrap gap-1 mt-1">
                                 @if (product.barcode) {
                                 <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-mono">
                                     {{ product.barcode }}
@@ -234,6 +234,13 @@ import { FormsModule } from '@angular/forms';
                                 <span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-100 dark:border-orange-800/50">
                                     Exp: {{ product.metadata.expiryDate | date:'MM/yy' }}
                                 </span>
+                                }
+                                
+                                <!-- NEW VARIANTS BADGE -->
+                                @if (!product.is_variant && hasVariantsMap()[product.id]) {
+                                   <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center gap-0.5">
+                                      <span class="material-symbols-rounded text-[10px]">alt_route</span> Alternates
+                                   </span>
                                 }
                             </div>
                             </div>
@@ -758,6 +765,70 @@ import { FormsModule } from '@angular/forms';
           </div>
       }
 
+      <!-- Variant Options Modal -->
+      @if (showVariantsModal()) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm print:hidden">
+              <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-[var(--bg-color)] flex justify-between items-center">
+                      <h3 class="text-xl font-bold flex items-center gap-2">
+                          <span class="material-symbols-rounded text-orange-500">alt_route</span>
+                          Alternative Options Available
+                      </h3>
+                      <button (click)="cancelVariants()" class="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full"><span class="material-symbols-rounded">close</span></button>
+                  </div>
+                  
+                  <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-[var(--bg-color)]">
+                      <p class="text-sm border-b border-slate-200 dark:border-slate-800 pb-2 mb-2">
+                          You selected <strong>{{ selectedMasterForVariants()?.name }}</strong>. There are multiple versions of this part available:
+                      </p>
+
+                      <!-- Master Product Option -->
+                      @if(selectedMasterForVariants()) {
+                      <button (click)="executeAddToCart(selectedMasterForVariants()!)" class="w-full text-left p-4 bg-[var(--card-bg)] border-2 border-slate-200 dark:border-slate-700 hover:border-[var(--primary-color)] rounded-xl shadow-sm transition-all group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div class="flex-1">
+                              <div class="flex items-center gap-2 mb-1">
+                                  <span class="text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded tracking-widest">Standard / OEM</span>
+                                  <div class="font-bold text-lg group-hover:text-[var(--primary-color)] transition-colors line-clamp-1">{{ selectedMasterForVariants()?.name }}</div>
+                              </div>
+                              <div class="text-xs text-slate-500 font-mono">{{ selectedMasterForVariants()?.barcode || selectedMasterForVariants()?.supplier_sku }}</div>
+                          </div>
+                          
+                          <div class="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-6 sm:gap-4 shrink-0 px-2">
+                              <div class="flex flex-col items-end">
+                                  <span class="font-black text-xl text-[var(--primary-color)] leading-none">{{ selectedMasterForVariants()?.price | currency:storeService.currentStore()?.config?.currency }}</span>
+                                  <span class="text-[10px] font-bold mt-1" [class.text-green-500]="(selectedMasterForVariants()?.stock_quantity || 0) > 0" [class.text-red-500]="(selectedMasterForVariants()?.stock_quantity || 0) <= 0">{{ selectedMasterForVariants()?.stock_quantity }} IN STOCK</span>
+                              </div>
+                              <span class="material-symbols-rounded text-slate-300 group-hover:text-[var(--primary-color)] group-hover:translate-x-1 transition-all">add_circle</span>
+                          </div>
+                      </button>
+                      }
+
+                      <!-- Variant Options -->
+                      @for (variant of availableVariants(); track variant.id) {
+                          <button (click)="executeAddToCart(variant)" class="w-full text-left p-4 bg-[var(--card-bg)] border-2 border-orange-100 dark:border-orange-900/30 hover:border-orange-400 dark:hover:border-orange-500 rounded-xl shadow-sm transition-all group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+                              <div class="absolute inset-0 bg-gradient-to-r from-orange-50/50 to-transparent dark:from-orange-900/10 pointer-events-none w-1/3"></div>
+                              <div class="flex-1 relative z-10">
+                                  <div class="flex items-center gap-2 mb-1">
+                                      <span class="text-[10px] font-black uppercase bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded tracking-widest">Alternative</span>
+                                      <div class="font-bold text-lg group-hover:text-orange-500 transition-colors line-clamp-1">{{ variant.name }}</div>
+                                  </div>
+                                  <div class="text-xs text-slate-500 font-mono">{{ variant.barcode || variant.supplier_sku }}</div>
+                              </div>
+                              
+                              <div class="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-6 sm:gap-4 shrink-0 px-2 relative z-10">
+                                  <div class="flex flex-col items-end">
+                                      <span class="font-black text-xl text-orange-600 dark:text-orange-400 leading-none">{{ variant.price | currency:storeService.currentStore()?.config?.currency }}</span>
+                                      <span class="text-[10px] font-bold mt-1" [class.text-green-500]="(variant.stock_quantity || 0) > 0" [class.text-red-500]="(variant.stock_quantity || 0) <= 0">{{ variant.stock_quantity }} IN STOCK</span>
+                                  </div>
+                                  <span class="material-symbols-rounded text-slate-300 group-hover:text-orange-500 group-hover:translate-x-1 transition-all">add_circle</span>
+                              </div>
+                          </button>
+                      }
+                  </div>
+              </div>
+          </div>
+      }
+
     } @else {
       <div class="h-[calc(100vh-60px)] flex flex-col items-center justify-center text-center p-8 bg-[var(--bg-color)]">
         <div class="w-32 h-32 bg-[var(--card-bg)] rounded-full flex items-center justify-center shadow-lg mb-6">
@@ -833,6 +904,23 @@ export class EposComponent {
     selectedOrder = signal<Transaction | null>(null);
     selectedOrderItems = signal<TransactionItem[]>([]);
 
+    // --- PHASE 4 Variants Logic ---
+    showVariantsModal = signal(false);
+    selectedMasterForVariants = signal<Product | null>(null);
+    availableVariants = signal<Product[]>([]);
+
+    // Map of ParentID -> number of variants available
+    hasVariantsMap = computed(() => {
+        const prods = this.products();
+        const map: Record<string, boolean> = {};
+        for (const p of prods) {
+            if (p.is_variant && p.parent_product_id) {
+                map[p.parent_product_id] = true;
+            }
+        }
+        return map;
+    });
+
     // This holds the transaction we are actively returning from
     transactionToReturn = signal<Transaction | null>(null);
     showReturnModal = signal(false);
@@ -886,7 +974,8 @@ export class EposComponent {
         if (query) {
             return all.filter(p =>
                 p.name.toLowerCase().includes(query) ||
-                (p.barcode && p.barcode.toLowerCase().includes(query))
+                (p.barcode && p.barcode.toLowerCase().includes(query)) ||
+                (p.compatible_models && p.compatible_models.some(m => m.toLowerCase().includes(query)))
             );
         }
 
@@ -983,6 +1072,27 @@ export class EposComponent {
 
 
     addToCart(product: Product) {
+        // Phase 4: Intercept add payload if there are alternatives
+        if (!product.is_variant && this.hasVariantsMap()[product.id]) {
+            const variants = this.products().filter(p => p.parent_product_id === product.id);
+            this.selectedMasterForVariants.set(product);
+            this.availableVariants.set(variants);
+            this.showVariantsModal.set(true);
+            return;
+        }
+
+        this.executeAddToCart(product);
+    }
+
+    cancelVariants() {
+        this.showVariantsModal.set(false);
+        this.selectedMasterForVariants.set(null);
+        this.availableVariants.set([]);
+    }
+
+    executeAddToCart(product: Product) {
+        this.showVariantsModal.set(false); // Close it if it was open
+
         const itemInCart = this.cart().find(i => i.product.id === product.id);
         const currentStock = product.stock_quantity;
         const cartQty = itemInCart?.quantity ?? 0;

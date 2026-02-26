@@ -1,5 +1,14 @@
 -- ⚠️ WARNING: Running this will delete existing data.
 -- This is a "World Class" Professional Inventory Schema
+-- Features: Multi-Location, Supply Chain (PO), Audit Trails, serialized tracking, Spare Parts Compatibility
+
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+-- 1. CLEANUP (Drop All)
+DROP TABLE IF EXISTS public.product_compatibility CASCADE;
+DROP TABLE IF EXISTS public.appliance_models CASCADE;
+DROP TABLE IF EXISTS public.appliance_brands CASCADE;
+DROP TABLE IF EXISTS public.attribute_definitions CASCADE;
 -- Features: Multi-Location, Supply Chain (PO), Audit Trails, serialized tracking.
 
 -- 1. CLEANUP (Drop All)
@@ -42,9 +51,9 @@ DROP TYPE IF EXISTS public.activity_type_enum CASCADE;
 CREATE TYPE store_type_enum AS ENUM ('HARDWARE', 'MEDICAL', 'RESTAURANT', 'RETAIL');
 CREATE TYPE payment_method_enum AS ENUM ('CASH', 'CARD', 'SPLIT', 'ON_ACCOUNT');
 CREATE TYPE serial_status_enum AS ENUM ('IN_STOCK', 'SOLD', 'RETURNED', 'DAMAGED', 'LOST', 'TRANSIT');
-CREATE TYPE po_status_enum AS ENUM ('DRAFT', 'SENT', 'PARTIAL', 'RECEIVED', 'CANCELLED');
+CREATE TYPE po_status_enum AS ENUM ('DRAFT', 'SENT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED');
 CREATE TYPE transfer_status_enum AS ENUM ('PENDING', 'APPROVED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED');
-CREATE TYPE location_type_enum AS ENUM ('SHOP', 'WAREHOUSE', 'TRANSIT', 'SUPPLIER_VIRTUAL', 'CUSTOMER_VIRTUAL', 'LOSS_VIRTUAL');
+CREATE TYPE location_type_enum AS ENUM ('SHOP', 'STORE', 'WAREHOUSE', 'TRANSIT', 'SUPPLIER_VIRTUAL', 'CUSTOMER_VIRTUAL', 'LOSS_VIRTUAL');
 
 -- 3. CORE HIERARCHY
 
@@ -76,7 +85,9 @@ CREATE TABLE public.stock_locations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    type location_type_enum NOT NULL,
+    location_type location_type_enum NOT NULL,
+    allows_sales BOOLEAN DEFAULT true,
+    allows_receiving BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
     address TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -109,9 +120,25 @@ CREATE TABLE public.categories (
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     parent_id UUID REFERENCES public.categories(id) ON DELETE SET NULL, -- Hierarchy
+    path_ltree ltree, -- 'HVAC.COMPRESSOR.INVERTER'
     color TEXT DEFAULT '#3b82f6',
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Attribute Definitions (Dynamic Schema Engine)
+CREATE TABLE public.attribute_definitions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
+    category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+    
+    name TEXT NOT NULL, -- e.g., 'Microfarad (uF)'
+    json_key TEXT NOT NULL, -- e.g., 'uf_rating'
+    data_type TEXT NOT NULL, -- 'NUMBER', 'STRING', 'BOOLEAN'
+    is_required BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT attribute_definitions_unique UNIQUE (category_id, json_key)
 );
 
 -- Suppliers
@@ -141,6 +168,10 @@ CREATE TABLE public.products (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     
+    -- Variant Structure
+    is_variant BOOLEAN DEFAULT false,
+    parent_product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
+    
     -- Identity
     name TEXT NOT NULL,
     description TEXT,
@@ -151,6 +182,7 @@ CREATE TABLE public.products (
     -- Identifiers
     barcode TEXT,
     supplier_sku TEXT,
+    manufacturer_part_number TEXT, -- Crucial for spare parts (MPN)
     
     -- Pricing
     price NUMERIC(10,2) NOT NULL CHECK (price >= 0),
@@ -167,11 +199,41 @@ CREATE TABLE public.products (
     -- Assets
     image_url TEXT,
     
-    -- Metadata
+    -- Metadata & Dynamic Attributes
+    attribute_data JSONB DEFAULT '{}'::jsonb, -- e.g. {"uf_rating": 35, "voltage": "220V"}
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     CONSTRAINT products_barcode_unique UNIQUE (store_id, barcode)
+);
+
+-- Fast Index for JSONB Filtering
+CREATE INDEX idx_products_attributes ON public.products USING GIN (attribute_data);
+
+-- Appliance Brands (e.g. Samsung, LG, Bosch)
+CREATE TABLE public.appliance_brands (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    CONSTRAINT appliance_brands_unique UNIQUE (store_id, name)
+);
+
+-- Appliance Models (e.g. WM3170CW)
+CREATE TABLE public.appliance_models (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
+    brand_id UUID NOT NULL REFERENCES public.appliance_brands(id) ON DELETE CASCADE,
+    model_number TEXT NOT NULL,
+    appliance_type TEXT, -- 'WASHING_MACHINE', 'REFRIGERATOR', 'AC'
+    CONSTRAINT appliance_models_unique UNIQUE (brand_id, model_number)
+);
+
+-- The Compatibility Linker: "What parts fit inside the WM3170CW Washing machine?"
+CREATE TABLE public.product_compatibility (
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    appliance_model_id UUID NOT NULL REFERENCES public.appliance_models(id) ON DELETE CASCADE,
+    
+    PRIMARY KEY (product_id, appliance_model_id) -- Prevents duplicate links
 );
 
 -- Composite / Recipe
@@ -299,6 +361,7 @@ CREATE TABLE public.customers (
     phone TEXT,
     email TEXT,
     current_balance NUMERIC(10,2) DEFAULT 0,
+    credit_limit NUMERIC(10,2) DEFAULT 0,
     is_vip BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -379,6 +442,12 @@ ALTER TABLE public.transaction_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
+-- Dynamic Schema RLS
+ALTER TABLE public.attribute_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appliance_brands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appliance_models ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_compatibility ENABLE ROW LEVEL SECURITY;
+
 -- 10. POLICIES (Open for Demo)
 CREATE POLICY "Public Access" ON public.stores FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON public.store_profiles FOR ALL USING (true) WITH CHECK (true);
@@ -402,6 +471,12 @@ CREATE POLICY "Public Access" ON public.transactions FOR ALL USING (true) WITH C
 CREATE POLICY "Public Access" ON public.transaction_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON public.customer_ledger FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON public.activity_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- Dynamic Schema Policies
+CREATE POLICY "Public Access" ON public.attribute_definitions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public Access" ON public.appliance_brands FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public Access" ON public.appliance_models FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public Access" ON public.product_compatibility FOR ALL USING (true) WITH CHECK (true);
 
 -- 11. REALTIME
 ALTER PUBLICATION supabase_realtime ADD TABLE public.stores;
@@ -498,3 +573,11 @@ BEGIN
     RETURN QUERY SELECT v_warehouse_id, v_shop_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Helper to refresh materialized views
+CREATE OR REPLACE FUNCTION public.refresh_materialized_view(view_name TEXT)
+RETURNS VOID AS $$
+BEGIN
+    EXECUTE 'REFRESH MATERIALIZED VIEW ' || quote_ident(view_name);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

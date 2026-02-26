@@ -2,7 +2,7 @@ import { Component, inject, signal, computed, OnInit, effect } from '@angular/co
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, FormsModule, Validators } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { switchMap, of, BehaviorSubject, retry, catchError, tap } from 'rxjs';
+import { switchMap, of, BehaviorSubject, retry, catchError, tap, map } from 'rxjs';
 import {
     StockManagementService,
     StockLevel,
@@ -22,13 +22,24 @@ import { MockSupabaseService, Product } from '../../../../core/services/mock-sup
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
 
-type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
+type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
 
 @Component({
     selector: 'app-stock-manager',
     standalone: true,
     imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe, DatePipe, AgGridAngular],
     template: `
+        <style>
+            @keyframes slideProgress {
+                to { background-position: 20px 0; }
+            }
+            .animate-progress-slide {
+                animation: slideProgress 1s linear infinite;
+            }
+            /* Hide scrollbars for a cleaner UI if needed later */
+            .hide-scrollbar::-webkit-scrollbar { display: none; }
+            .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        </style>
         <div class="space-y-6">
             <!-- Header -->
             <div class="flex justify-between items-center">
@@ -61,101 +72,272 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
                 </div>
             </div>
 
-            <!-- Dashboard Summary Cards -->
-            <div class="grid grid-cols-4 gap-4">
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+            <!-- 🎨 COMMAND CENTER: Bento Box Dashboard -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                
+                <!-- Card 1: Portfolio Value (Glassmorphism & Sparkline) -->
+                <div class="relative overflow-hidden bg-gradient-to-br from-[var(--card-bg)] to-slate-50 dark:to-slate-800/50 rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700/60 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
                      (click)="viewMode.set('LEVELS')">
-                    <div class="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                        <span class="material-symbols-rounded text-[24px]">inventory_2</span>
+                    <!-- Glow effect -->
+                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/10 dark:bg-blue-400/10 blur-2xl rounded-full group-hover:bg-blue-500/20 transition-colors"></div>
+                    
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-inner">
+                            <span class="material-symbols-rounded">account_balance</span>
+                        </div>
+                        <span class="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-full flex items-center gap-0.5 shadow-sm">
+                            <span class="material-symbols-rounded text-[10px]">trending_up</span> Live
+                        </span>
                     </div>
-                    <div>
-                        <div class="text-sm opacity-60 font-medium">Total Inventory Value</div>
-                        <div class="text-2xl font-bold">{{ totalInventoryValue() | currency:storeService.currency() }}</div>
+                    <div class="relative z-10">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Total Valuation</div>
+                        <div class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{{ totalInventoryValue() | currency:storeService.currency() }}</div>
+                    </div>
+                    <!-- Fake mini sparkline -->
+                    <div class="absolute bottom-0 left-0 w-full h-8 opacity-20 pointer-events-none flex items-end gap-0.5">
+                        <div class="flex-1 h-2 bg-blue-500 rounded-tr-sm transition-all group-hover:h-3"></div>
+                        <div class="flex-1 h-4 bg-blue-500 rounded-t-sm transition-all group-hover:h-5"></div>
+                        <div class="flex-1 h-3 bg-blue-500 rounded-t-sm transition-all group-hover:h-4"></div>
+                        <div class="flex-1 h-6 bg-blue-500 rounded-t-sm transition-all group-hover:h-7"></div>
+                        <div class="flex-1 h-5 bg-blue-500 rounded-t-sm transition-all group-hover:h-8"></div>
+                        <div class="flex-1 h-7 bg-blue-500 rounded-tl-sm transition-all group-hover:h-10"></div>
                     </div>
                 </div>
                 
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-red-500 transition-colors cursor-pointer"
+                <!-- Card 2: Low Stock Alerts (Pulsing Animation) -->
+                <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
                      (click)="viewMode.set('REORDER')">
-                    <div class="w-12 h-12 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center">
-                        <span class="material-symbols-rounded text-[24px]">warning</span>
+                    <!-- Danger Glow -->
+                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-red-500/5 dark:bg-red-500/10 blur-2xl rounded-full transition-colors group-hover:bg-red-500/20"
+                         [class.animate-pulse]="lowStockAlerts().length > 0"></div>
+
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <div class="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shadow-inner"
+                             [class.animate-pulse]="lowStockAlerts().length > 0">
+                            <span class="material-symbols-rounded">warning</span>
+                        </div>
+                        @if (lowStockAlerts().length > 0) {
+                            <span class="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold rounded-full animate-pulse shadow-sm shadow-red-500/20">Action Req</span>
+                        }
                     </div>
-                    <div>
-                        <div class="text-sm opacity-60 font-medium">Low Stock Alerts</div>
-                        <div class="text-2xl font-bold" [class.text-red-600]="lowStockAlerts().length > 0">{{ lowStockAlerts().length }}</div>
+                    <div class="relative z-10">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Critical Alerts</div>
+                        <div class="text-3xl font-extrabold tracking-tight" [class.text-red-600]="lowStockAlerts().length > 0">{{ lowStockAlerts().length }}</div>
+                        <div class="text-[10px] opacity-60 mt-1">Items below minimum threshold</div>
                     </div>
                 </div>
 
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+                <!-- Card 3: Active Transfers (Dashed Loading State) -->
+                <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
                      (click)="viewMode.set('TRANSFERS')">
-                    <div class="w-12 h-12 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-                        <span class="material-symbols-rounded text-[24px]">local_shipping</span>
+                    <div class="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-purple-500/5 to-transparent blur-xl pointer-events-none"></div>
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <div class="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform">
+                            <span class="material-symbols-rounded">local_shipping</span>
+                        </div>
                     </div>
-                    <div>
-                        <div class="text-sm opacity-60 font-medium">Active Transfers</div>
-                        <div class="text-2xl font-bold">{{ activeTransfersCount() }}</div>
+                    <div class="relative z-10">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">In Transit / Pending</div>
+                        <div class="text-3xl font-extrabold tracking-tight">{{ activeTransfersCount() }}</div>
+                        
+                        <!-- Animated dashed border to show movement -->
+                        @if (activeTransfersCount() > 0) {
+                        <div class="mt-4 h-1 w-full bg-[size:20px_20px] bg-[linear-gradient(to_right,var(--primary-color)_50%,transparent_50%)] animate-progress-slide opacity-50 rounded-full"></div>
+                        } @else {
+                        <div class="mt-4 h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full"></div>
+                        }
                     </div>
                 </div>
 
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-4 hover:border-[var(--primary-color)] transition-colors cursor-pointer"
+                <!-- Card 4: Network Map (Visual Node Map feeling) -->
+                <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
                      (click)="viewMode.set('LOCATIONS')">
-                    <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                        <span class="material-symbols-rounded text-[24px]">store</span>
+                     <!-- Dotted background -->
+                     <div class="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] bg-[radial-gradient(circle_at_center,theme(colors.slate.900)_1.5px,transparent_1.5px)] dark:bg-[radial-gradient(circle_at_center,theme(colors.slate.100)_1.5px,transparent_1.5px)]" style="background-size: 16px 16px;"></div>
+                     
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
+                            <span class="material-symbols-rounded">hub</span>
+                        </div>
                     </div>
-                    <div>
-                        <div class="text-sm opacity-60 font-medium">Total Locations</div>
-                        <div class="text-2xl font-bold">{{ locations().length }}</div>
+                    <div class="relative z-10">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Active Nodes</div>
+                        <div class="text-3xl font-extrabold tracking-tight">{{ locations().length }}</div>
+                        <div class="text-[10px] opacity-80 mt-1 flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.8)]"></span> Network Synced
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- View Tabs -->
-            <div class="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+            <!-- View Navigation (Premium Pill Tabs) -->
+            <div class="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl w-fit border border-slate-200 dark:border-slate-700/50">
+                <button 
+                    (click)="viewMode.set('DASHBOARD')"
+                    [class]="viewMode() === 'DASHBOARD' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-5 py-2 text-sm rounded-lg transition-all flex items-center gap-2">
+                    <span class="material-symbols-rounded text-[18px]">space_dashboard</span> Command Center
+                </button>
+                <div class="w-px bg-slate-200 dark:bg-slate-700 my-2 mx-1"></div>
                 <button 
                     (click)="viewMode.set('LEVELS'); refreshStockLevels()"
-                    [class.border-b-2]="viewMode() === 'LEVELS'"
-                    [class.border-[var(--primary-color)]]="viewMode() === 'LEVELS'"
-                    [class.text-[var(--primary-color)]]="viewMode() === 'LEVELS'"
-                    class="px-4 py-2 font-medium transition-colors">
+                    [class]="viewMode() === 'LEVELS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-4 py-2 text-sm rounded-lg transition-all">
                     Stock Levels
                 </button>
                 <button 
                     (click)="viewMode.set('MOVEMENTS')"
-                    [class.border-b-2]="viewMode() === 'MOVEMENTS'"
-                    [class.border-[var(--primary-color)]]="viewMode() === 'MOVEMENTS'"
-                    [class.text-[var(--primary-color)]]="viewMode() === 'MOVEMENTS'"
-                    class="px-4 py-2 font-medium transition-colors">
+                    [class]="viewMode() === 'MOVEMENTS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-4 py-2 text-sm rounded-lg transition-all">
                     Movement History
                 </button>
                 <button 
                     (click)="viewMode.set('TRANSFERS')"
-                    [class.border-b-2]="viewMode() === 'TRANSFERS'"
-                    [class.border-[var(--primary-color)]]="viewMode() === 'TRANSFERS'"
-                    [class.text-[var(--primary-color)]]="viewMode() === 'TRANSFERS'"
-                    class="px-4 py-2 font-medium transition-colors">
+                    [class]="viewMode() === 'TRANSFERS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-4 py-2 text-sm rounded-lg transition-all">
                     Transfers
                 </button>
                 <button 
                     (click)="viewMode.set('REORDER'); refreshStockLevels()"
-                    [class.border-b-2]="viewMode() === 'REORDER'"
-                    [class.border-[var(--primary-color)]]="viewMode() === 'REORDER'"
-                    [class.text-[var(--primary-color)]]="viewMode() === 'REORDER'"
-                    class="px-4 py-2 font-medium transition-colors">
-                    Low Stock Alerts
+                    [class]="viewMode() === 'REORDER' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-4 py-2 text-sm rounded-lg transition-all">
+                    Low Stock
                 </button>
                 <button 
                     (click)="viewMode.set('LOCATIONS')"
-                    [class.border-b-2]="viewMode() === 'LOCATIONS'"
-                    [class.border-[var(--primary-color)]]="viewMode() === 'LOCATIONS'"
-                    [class.text-[var(--primary-color)]]="viewMode() === 'LOCATIONS'"
-                    class="px-4 py-2 font-medium transition-colors">
+                    [class]="viewMode() === 'LOCATIONS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-4 py-2 text-sm rounded-lg transition-all">
                     Locations
                 </button>
             </div>
 
+            <!-- DASHBOARD VIEW: The Advanced Split Screen -->
+            @if (viewMode() === 'DASHBOARD') {
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500 delay-75">
+                    
+                    <!-- Left: Live Inventory Grid (2/3 width) -->
+                    <div class="col-span-1 lg:col-span-2 bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden h-[600px] relative">
+                        <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
+                            <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                                <span class="material-symbols-rounded text-[var(--primary-color)]">inventory_2</span> 
+                                Live Inventory Status
+                            </h3>
+                            <!-- Loading Skeleton Fake Effect -->
+                            <div class="flex items-center gap-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Real-time Synced
+                            </div>
+                        </div>
+                        <div class="flex-1 ag-theme-quartz" [class.dark]="isDarkMode()">
+                            <ag-grid-angular
+                                style="width: 100%; height: 100%;"
+                                [rowData]="stockLevels()"
+                                [columnDefs]="columnDefs"
+                                [defaultColDef]="defaultColDef"
+                                [pagination]="true"
+                                [paginationPageSize]="20"
+                                (gridReady)="onGridReady($event)"
+                                (cellClicked)="onCellClicked($event)"
+                                [rowClass]="'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/10'"
+                            >
+                            </ag-grid-angular>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar: AI Actions & Feed (1/3 width) -->
+                    <div class="col-span-1 flex flex-col gap-6">
+                        
+                        <!-- Next-Gen Card: Smart Auto-Restock -->
+                        <div class="bg-gradient-to-br from-blue-600 via-[var(--primary-color)] to-purple-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden group cursor-pointer hover:shadow-xl transition-all duration-300">
+                            <div class="absolute inset-0 bg-black/10 transition-colors group-hover:bg-transparent"></div>
+                            <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 blur-3xl rounded-full"></div>
+                            
+                            <div class="relative z-10">
+                                <div class="flex items-center gap-2 text-white/80 text-xs font-bold uppercase tracking-widest mb-3">
+                                    <span class="material-symbols-rounded text-[16px]">psychology</span> AI Restock Suggestion
+                                </div>
+                                <h3 class="text-2xl font-extrabold mb-1">Auto-Restock Shop</h3>
+                                <p class="text-sm opacity-90 mb-6">Algorithm detected 4 items moving fast today.</p>
+                                
+                                <button class="w-full py-3 bg-white text-[var(--primary-color)] rounded-xl font-bold font-mono text-sm shadow-md hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-2">
+                                    Draft Transfer <span class="material-symbols-rounded text-sm">arrow_forward</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Alert Feed / Mini Transfers -->
+                        <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col overflow-hidden">
+                            <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
+                                <h3 class="font-bold flex items-center gap-2 text-sm">
+                                    <span class="material-symbols-rounded text-slate-400 text-[18px]">notifications_active</span>
+                                    Action Feed
+                                </h3>
+                            </div>
+                            
+                            <div class="p-4 space-y-4 overflow-y-auto hide-scrollbar max-h-[350px]">
+                                <!-- Alerts Loop -->
+                                @for (alert of lowStockAlerts().slice(0, 5); track alert.product_id) {
+                                    <div class="flex items-start gap-3 group relative cursor-pointer" (click)="viewMode.set('REORDER')">
+                                        <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center shrink-0">
+                                            <span class="material-symbols-rounded text-[16px]">warning</span>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-[var(--primary-color)] transition-colors">
+                                                {{ getProductName(alert.product_id) }}
+                                            </p>
+                                            <p class="text-xs opacity-60">
+                                                Only <span class="text-red-500 font-bold">{{ alert.available_quantity }}</span> left in {{ getLocationName(alert.location_id) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                } @empty {
+                                    <div class="flex flex-col items-center justify-center pt-8 opacity-50 text-slate-500">
+                                        <span class="material-symbols-rounded text-4xl mb-2">check_circle</span>
+                                        <p class="text-sm font-medium">All stock levels healthy.</p>
+                                    </div>
+                                }
+
+                                <!-- Transfers loop intermixed -->
+                                @if (transfers().length > 0) {
+                                    <div class="my-4 border-t border-slate-100 dark:border-slate-800"></div>
+                                    @for (t of transfers().slice(0, 3); track t.id) {
+                                        <div class="flex items-start gap-3 cursor-pointer group hover:bg-slate-50 dark:hover:bg-slate-800/50 p-2 rounded-lg -mx-2 transition-colors"
+                                             (click)="viewMode.set('TRANSFERS')">
+                                            <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center shrink-0">
+                                                <span class="material-symbols-rounded text-[16px]">local_shipping</span>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-mono font-bold text-slate-900 dark:text-white truncate">
+                                                    {{ t.transfer_number }}
+                                                </p>
+                                                <div class="flex items-center gap-1 text-[10px] opacity-70 mt-0.5">
+                                                    <span>{{ getLocationName(t.from_location_id) | slice:0:10 }}</span>
+                                                    <span class="material-symbols-rounded text-[10px]">arrow_forward</span>
+                                                    <span>{{ getLocationName(t.to_location_id) | slice:0:10 }}</span>
+                                                </div>
+                                            </div>
+                                            <span class="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                                {{ t.status }}
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
             <!-- Stock Levels View -->
             @if (viewMode() === 'LEVELS') {
-                <div class="h-[600px] bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
+                <div class="h-[600px] bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/50 dark:bg-slate-800/30">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                                <span class="material-symbols-rounded text-[var(--primary-color)] text-[18px]">inventory_2</span> 
+                                Master Stock Ledger
+                            </h3>
+                        </div>
                         <div class="flex gap-4">
                             <select 
                                 [(ngModel)]="selectedLocationId"
@@ -196,9 +378,15 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
 
             <!-- Movement History View -->
             @if (viewMode() === 'MOVEMENTS') {
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                        <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                            <span class="material-symbols-rounded text-indigo-500 text-[18px]">history</span> 
+                            Global Movement History
+                        </h3>
+                    </div>
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
+                        <thead class="bg-slate-50/50 dark:bg-slate-800/30 text-slate-500 flex-1 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px]">
                             <tr>
                                 <th class="p-4">Time</th>
                                 <th class="p-4">Type</th>
@@ -237,10 +425,13 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
 
             <!-- Transfers View -->
             @if (viewMode() === 'TRANSFERS') {
-                <div class="grid gap-6">
+                <div class="grid gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
                     @for (transfer of transfers(); track transfer.id) {
-                        <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col gap-6">
-                            <div class="flex justify-between items-start">
+                        <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 transition-all duration-300">
+                             <!-- Subtle gradient background purely for styling -->
+                             <div class="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl pointer-events-none -mr-32 -mt-32"></div>
+                            
+                            <div class="flex justify-between items-start relative z-10">
                                 <div>
                                     <h3 class="font-bold text-xl flex items-center gap-2">
                                         <span class="material-symbols-rounded text-slate-400">local_shipping</span>
@@ -370,9 +561,15 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
 
             <!-- Low Stock Alerts View -->
             @if (viewMode() === 'REORDER') {
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-red-50/50 dark:bg-red-900/10">
+                        <h3 class="font-bold flex items-center gap-2 text-red-700 dark:text-red-400">
+                            <span class="material-symbols-rounded text-[18px] animate-pulse">warning</span> 
+                            Critical Shortages & Reorder Suggestions
+                        </h3>
+                    </div>
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
+                        <thead class="bg-slate-50/50 dark:bg-slate-800/30 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px]">
                             <tr>
                                 <th class="p-4">Product</th>
                                 <th class="p-4">Location</th>
@@ -406,9 +603,15 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
             
             <!-- Locations View -->
             @if (viewMode() === 'LOCATIONS') {
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between items-center">
+                        <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                            <span class="material-symbols-rounded text-emerald-500 text-[18px]">hub</span> 
+                            Network Map & Node Capabilities
+                        </h3>
+                    </div>
                     <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
+                        <thead class="bg-slate-50/50 dark:bg-slate-800/30 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px]">
                             <tr>
                                 <th class="p-4">Name</th>
                                 <th class="p-4">Type</th>
@@ -623,6 +826,94 @@ type ViewMode = 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
                 </div>
             </div>
         }
+        
+        <!-- Drawer: Deep Dive Movement History -->
+        @if (showDrawer()) {
+            <div class="fixed inset-0 z-[100] flex justify-end" (click)="closeDrawer()">
+                <!-- Backdrop -->
+                <div class="absolute inset-0 bg-slate-900/20 dark:bg-black/40 backdrop-blur-sm transition-opacity duration-300"></div>
+                
+                <!-- Drawer Panel -->
+                <div class="relative w-full max-w-md h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col animate-in slide-in-from-right duration-300" (click)="$event.stopPropagation()">
+                    
+                    <!-- Drawer Header -->
+                    <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-start bg-slate-50 dark:bg-slate-900/50">
+                        <div>
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-[var(--primary-color)] flex items-center gap-1 mb-1">
+                                <span class="material-symbols-rounded text-[14px]">history</span> Ledger History
+                            </div>
+                            <h2 class="text-xl font-bold text-slate-900 dark:text-white leading-tight">
+                                {{ getProductName(selectedDrawerProduct()?.productId || '') }}
+                            </h2>
+                            <p class="text-sm opacity-60 mt-1 flex items-center gap-1">
+                                <span class="material-symbols-rounded text-[16px]">location_on</span>
+                                {{ getLocationName(selectedDrawerProduct()?.locationId || '') }}
+                            </p>
+                        </div>
+                        <button (click)="closeDrawer()" class="p-2 bg-slate-200 dark:bg-slate-800 rounded-full hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-slate-500 hover:text-slate-900 dark:hover:text-white">
+                            <span class="material-symbols-rounded">close</span>
+                        </button>
+                    </div>
+
+                    <!-- Drawer Content (Timeline) -->
+                    <div class="flex-1 overflow-y-auto p-6 hide-scrollbar relative">
+                         @if (drawerMovements().length === 0) {
+                            <div class="h-full flex flex-col items-center justify-center text-slate-500 opacity-50">
+                                <span class="material-symbols-rounded text-4xl mb-2">history_toggle_off</span>
+                                <p>No movements recorded.</p>
+                            </div>
+                         } @else {
+                             <!-- Timeline connecting line -->
+                            <div class="absolute left-[39px] top-6 bottom-6 w-px bg-slate-200 dark:bg-slate-700"></div>
+
+                            <div class="space-y-6 relative">
+                                @for (movement of drawerMovements(); track movement.id; let i = $index) {
+                                    <div class="flex gap-4 group">
+                                        <!-- Timeline Dot -->
+                                        <div class="relative z-10 w-10 shrink-0 flex flex-col items-center">
+                                            <div class="w-8 h-8 rounded-full border-4 border-white dark:border-slate-900 flex items-center justify-center shadow-sm"
+                                                 [class.bg-green-100]="movement.quantity > 0"
+                                                 [class.text-green-600]="movement.quantity > 0"
+                                                 [class.bg-red-100]="movement.quantity < 0"
+                                                 [class.text-red-500]="movement.quantity < 0"
+                                                 [class.bg-slate-100]="movement.quantity === 0"
+                                                 [class.text-slate-500]="movement.quantity === 0">
+                                                    @if (movement.quantity > 0) { <span class="material-symbols-rounded text-[16px]">add</span> }
+                                                    @if (movement.quantity < 0) { <span class="material-symbols-rounded text-[16px]">remove</span> }
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Timeline Content -->
+                                        <div class="flex-1 pb-6 relative top-1">
+                                            <div class="flex justify-between items-start mb-1">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-bold text-sm bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                                                        {{ movement.movement_type }}
+                                                    </span>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="text-lg font-bold font-mono tracking-tight"
+                                                          [class.text-green-600]="movement.quantity > 0"
+                                                          [class.text-red-500]="movement.quantity < 0">
+                                                        {{ movement.quantity > 0 ? '+' : '' }}{{ movement.quantity }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">{{ movement.created_at | date:'MMM d, y, h:mm a' }}</p>
+                                            @if (movement.reason || movement.notes) {
+                                                <p class="text-sm opacity-80 italic border-l-2 border-slate-300 dark:border-slate-600 pl-3 mt-2 text-slate-600 dark:text-slate-400">
+                                                    {{ movement.reason || movement.notes }}
+                                                </p>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                         }
+                    </div>
+                </div>
+            </div>
+        }
     `,
     styles: []
 })
@@ -646,12 +937,16 @@ export class StockManagerComponent implements OnInit {
         }, { allowSignalWrites: true });
     }
 
-    viewMode = signal<ViewMode>('LEVELS');
+    viewMode = signal<ViewMode>('DASHBOARD');
     showAdjustmentModal = signal(false);
     showTransferModal = signal(false);
     showLocationModal = signal(false);
     editingLocation = signal<StockLocation | null>(null);
     selectedLocationId = '';
+
+    // Advanced Drawer State
+    showDrawer = signal(false);
+    selectedDrawerProduct = signal<{ productId: string, locationId: string } | null>(null);
 
     private refreshTrigger = new BehaviorSubject<void>(undefined);
 
@@ -663,6 +958,7 @@ export class StockManagerComponent implements OnInit {
             return this.stockService.getStockLevels(
                 this.selectedLocationId || undefined
             ).pipe(
+                map(levels => levels.filter(l => l.physical_quantity > 0)), // Hide empty locations
                 retry(3),
                 catchError(err => {
                     console.error('Failed to load stock levels', err);
@@ -673,21 +969,36 @@ export class StockManagerComponent implements OnInit {
     );
     stockLevels = toSignal(this.stockLevels$, { initialValue: [] as StockLevel[] });
 
-    private movements$ = this.stockService.getMovements().pipe(
-        retry(3),
-        catchError(err => of([]))
+    private movements$ = this.refreshTrigger.pipe(
+        switchMap(() => this.stockService.getMovements().pipe(
+            retry(3),
+            catchError(err => of([]))
+        ))
     );
     movements = toSignal(this.movements$, { initialValue: [] as StockMovement[] });
 
-    private transfers$ = this.stockService.getTransfers().pipe(
-        retry(3),
-        catchError(err => of([]))
+    // Drawer Computed
+    drawerMovements = computed(() => {
+        const selection = this.selectedDrawerProduct();
+        if (!selection) return [];
+        return this.movements()
+            .filter(m => m.product_id === selection.productId && m.location_id === selection.locationId)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); // newest first
+    });
+
+    private transfers$ = this.refreshTrigger.pipe(
+        switchMap(() => this.stockService.getTransfers().pipe(
+            retry(3),
+            catchError(err => of([]))
+        ))
     );
     transfers = toSignal(this.transfers$, { initialValue: [] as StockTransfer[] });
 
-    private lowStockAlerts$ = this.stockService.getLowStockItems().pipe(
-        retry(3),
-        catchError(err => of([]))
+    private lowStockAlerts$ = this.refreshTrigger.pipe(
+        switchMap(() => this.stockService.getLowStockItems().pipe(
+            retry(3),
+            catchError(err => of([]))
+        ))
     );
     lowStockAlerts = toSignal(this.lowStockAlerts$, { initialValue: [] as any[] });
 
@@ -737,7 +1048,7 @@ export class StockManagerComponent implements OnInit {
         },
         {
             headerName: 'Available',
-            valueGetter: params => params.data.quantity,
+            valueGetter: params => params.data.available_quantity,
             type: 'numericColumn',
             sortable: true,
             filter: 'agNumberColumnFilter',
@@ -748,12 +1059,12 @@ export class StockManagerComponent implements OnInit {
         },
         { headerName: 'Reserved', valueGetter: params => params.data.reserved_quantity || 0, type: 'numericColumn', flex: 1 },
         { headerName: 'Damaged', valueGetter: params => params.data.damaged_quantity || 0, type: 'numericColumn', cellClass: 'text-orange-600', flex: 1 },
-        { headerName: 'Physical', valueGetter: params => params.data.quantity, type: 'numericColumn', sortable: true, flex: 1, cellClass: 'font-bold' },
+        { headerName: 'Physical', valueGetter: params => params.data.physical_quantity, type: 'numericColumn', sortable: true, flex: 1, cellClass: 'font-bold' },
         {
             headerName: 'Value',
             valueGetter: (params) => {
                 const product = this.products().find(p => p.id === params.data.product_id);
-                const qty = params.data.quantity || 0;
+                const qty = params.data.physical_quantity || 0;
                 return qty * (product?.price || 0);
             },
             valueFormatter: (p) => {
@@ -1040,27 +1351,64 @@ export class StockManagerComponent implements OnInit {
     }
 
     approveTransfer(transferId: string) {
+        // Optimistic UI Update: instantly jump to Approved visually
+        const previousTransfers = this.transfers();
+        this.stockService.overrideTransfers(
+            previousTransfers.map(t => t.id === transferId ? { ...t, status: 'APPROVED' } : t)
+        );
+
         this.stockService.approveTransfer(transferId, '00000000-0000-0000-0000-000000000000').subscribe({
-            next: () => { this.dialog.alert('Success', 'Approved'); this.refreshStockLevels(); },
-            error: (err) => this.dialog.alert('Error', err.message)
+            next: () => {
+                // Success: already optimistic, just refresh underlying stock
+                this.refreshStockLevels();
+            },
+            error: (err) => {
+                // Revert on failure
+                this.stockService.overrideTransfers(previousTransfers);
+                this.dialog.alert('Error', err.message);
+            }
         });
     }
 
     shipTransfer(transferId: string) {
+        // Optimistic UI Update
+        const previousTransfers = this.transfers();
+        this.stockService.overrideTransfers(
+            previousTransfers.map(t => t.id === transferId ? { ...t, status: 'IN_TRANSIT' } : t)
+        );
+
         this.stockService.shipTransfer(transferId, '00000000-0000-0000-0000-000000000000').subscribe({
-            next: () => { this.dialog.alert('Success', 'Shipped'); this.refreshStockLevels(); },
-            error: (err) => this.dialog.alert('Error', err.message)
+            next: () => { this.refreshStockLevels(); },
+            error: (err) => {
+                this.stockService.overrideTransfers(previousTransfers);
+                this.dialog.alert('Error', err.message);
+            }
         });
     }
 
     receiveTransfer(transferId: string) {
+        // Optimistic UI Update
+        const previousTransfers = this.transfers();
+        this.stockService.overrideTransfers(
+            previousTransfers.map(t => t.id === transferId ? { ...t, status: 'RECEIVED' } : t)
+        );
+
         this.stockService.receiveTransfer(transferId, '00000000-0000-0000-0000-000000000000').subscribe({
-            next: () => { this.dialog.alert('Success', 'Received'); this.refreshStockLevels(); },
-            error: (err) => this.dialog.alert('Error', err.message)
+            next: () => { this.refreshStockLevels(); },
+            error: (err) => {
+                this.stockService.overrideTransfers(previousTransfers);
+                this.dialog.alert('Error', err.message);
+            }
         });
     }
 
     viewMovementHistory(productId: string, locationId: string) {
-        this.viewMode.set('MOVEMENTS');
+        this.selectedDrawerProduct.set({ productId, locationId });
+        this.showDrawer.set(true);
+    }
+
+    closeDrawer() {
+        this.showDrawer.set(false);
+        setTimeout(() => this.selectedDrawerProduct.set(null), 300); // wait for anim
     }
 }
