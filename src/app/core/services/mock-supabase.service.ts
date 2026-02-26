@@ -319,6 +319,7 @@ export interface TransactionItem {
     serial_number_id?: string; // New Field
     quantity: number;
     price_at_sale: number;
+    cost_at_sale?: number; // Capture margin at moment of sale
     product?: Product; // Joined data
     serial_number?: SerialNumber; // Joined data
 }
@@ -1664,6 +1665,18 @@ export class MockSupabaseService {
                 const stockUpdates = [];
                 const serialUpdates = [];
 
+                // 1. Get default store location for deductions
+                const { data: loc } = await this.supabase
+                    .from('stock_locations')
+                    .select('id')
+                    .eq('store_id', txData.store_id)
+                    .eq('location_type', 'STORE')
+                    .eq('is_active', true)
+                    .limit(1)
+                    .single();
+
+                const defaultLocationId = loc?.id;
+
                 for (const item of items) {
                     if (item.product.is_serialized && item.serials) {
                         for (const serial of item.serials) {
@@ -1680,15 +1693,45 @@ export class MockSupabaseService {
                                     .eq('id', serial.id)
                             );
                         }
+                        // Legacy generic deduction
                         stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.serials.length }));
+
+                        // New Stock Ledger logic (required for Command Center UI)
+                        if (defaultLocationId) {
+                            stockUpdates.push(this.supabase.from('stock_ledger').insert({
+                                movement_type: 'SALE',
+                                product_id: item.product.id,
+                                location_id: defaultLocationId,
+                                quantity: -item.serials.length,
+                                reference_type: 'TRANSACTION',
+                                reference_id: tx.id,
+                                notes: `POS Sale #${tx.id.substring(0, 8)}`
+                            }));
+                        }
                     } else {
                         txItemsData.push({
                             transaction_id: tx.id,
                             product_id: item.product.id,
                             quantity: item.quantity,
                             price_at_sale: item.product.price,
+                            cost_at_sale: item.product.cost_price || 0
                         });
+
+                        // Legacy hook
                         stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.quantity }));
+
+                        // New Stock Ledger logic (required for Command Center UI)
+                        if (defaultLocationId) {
+                            stockUpdates.push(this.supabase.from('stock_ledger').insert({
+                                movement_type: 'SALE',
+                                product_id: item.product.id,
+                                location_id: defaultLocationId,
+                                quantity: -item.quantity,
+                                reference_type: 'TRANSACTION',
+                                reference_id: tx.id,
+                                notes: `POS Sale #${tx.id.substring(0, 8)}`
+                            }));
+                        }
                     }
                 }
 
@@ -1714,6 +1757,9 @@ export class MockSupabaseService {
                     }
                 }
                 // --- ACCOUNT HANDLING END ---
+
+                // Force materialized view refresh so Command Center reflects the sale immediately
+                await this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' });
 
                 resolve(tx);
             } catch (error) {

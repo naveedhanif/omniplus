@@ -16,6 +16,7 @@ import { DatabaseSchemaComponent } from './schema/database-schema.component';
 import { ActivityLogComponent } from './auditing/activity-log.component';
 import { StockManagerComponent } from '../../inventory/components/stock/stock-manager.component';
 import { SupplierManagerComponent } from '../../procurement/components/suppliers/supplier-manager.component';
+import { AnalyticsDashboardComponent } from './analytics/analytics-dashboard.component';
 
 @Component({
   selector: 'app-admin-dashboard',
@@ -32,7 +33,8 @@ import { SupplierManagerComponent } from '../../procurement/components/suppliers
     DatabaseSchemaComponent,
     ActivityLogComponent,
     StockManagerComponent,
-    SupplierManagerComponent
+    SupplierManagerComponent,
+    AnalyticsDashboardComponent
   ],
   template: `
     <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
@@ -51,6 +53,7 @@ import { SupplierManagerComponent } from '../../procurement/components/suppliers
         <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-3 space-y-1">
           <!-- Navigation Items -->
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'stores', icon: 'store', label: 'Stores', disabled: false }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'analytics', icon: 'insights', label: 'Reports & Analytics', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'config', icon: 'settings', label: 'Configuration', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'categories', icon: 'category', label: 'Categories', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'inventory', icon: 'inventory_2', label: 'Inventory Manager', disabled: allStores().length === 0 }"></ng-container>
@@ -125,6 +128,7 @@ import { SupplierManagerComponent } from '../../procurement/components/suppliers
         <main class="flex-1 overflow-auto px-6 pb-6 w-full">
           @switch (activeTab()) {
             @case ('stores') { <app-store-manager /> }
+            @case ('analytics') { <app-analytics-dashboard /> }
             @case ('config') { <app-configuration-manager /> }
             @case ('categories') { <app-categories-manager /> }
             @case ('inventory') { <app-inventory-manager /> }
@@ -145,7 +149,7 @@ export class AdminDashboardComponent {
   supabase = inject(MockSupabaseService);
   storeService = inject(StoreConfigService);
 
-  activeTab = signal<'stores' | 'config' | 'categories' | 'inventory' | 'stock' | 'customers' | 'purchase-orders' | 'history' | 'auditing' | 'schema' | 'suppliers'>('stores');
+  activeTab = signal<'stores' | 'analytics' | 'config' | 'categories' | 'inventory' | 'stock' | 'customers' | 'purchase-orders' | 'history' | 'auditing' | 'schema' | 'suppliers'>('analytics');
 
   allStores: Signal<Store[]> = toSignal(this.supabase.getAllStores(), { initialValue: [] as Store[] });
 

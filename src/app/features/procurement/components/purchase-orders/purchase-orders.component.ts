@@ -1,128 +1,242 @@
-import { Component, inject, signal, computed, effect } from '@angular/core';
-import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators, FormGroup, FormArray, FormsModule } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { switchMap, of } from 'rxjs';
-import { MockSupabaseService, PurchaseOrder, POStatus, Supplier, Store, Product } from '../../../../core/services/mock-supabase.service';
-import { StoreConfigService } from '../../../../core/services/store-config.service';
+import { Component, inject, signal, computed, effect } from "@angular/core";
+import { CommonModule, CurrencyPipe, DatePipe } from "@angular/common";
+import {
+  FormBuilder,
+  ReactiveFormsModule,
+  Validators,
+  FormGroup,
+  FormArray,
+  FormsModule,
+} from "@angular/forms";
+import { toSignal } from "@angular/core/rxjs-interop";
+import { switchMap, of } from "rxjs";
+import {
+  MockSupabaseService,
+  PurchaseOrder,
+  POStatus,
+  Supplier,
+  Store,
+  Product,
+} from "../../../../core/services/mock-supabase.service";
+import { StoreConfigService } from "../../../../core/services/store-config.service";
 
-import { PurchaseOrderPrintComponent } from '../../../../shared/components/purchase-order-print.component';
+import { PurchaseOrderPrintComponent } from "../../../../shared/components/purchase-order-print.component";
 
 @Component({
-  selector: 'app-purchase-orders',
+  selector: "app-purchase-orders",
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe, DatePipe, PurchaseOrderPrintComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    FormsModule,
+    CurrencyPipe,
+    DatePipe,
+    PurchaseOrderPrintComponent,
+  ],
   template: `
-    <div class="flex gap-0 h-[calc(100vh-120px)] bg-[var(--card-bg)] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden relative">
-
+    <div
+      class="flex gap-0 h-[calc(100vh-120px)] bg-[var(--card-bg)] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden relative"
+    >
       <!-- ── Receive PO Dialog Overlay (Global) ─────────────────────────── -->
-      <div *ngIf="showReceiveDialog()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col h-[90vh] scale-100 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden">
-            
-            <!-- Dialog Header -->
-            <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
-                        <span class="material-symbols-rounded">move_to_inbox</span>
-                    </div>
-                    <div>
-                        <h3 class="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Receive Warehouse Consignment</h3>
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Order Ref: PO-{{ selectedPOToReceive()?.id?.substring(0,8)?.toUpperCase() }}</p>
-                    </div>
-                </div>
-                <button (click)="closeReceiveDialog()" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
-                    <span class="material-symbols-rounded">close</span>
-                </button>
+      <div
+        *ngIf="showReceiveDialog()"
+        class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      >
+        <div
+          class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col h-[90vh] scale-100 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
+        >
+          <!-- Dialog Header -->
+          <div
+            class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50"
+          >
+            <div class="flex items-center gap-4">
+              <div
+                class="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400"
+              >
+                <span class="material-symbols-rounded">move_to_inbox</span>
+              </div>
+              <div>
+                <h3
+                  class="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight"
+                >
+                  Receive Warehouse Consignment
+                </h3>
+                <p
+                  class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5"
+                >
+                  Order Ref: PO-{{
+                    selectedPOToReceive()?.id?.substring(0, 8)?.toUpperCase()
+                  }}
+                </p>
+              </div>
             </div>
+            <button
+              (click)="closeReceiveDialog()"
+              class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            >
+              <span class="material-symbols-rounded">close</span>
+            </button>
+          </div>
 
-            <!-- Scrollable List of Items to Receive -->
-            <div class="flex-1 overflow-y-auto p-6 space-y-4">
-                
-                @if (receiveError()) {
-                    <div class="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 animate-in slide-in-from-top-2">
-                        <span class="material-symbols-rounded">error</span>
-                        <span class="text-sm font-bold">{{ receiveError() }}</span>
-                    </div>
-                }
+          <!-- Scrollable List of Items to Receive -->
+          <div class="flex-1 overflow-y-auto p-6 space-y-4">
+            @if (receiveError()) {
+              <div
+                class="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 animate-in slide-in-from-top-2"
+              >
+                <span class="material-symbols-rounded">error</span>
+                <span class="text-sm font-bold">{{ receiveError() }}</span>
+              </div>
+            }
 
-                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-400 font-black uppercase tracking-widest border-b border-slate-100 dark:border-slate-700">
-                            <tr>
-                                <th class="px-6 py-4">Consignment Item</th>
-                                <th class="px-4 py-4 text-center">Remaining</th>
-                                <th class="px-4 py-4 text-center w-32">Receiving Now</th>
-                                <th class="px-6 py-4">Serial Numbers (Optional)</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                            @for (item of receiveItems(); track item.id; let i = $index) {
-                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-900/10 transition-colors">
-                                    <td class="px-6 py-5">
-                                        <div class="font-black text-slate-800 dark:text-slate-200">{{ getProductName(item.product_id) }}</div>
-                                        <div class="text-[10px] font-bold text-slate-400 uppercase mt-0.5">Ordered: {{ item.quantity_ordered }} units</div>
-                                    </td>
-                                    <td class="px-4 py-5 text-center">
-                                        <span class="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 text-slate-500 font-black rounded-lg">
-                                            {{ item.quantity_ordered - (item.quantity_received || 0) }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-5">
-                                        <input type="number" [(ngModel)]="item.receiving_now" min="0"
-                                               class="w-full bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-xl p-3 text-center font-black focus:border-green-500 outline-none transition-all"
-                                               [class.text-green-600]="item.receiving_now > 0"
-                                               [class.border-amber-400]="item.receiving_now > (item.quantity_ordered - (item.quantity_received || 0))">
-                                    </td>
-                                    <td class="px-6 py-5">
-                                        @if (isProductSerialized(item.product_id)) {
-                                            <div class="space-y-2">
-                                                <input type="text" [(ngModel)]="item.serial_numbers_input" 
-                                                       placeholder="Scan or type serials (comma separated)..."
-                                                       class="w-full bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-xl p-3 text-[11px] font-mono focus:border-blue-500 outline-none transition-all">
-                                                <div class="flex justify-between items-center px-1">
-                                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">Validated Serials</span>
-                                                    <span class="text-[10px] font-black" [class.text-green-600]="getValidSerialCount(item.serial_numbers_input) === item.receiving_now" [class.text-red-500]="getValidSerialCount(item.serial_numbers_input) !== item.receiving_now">
-                                                        {{ getValidSerialCount(item.serial_numbers_input) }} / {{ item.receiving_now }}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        } @else {
-                                            <div class="text-slate-300 dark:text-slate-600 italic text-[10px] font-bold uppercase tracking-widest">No Serial Tracking Required</div>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+            <div
+              class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"
+            >
+              <table class="w-full text-left text-xs">
+                <thead
+                  class="bg-slate-50 dark:bg-slate-800/50 text-slate-400 font-black uppercase tracking-widest border-b border-slate-100 dark:border-slate-700"
+                >
+                  <tr>
+                    <th class="px-6 py-4">Consignment Item</th>
+                    <th class="px-4 py-4 text-center">Remaining</th>
+                    <th class="px-4 py-4 text-center w-32">Receiving Now</th>
+                    <th class="px-6 py-4">Serial Numbers (Optional)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                  @for (item of receiveItems(); track item.id; let i = $index) {
+                    <tr
+                      class="hover:bg-slate-50 dark:hover:bg-slate-900/10 transition-colors"
+                    >
+                      <td class="px-6 py-5">
+                        <div
+                          class="font-black text-slate-800 dark:text-slate-200"
+                        >
+                          {{ getProductName(item.product_id) }}
+                        </div>
+                        <div
+                          class="text-[10px] font-bold text-slate-400 uppercase mt-0.5"
+                        >
+                          Ordered: {{ item.quantity_ordered }} units
+                        </div>
+                      </td>
+                      <td class="px-4 py-5 text-center">
+                        <span
+                          class="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 text-slate-500 font-black rounded-lg"
+                        >
+                          {{
+                            item.quantity_ordered -
+                              (item.quantity_received || 0)
+                          }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-5">
+                        <input
+                          type="number"
+                          [(ngModel)]="item.receiving_now"
+                          min="0"
+                          class="w-full bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-xl p-3 text-center font-black focus:border-green-500 outline-none transition-all"
+                          [class.text-green-600]="item.receiving_now > 0"
+                          [class.border-amber-400]="
+                            item.receiving_now >
+                            item.quantity_ordered -
+                              (item.quantity_received || 0)
+                          "
+                        />
+                      </td>
+                      <td class="px-6 py-5">
+                        @if (isProductSerialized(item.product_id)) {
+                          <div class="space-y-2">
+                            <input
+                              type="text"
+                              [(ngModel)]="item.serial_numbers_input"
+                              placeholder="Scan or type serials (comma separated)..."
+                              class="w-full bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-xl p-3 text-[11px] font-mono focus:border-blue-500 outline-none transition-all"
+                            />
+                            <div class="flex justify-between items-center px-1">
+                              <span
+                                class="text-[9px] font-black uppercase tracking-widest text-slate-400"
+                                >Validated Serials</span
+                              >
+                              <span
+                                class="text-[10px] font-black"
+                                [class.text-green-600]="
+                                  getValidSerialCount(
+                                    item.serial_numbers_input
+                                  ) === item.receiving_now
+                                "
+                                [class.text-red-500]="
+                                  getValidSerialCount(
+                                    item.serial_numbers_input
+                                  ) !== item.receiving_now
+                                "
+                              >
+                                {{
+                                  getValidSerialCount(item.serial_numbers_input)
+                                }}
+                                / {{ item.receiving_now }}
+                              </span>
+                            </div>
+                          </div>
+                        } @else {
+                          <div
+                            class="text-slate-300 dark:text-slate-600 italic text-[10px] font-bold uppercase tracking-widest"
+                          >
+                            No Serial Tracking Required
+                          </div>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
             </div>
+          </div>
 
-            <!-- Footer Actions -->
-            <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
-                <div class="flex items-center gap-2 text-slate-400">
-                    <span class="material-symbols-rounded text-base">info</span>
-                    <span class="text-[10px] font-bold uppercase tracking-widest italic">Inventory levels will increment instantly upon submission.</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <button (click)="closeReceiveDialog()" class="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 uppercase tracking-widest transition-colors">
-                        Cancel Receipt
-                    </button>
-                    <button (click)="submitReceivePO()" 
-                            [disabled]="isReceiving() || !hasValidReceiveQuantities()"
-                            class="px-10 py-3 bg-green-600 text-white text-sm font-black rounded-xl shadow-xl hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 uppercase tracking-widest">
-                        
-                        <span class="material-symbols-rounded text-sm animate-spin" *ngIf="isReceiving()">progress_activity</span>
-                        <span class="material-symbols-rounded text-sm" *ngIf="!isReceiving()">done_all</span>
-                        {{ isReceiving() ? 'Processing...' : 'Complete Entry' }}
-                    </button>
-                </div>
+          <!-- Footer Actions -->
+          <div
+            class="p-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center shadow-[0_-10px_30px_rgba(0,0,0,0.02)]"
+          >
+            <div class="flex items-center gap-2 text-slate-400">
+              <span class="material-symbols-rounded text-base">info</span>
+              <span
+                class="text-[10px] font-bold uppercase tracking-widest italic"
+                >Inventory levels will increment instantly upon
+                submission.</span
+              >
             </div>
+            <div class="flex items-center gap-3">
+              <button
+                (click)="closeReceiveDialog()"
+                class="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 uppercase tracking-widest transition-colors"
+              >
+                Cancel Receipt
+              </button>
+              <button
+                (click)="submitReceivePO()"
+                [disabled]="isReceiving() || !hasValidReceiveQuantities()"
+                class="px-10 py-3 bg-green-600 text-white text-sm font-black rounded-xl shadow-xl hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 uppercase tracking-widest"
+              >
+                <span
+                  class="material-symbols-rounded text-sm animate-spin"
+                  *ngIf="isReceiving()"
+                  >progress_activity</span
+                >
+                <span
+                  class="material-symbols-rounded text-sm"
+                  *ngIf="!isReceiving()"
+                  >done_all</span
+                >
+                {{ isReceiving() ? "Processing..." : "Complete Entry" }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <app-purchase-order-print 
-        *ngIf="showPrintPreview()" 
-        [po]="selectedPO()!" 
+      <app-purchase-order-print
+        *ngIf="showPrintPreview()"
+        [po]="selectedPO()!"
         [items]="selectedPOItems()"
         [store]="storeService.currentStore()"
         [currency]="storeService.currency()"
@@ -132,512 +246,1198 @@ import { PurchaseOrderPrintComponent } from '../../../../shared/components/purch
       <!-- ══════════════════════════════════════════════════════════
            COLUMN 2 — PO List
       ══════════════════════════════════════════════════════════ -->
-      <div class="w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-        
+      <div
+        class="w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+      >
         <!-- Header: Search & Filter & New -->
-        <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 space-y-3">
+        <div
+          class="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 space-y-3"
+        >
           <div class="flex items-center justify-between">
-            <h2 class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-              <span class="material-symbols-rounded text-base text-[var(--primary-color)]">shopping_cart</span>
+            <h2
+              class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"
+            >
+              <span
+                class="material-symbols-rounded text-base text-[var(--primary-color)]"
+                >shopping_cart</span
+              >
               Orders
-              <span class="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 rounded-full text-[10px] font-black text-slate-600 dark:text-slate-400">{{ filteredPOs().length }}</span>
+              <span
+                class="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 rounded-full text-[10px] font-black text-slate-600 dark:text-slate-400"
+                >{{ filteredPOs().length }}</span
+              >
             </h2>
-            <button (click)="startNewPO()" 
-                    class="flex items-center gap-1 px-3 py-1.5 bg-[var(--primary-color)] text-white text-xs font-bold rounded-lg shadow hover:brightness-110 active:scale-95 transition-all">
+            <button
+              (click)="startNewPO()"
+              class="flex items-center gap-1 px-3 py-1.5 bg-[var(--primary-color)] text-white text-xs font-bold rounded-lg shadow hover:brightness-110 active:scale-95 transition-all"
+            >
               <span class="material-symbols-rounded text-sm">add</span>
               New
             </button>
           </div>
 
-
           <!-- Filters Strip -->
-          <div class="flex bg-slate-200 dark:bg-slate-700 rounded-lg p-1 overflow-x-auto no-scrollbar">
-            <button *ngFor="let filter of ['ALL', 'DRAFT', 'SENT', 'ORDERED', 'RECEIVED']"
-                    (click)="statusFilter.set(filter)"
-                    [class.bg-white]="statusFilter() === filter"
-                    [class.dark:bg-slate-600]="statusFilter() === filter"
-                    [class.shadow-sm]="statusFilter() === filter"
-                    [class.text-slate-900]="statusFilter() === filter"
-                    class="flex-1 px-2 py-1.5 text-[10px] font-black rounded-md transition-all whitespace-nowrap">
+          <div
+            class="flex bg-slate-200 dark:bg-slate-700 rounded-lg p-1 overflow-x-auto no-scrollbar"
+          >
+            <button
+              *ngFor="
+                let filter of ['ALL', 'DRAFT', 'SENT', 'ORDERED', 'RECEIVED']
+              "
+              (click)="statusFilter.set(filter)"
+              [class.bg-white]="statusFilter() === filter"
+              [class.dark:bg-slate-600]="statusFilter() === filter"
+              [class.shadow-sm]="statusFilter() === filter"
+              [class.text-slate-900]="statusFilter() === filter"
+              class="flex-1 px-2 py-1.5 text-[10px] font-black rounded-md transition-all whitespace-nowrap"
+            >
               {{ filter }}
             </button>
           </div>
 
           <!-- Search Input -->
           <div class="relative">
-            <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[16px]">search</span>
-            <input type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" 
-                   placeholder="Search ID or supplier..."
-                   class="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--primary-color)]/30 transition-all">
+            <span
+              class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[16px]"
+              >search</span
+            >
+            <input
+              type="text"
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+              placeholder="Search ID or supplier..."
+              class="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--primary-color)]/30 transition-all"
+            />
           </div>
         </div>
 
         <!-- Scrollable PO cards -->
-        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-           @for (po of filteredPOs(); track po.id) {
-             <button type="button" (click)="viewPODetail(po)"
-                     class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group border-l-4"
-                     [ngClass]="{
-                        'bg-blue-50 dark:bg-blue-900/10 border-l-[var(--primary-color)]': selectedPO()?.id === po.id,
-                        'border-l-transparent': selectedPO()?.id !== po.id
-                     }">
-                
-                <div class="flex justify-between items-start mb-1">
-                  <span class="text-xs font-mono font-bold text-slate-400">#{{ po.id.substring(0,8) }}</span>
-                  <span class="text-[10px] font-black px-2 py-0.5 rounded-full" [ngClass]="getStatusClass(po.status)">
-                    {{ po.status }}
-                  </span>
-                </div>
-                
-                <div class="font-bold text-slate-800 dark:text-slate-100 truncate mb-1">{{ po.supplier?.name || 'Unknown' }}</div>
-                
-                <div class="flex items-center justify-between mt-2">
-                  <span class="text-xs font-black text-slate-600 dark:text-slate-400">{{ po.total_amount | currency: storeService.currency() }}</span>
-                  <span class="text-[10px] text-slate-400 font-medium">
-                    {{ po.expected_arrival ? (po.expected_arrival | date:'MMM d') : (po.created_at | date:'MMM d') }}
-                  </span>
-                </div>
-             </button>
-           } @empty {
-             <div class="flex flex-col items-center py-20 text-slate-400 text-sm gap-2 opacity-50 px-6 text-center">
-                <span class="material-symbols-rounded text-4xl">inventory_2</span>
-                <span>No orders match filters</span>
-             </div>
-           }
+        <div
+          class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800"
+        >
+          @for (po of filteredPOs(); track po.id) {
+            <button
+              type="button"
+              (click)="viewPODetail(po)"
+              class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group border-l-4"
+              [ngClass]="{
+                'bg-blue-50 dark:bg-blue-900/10 border-l-[var(--primary-color)]':
+                  selectedPO()?.id === po.id,
+                'border-l-transparent': selectedPO()?.id !== po.id,
+              }"
+            >
+              <div class="flex justify-between items-start mb-1">
+                <span class="text-xs font-mono font-bold text-slate-400"
+                  >#{{ po.id.substring(0, 8) }}</span
+                >
+                <span
+                  class="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  [ngClass]="getStatusClass(po.status)"
+                >
+                  {{ po.status }}
+                </span>
+              </div>
+
+              <div
+                class="font-bold text-slate-800 dark:text-slate-100 truncate mb-1"
+              >
+                {{ po.supplier?.name || "Unknown" }}
+              </div>
+
+              <div class="flex items-center justify-between mt-2">
+                <span
+                  class="text-xs font-black text-slate-600 dark:text-slate-400"
+                  >{{
+                    po.total_amount | currency: storeService.currency()
+                  }}</span
+                >
+                <span class="text-[10px] text-slate-400 font-medium">
+                  {{
+                    po.expected_arrival
+                      ? (po.expected_arrival | date: "MMM d")
+                      : (po.created_at | date: "MMM d")
+                  }}
+                </span>
+              </div>
+            </button>
+          } @empty {
+            <div
+              class="flex flex-col items-center py-20 text-slate-400 text-sm gap-2 opacity-50 px-6 text-center"
+            >
+              <span class="material-symbols-rounded text-4xl">inventory_2</span>
+              <span>No orders match filters</span>
+            </div>
+          }
         </div>
 
         <!-- Footer: Mini Stats -->
-        <div class="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex flex-col gap-1 text-[10px]">
-           <div class="flex justify-between">
-             <span class="text-slate-400 uppercase font-black">Open Amount</span>
-             <span class="font-bold text-blue-600">{{ calculateOpenValue() | currency: storeService.currency() }}</span>
-           </div>
+        <div
+          class="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex flex-col gap-1 text-[10px]"
+        >
+          <div class="flex justify-between">
+            <span class="text-slate-400 uppercase font-black">Open Amount</span>
+            <span class="font-bold text-blue-600">{{
+              calculateOpenValue() | currency: storeService.currency()
+            }}</span>
+          </div>
         </div>
       </div>
 
       <!-- ══════════════════════════════════════════════════════════
            COLUMN 3 — Detail View / Form Area
       ══════════════════════════════════════════════════════════ -->
-      <div class="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-900/10">
-
+      <div
+        class="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-900/10"
+      >
         <!-- Case A: DETAIL VIEW -->
-        @if ((viewState() === 'DETAIL' || viewState() === 'LIST') && selectedPO()) {
+        @if (
+          (viewState() === "DETAIL" || viewState() === "LIST") && selectedPO()
+        ) {
           @if (selectedPO(); as po) {
-            <div class="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
-              
-              <!-- Detail Header -->
-              <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0">
-                 <div>
-                   <div class="flex items-center gap-3 mb-1">
-                     <h1 class="text-2xl font-black font-mono">PO-{{ po.id.substring(0,8) }}</h1>
-                     <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm" [ngClass]="getStatusClass(po.status)">
-                        {{ po.status }}
-                     </span>
-                   </div>
-                   <p class="text-slate-500 font-medium flex items-center gap-2">
-                     <span class="material-symbols-rounded text-sm">local_shipping</span>
-                     {{ po.supplier?.name || 'Unknown Supplier' }}
-                     <span class="text-slate-300">•</span>
-                     Ordered {{ po.created_at | date:'mediumDate' }}
-                   </p>
-                 </div>
-                  <div class="flex items-center gap-2 flex-wrap justify-end">
-                    <!-- Workflow Transitions -->
-                    @if (po.status === 'DRAFT') {
-                      <button (click)="startEditPO(po)" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-xs rounded-lg transition-all">
-                        Edit Draft
-                      </button>
-                      <button (click)="advanceStatus(po, 'SENT')" class="px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
-                        <span class="material-symbols-rounded text-sm">send</span> Mark as Sent
-                      </button>
-                    }
-                    @if (po.status === 'SENT') {
-                        <button (click)="advanceStatus(po, 'ORDERED')" class="px-4 py-2 bg-[var(--primary-color)] text-white font-bold text-xs rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
-                            <span class="material-symbols-rounded text-sm">inventory_2</span> Confirm Order Details
-                        </button>
-                    }
-                    @if (['SENT', 'ORDERED', 'PARTIAL'].includes(po.status)) {
-                        <button (click)="openReceiveDialog(po)" class="px-4 py-2 bg-green-600 text-white font-bold text-xs rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
-                            <span class="material-symbols-rounded text-sm">move_to_inbox</span> Receive Order
-                        </button>
-                    }
+            <div
+              class="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300 relative"
+            >
+              <!-- Refined Header -->
+              <div
+                class="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0 z-10 shadow-sm"
+              >
+                <div>
+                  <div class="flex items-center gap-3 mb-1.5">
+                    <h1
+                      class="text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white"
+                    >
+                      PO-{{ po.id.substring(0, 8) }}
+                    </h1>
+                    <span
+                      class="px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm border"
+                      [ngClass]="getStatusClass(po.status)"
+                    >
+                      {{ po.status }}
+                    </span>
+                  </div>
+                  <p
+                    class="text-[12px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"
+                  >
+                    <span
+                      class="material-symbols-rounded text-sm text-[var(--primary-color)]"
+                      >local_shipping</span
+                    >
+                    {{ po.supplier?.name || "Unknown Supplier" }}
+                    <span class="text-slate-300 mx-1">•</span>
+                    Commisioned: {{ po.created_at | date: "mediumDate" }}
+                  </p>
+                </div>
 
-                    <!-- Destructive Actions -->
-                    @if (!['RECEIVED', 'CANCELLED'].includes(po.status)) {
-                        <button (click)="cancelPO(po)" class="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs rounded-lg transition-all flex items-center gap-2 border border-red-100">
-                            <span class="material-symbols-rounded text-sm">cancel</span> Cancel
-                        </button>
-                    }
-
-                    <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                    <button (click)="printPO(po)" 
-                            class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 transition-all"
-                            title="Print Purchase Order">
-                      <span class="material-symbols-rounded text-lg">print</span>
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                  <!-- Workflow Transitions -->
+                  @if (po.status === "DRAFT") {
+                    <button
+                      (click)="startEditPO(po)"
+                      class="px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 font-black text-xs text-slate-700 dark:text-slate-300 rounded-xl transition-all shadow-sm"
+                    >
+                      Edit Draft
                     </button>
-                  </div>
+                    <button
+                      (click)="advanceStatus(po, 'SENT')"
+                      class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_8px_15px_rgba(37,99,235,0.2)] hover:shadow-[0_8px_25px_rgba(37,99,235,0.3)] active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <span class="material-symbols-rounded text-[15px]"
+                        >send</span
+                      >
+                      Transmit Order
+                    </button>
+                  }
+                  @if (po.status === "SENT") {
+                    <button
+                      (click)="advanceStatus(po, 'ORDERED')"
+                      class="px-5 py-2 bg-gradient-to-r from-[var(--primary-color)] to-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_8px_15px_rgba(var(--primary-color-rgb),0.2)] active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <span class="material-symbols-rounded text-[15px]"
+                        >inventory_2</span
+                      >
+                      Acknowledge
+                    </button>
+                  }
+                  @if (["SENT", "ORDERED", "PARTIAL"].includes(po.status)) {
+                    <button
+                      (click)="openReceiveDialog(po)"
+                      class="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_8px_15px_rgba(16,185,129,0.2)] active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <span class="material-symbols-rounded text-[15px]"
+                        >move_to_inbox</span
+                      >
+                      Receive Goods
+                    </button>
+                  }
+
+                  <!-- Destructive Actions -->
+                  @if (!["RECEIVED", "CANCELLED"].includes(po.status)) {
+                    <button
+                      (click)="cancelPO(po)"
+                      class="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs rounded-xl transition-all flex items-center gap-2 border border-red-100 ml-2"
+                    >
+                      <span class="material-symbols-rounded text-[15px]"
+                        >cancel</span
+                      >
+                      Void
+                    </button>
+                  }
+
+                  <div
+                    class="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"
+                  ></div>
+
+                  <button
+                    (click)="cloneOrder(po)"
+                    class="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] rounded-xl text-slate-500 transition-all shadow-sm"
+                    title="Clone Order to Draft"
+                  >
+                    <span class="material-symbols-rounded text-[18px]"
+                      >content_copy</span
+                    >
+                  </button>
+
+                  <button
+                    (click)="printPO(po)"
+                    class="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-400 rounded-xl text-slate-500 transition-all shadow-sm"
+                    title="Print Purchase Order"
+                  >
+                    <span class="material-symbols-rounded text-[18px]"
+                      >print</span
+                    >
+                  </button>
+                </div>
               </div>
 
-              <!-- Premium KPI Tiles Area -->
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 px-6 py-4 flex-shrink-0">
-                <!-- Line Items-->
-                <div class="rounded-xl p-4 transition-all" [ngStyle]="kpiStyles.items">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="material-symbols-rounded text-base text-white/80">inventory_2</span>
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-white/70">Line Items</span>
+              <!-- Scrollable Dash Content -->
+              <div
+                class="flex-1 overflow-auto bg-slate-50/50 dark:bg-slate-900/50 px-8 py-6"
+              >
+                <!-- BENTO BOX: Dashboard Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 mb-6">
+                  <!-- Primary Value Card -->
+                  <div
+                    class="md:col-span-5 bg-gradient-to-br from-slate-900 to-slate-800 dark:from-black dark:to-slate-900 rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group"
+                  >
+                    <!-- Abstract Deco -->
+                    <div
+                      class="absolute -right-10 -top-10 w-40 h-40 bg-[var(--primary-color)] rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-700"
+                    ></div>
+
+                    <div>
+                      <div
+                        class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1.5"
+                      >
+                        <span class="material-symbols-rounded text-[14px]"
+                          >account_balance_wallet</span
+                        >
+                        Total Commitment
+                      </div>
+                      <div
+                        class="text-4xl lg:text-5xl font-black tracking-tighter text-white mt-2"
+                      >
+                        {{
+                          po.total_amount | currency: storeService.currency()
+                        }}
+                      </div>
+                    </div>
+
+                    <div
+                      class="mt-6 pt-4 border-t border-slate-700/50 flex justify-between items-end"
+                    >
+                      <div class="space-y-1">
+                        <div
+                          class="text-[10px] font-black uppercase tracking-widest text-slate-400"
+                        >
+                          Status
+                        </div>
+                        <div class="text-sm font-bold text-white">
+                          {{ po.status }}
+                        </div>
+                      </div>
+                      <div class="space-y-1 text-right">
+                        <div
+                          class="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center justify-end gap-1"
+                        >
+                          <span class="material-symbols-rounded text-[12px]"
+                            >calendar_today</span
+                          >
+                          Expected
+                        </div>
+                        <div
+                          class="text-sm font-bold text-[var(--primary-color)]"
+                        >
+                          {{
+                            po.expected_arrival
+                              ? (po.expected_arrival | date: "MMM d, yyyy")
+                              : "TBD"
+                          }}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="text-xl font-black text-white">{{ selectedPOItems()?.length || 0 }}</div>
+
+                  <!-- Metrics Group -->
+                  <div class="md:col-span-7 flex flex-col gap-6">
+                    <!-- Internal Notes Block -->
+                    <div
+                      class="flex-1 bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col relative overflow-hidden"
+                    >
+                      <div
+                        class="w-1 absolute left-0 top-0 bottom-0 bg-yellow-400/50"
+                      ></div>
+                      <h3
+                        class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1.5 ml-2"
+                      >
+                        <span class="material-symbols-rounded text-[14px]"
+                          >edit_note</span
+                        >
+                        Documentation
+                      </h3>
+                      <div
+                        class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium ml-2 relative z-10"
+                      >
+                        @if (po.notes) {
+                          {{ po.notes }}
+                        } @else {
+                          <span class="opacity-50 italic"
+                            >No operational notes attached to this
+                            document.</span
+                          >
+                        }
+                      </div>
+                      <span
+                        class="material-symbols-rounded absolute -bottom-4 -right-2 text-6xl text-slate-50 dark:text-slate-800/50 pointer-events-none z-0"
+                        >format_quote</span
+                      >
+                    </div>
+
+                    <!-- SKU Summary -->
+                    <div
+                      class="bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between"
+                    >
+                      <div class="flex items-center gap-4">
+                        <div
+                          class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500"
+                        >
+                          <span class="material-symbols-rounded text-[22px]"
+                            >category</span
+                          >
+                        </div>
+                        <div>
+                          <div
+                            class="text-[10px] font-black uppercase tracking-widest text-slate-400"
+                          >
+                            Procurement Items
+                          </div>
+                          <div
+                            class="text-lg font-black text-slate-800 dark:text-slate-100"
+                          >
+                            {{ selectedPOItems()?.length || 0 }} SKUs processing
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Received Progress Ring (Faux visual for now) -->
+                      <div class="hidden sm:flex flex-col items-center">
+                        <div
+                          class="text-[20px] font-black text-slate-800 dark:text-slate-100 tabular-nums"
+                        >
+                          @if (po.status === "RECEIVED") {
+                            100%
+                          } @else if (po.status === "PARTIAL") {
+                            50%
+                          } @else {
+                            0%
+                          }
+                        </div>
+                        <div
+                          class="text-[9px] font-black uppercase tracking-widest text-slate-400"
+                        >
+                          Fulfilled
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <!-- Total Value -->
-                <div class="rounded-xl p-4 transition-all" [ngStyle]="kpiStyles.value">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="material-symbols-rounded text-base text-white/80">payments</span>
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-white/70">Total Value</span>
-                  </div>
-                  <div class="text-xl font-black text-white">{{ po.total_amount | currency: storeService.currency() }}</div>
-                </div>
+                <!-- Manifesto / Line Items Table -->
+                <div
+                  class="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 shadow-sm overflow-hidden mb-8 relative"
+                >
+                  <div
+                    class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--primary-color)] to-blue-400"
+                  ></div>
 
-                <!-- Expected Delivery -->
-                <div class="rounded-xl p-4 transition-all" [ngStyle]="kpiStyles.delivery">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="material-symbols-rounded text-base text-white/80">local_shipping</span>
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-white/70">Expected Delivery</span>
+                  <div
+                    class="px-6 py-5 border-b border-slate-100 dark:border-slate-700/50"
+                  >
+                    <h2
+                      class="text-sm font-black text-slate-800 dark:text-white flex items-center gap-2"
+                    >
+                      <span
+                        class="material-symbols-rounded text-[18px] text-[var(--primary-color)]"
+                        >format_list_bulleted</span
+                      >
+                      Consolidated Manifest
+                    </h2>
                   </div>
-                  <div class="text-xl font-black text-white">{{ po.expected_arrival ? (po.expected_arrival | date:'MMM d') : 'Not Set' }}</div>
+
+                  <div class="p-0">
+                    @if (isLoadingItems()) {
+                      <div
+                        class="py-20 flex flex-col items-center justify-center gap-3 opacity-50"
+                      >
+                        <span
+                          class="material-symbols-rounded text-3xl animate-spin text-[var(--primary-color)]"
+                          >sync</span
+                        >
+                        <span
+                          class="text-xs font-bold uppercase tracking-widest"
+                          >Compiling Database Records</span
+                        >
+                      </div>
+                    } @else {
+                      <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50">
+                          <tr>
+                            <th
+                              class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400"
+                            >
+                              Commodity
+                            </th>
+                            <th
+                              class="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+                            >
+                              Req. Qty
+                            </th>
+                            <th
+                              class="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+                            >
+                              Received
+                            </th>
+                            <th
+                              class="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right"
+                            >
+                              Unit Rate
+                            </th>
+                            <th
+                              class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right"
+                            >
+                              Ext. Price
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody
+                          class="divide-y divide-slate-100 dark:divide-slate-700/50"
+                        >
+                          @for (item of selectedPOItems(); track item.id) {
+                            <tr
+                              class="group hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors"
+                            >
+                              <td class="px-6 py-4">
+                                <div
+                                  class="font-bold text-slate-800 dark:text-slate-200"
+                                >
+                                  {{ getProductName(item.product_id) }}
+                                </div>
+                                <div
+                                  class="text-[10px] font-mono text-slate-400 mt-0.5"
+                                >
+                                  ID: {{ item.product_id.substring(0, 8) }}
+                                </div>
+                              </td>
+                              <td class="px-4 py-4 text-center align-middle">
+                                <span
+                                  class="inline-flex items-center justify-center min-w-[32px] h-8 px-2 bg-slate-100 dark:bg-slate-800 rounded-lg font-black text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                                  >{{ item.quantity_ordered }}</span
+                                >
+                              </td>
+                              <td class="px-4 py-4 text-center align-middle">
+                                <span
+                                  class="inline-flex items-center justify-center min-w-[32px] h-8 px-2 rounded-lg font-black border transition-colors"
+                                  [ngClass]="
+                                    item.quantity_received >=
+                                    item.quantity_ordered
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50'
+                                      : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/50'
+                                  "
+                                >
+                                  {{ item.quantity_received || 0 }}
+                                </span>
+                              </td>
+                              <td
+                                class="px-4 py-4 text-right align-middle text-slate-500 font-medium tabular-nums"
+                              >
+                                {{
+                                  item.unit_cost
+                                    | currency: storeService.currency()
+                                }}
+                              </td>
+                              <td
+                                class="px-6 py-4 text-right align-middle font-black text-slate-900 dark:text-white tabular-nums tracking-tight"
+                              >
+                                {{
+                                  item.quantity_ordered * item.unit_cost
+                                    | currency: storeService.currency()
+                                }}
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    }
+                  </div>
                 </div>
               </div>
-
-              <!-- Content Area Scrollable -->
-              <div class="flex-1 overflow-auto px-6 pb-6">
-                 <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                    <div class="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
-                      <div class="px-6 py-3 text-xs font-black uppercase tracking-widest border-b-2 border-[var(--primary-color)] text-[var(--primary-color)]">Line Items</div>
-                    </div>
-                    
-                    <div class="p-0">
-                       @if (isLoadingItems()) {
-                          <div class="p-10 flex flex-col items-center justify-center gap-2 opacity-50">
-                             <span class="material-symbols-rounded animate-spin">progress_activity</span>
-                             <span class="text-xs">Fetching items...</span>
-                          </div>
-                       } @else {
-                          <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-50/50 dark:bg-slate-900/10 text-slate-500 font-black">
-                              <tr>
-                                <th class="px-6 py-4">PRODUCT</th>
-                                <th class="px-4 py-4 text-center">ORDERED</th>
-                                <th class="px-4 py-4 text-center">RECEIVED</th>
-                                <th class="px-4 py-4 text-right">UNIT COST</th>
-                                <th class="px-6 py-4 text-right">TOTAL</th>
-                              </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                               @for (item of selectedPOItems(); track item.id) {
-                                 <tr>
-                                    <td class="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">{{ getProductName(item.product_id) }}</td>
-                                    <td class="px-4 py-4 text-center">
-                                       <span class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded font-black text-slate-700 dark:text-slate-300">{{ item.quantity_ordered }}</span>
-                                    </td>
-                                    <td class="px-4 py-4 text-center">
-                                       <span class="px-2 py-1 rounded font-black shadow-sm" 
-                                             [ngClass]="item.quantity_received >= item.quantity_ordered ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'">
-                                         {{ item.quantity_received || 0 }}
-                                       </span>
-                                    </td>
-                                    <td class="px-4 py-4 text-right opacity-60">{{ item.unit_cost | currency: storeService.currency() }}</td>
-                                    <td class="px-6 py-4 text-right font-black">{{ (item.quantity_ordered * item.unit_cost) | currency: storeService.currency() }}</td>
-                                 </tr>
-                               }
-                            </tbody>
-                          </table>
-                       }
-                    </div>
-
-                    <!-- Order Footer / Notes -->
-                    <div class="p-6 bg-slate-50 dark:bg-slate-900/20 border-t border-slate-200 dark:border-slate-700">
-                       <div class="flex flex-col md:flex-row justify-between gap-6">
-                          <div class="flex-1">
-                             <label class="block text-[10px] font-black uppercase text-slate-400 mb-2">Internal Notes</label>
-                             <div class="text-sm text-slate-600 dark:text-slate-400 italic bg-white dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
-                                {{ po.notes || 'No notes added to this order.' }}
-                              </div>
-                          </div>
-                          <div class="w-full md:w-64 space-y-2">
-                             <div class="flex justify-between text-xs opacity-60 font-bold">
-                                <span>Subtotal</span>
-                                <span>{{ po.total_amount | currency: storeService.currency() }}</span>
-                             </div>
-                             <div class="h-px bg-slate-200 dark:bg-slate-700"></div>
-                             <div class="flex justify-between text-lg font-black text-[var(--primary-color)]">
-                                <span>Grand Total</span>
-                                <span>{{ po.total_amount | currency: storeService.currency() }}</span>
-                             </div>
-                          </div>
-                       </div>
-                     </div>
-                  </div>
-               </div>
             </div>
           }
         }
 
-        <!-- Case B: CREATE / EDIT FORM VIEW -->
-        @if (viewState() === 'CREATE' || viewState() === 'EDIT') {
-          <div class="flex-1 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300">
-
-            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex justify-between items-center flex-shrink-0">
-                <div>
-                    <h2 class="text-2xl font-black">
-                        {{ editMode() ? 'Edit Order' : 'New Purchase Order' }}
-                    </h2>
-                    @if (editMode() && editingPoId()) {
-                        <p class="text-xs text-slate-500 font-medium mt-1">PO #{{ editingPoId()!.substring(0, 8) }} &mdash; Modification Mode</p>
-                    } @else {
-                        <p class="text-xs text-slate-500 font-medium mt-1">Drafting a new procurement request</p>
-                    }
-                </div>
-                <button (click)="discardForm()" class="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all">
+        @if (viewState() === "CREATE" || viewState() === "EDIT") {
+          <div
+            class="flex-1 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+          >
+            <!-- Sticky Header -->
+            <div
+              class="px-8 py-5 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex justify-between items-center sticky top-0 z-20"
+            >
+              <div>
+                <h2 class="text-2xl font-black text-slate-900 dark:text-white">
+                  <span
+                    class="material-symbols-rounded align-middle mr-2 text-[var(--primary-color)]"
+                    >{{ editMode() ? "edit_document" : "add_box" }}</span
+                  >
+                  {{ editMode() ? "Edit Order" : "New Purchase Order" }}
+                </h2>
+                @if (editMode() && editingPoId()) {
+                  <p
+                    class="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-1 ml-9 flex items-center gap-1.5"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                    Modification Mode: PO-{{ editingPoId()!.substring(0, 8) }}
+                  </p>
+                } @else {
+                  <p
+                    class="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-1 ml-9 flex items-center gap-1.5"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                    Drafting New Requisition
+                  </p>
+                }
+              </div>
+              <div class="flex gap-3">
+                <button
+                  (click)="discardForm()"
+                  class="px-5 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all uppercase tracking-wider"
+                >
                   Discard
                 </button>
+                <button
+                  (click)="savePO()"
+                  [disabled]="
+                    poForm.invalid || items.length === 0 || isSaving()
+                  "
+                  class="px-8 py-2.5 bg-gradient-to-r from-[var(--primary-color)] to-blue-600 text-white text-xs font-black rounded-xl shadow-[0_8px_20px_rgba(var(--primary-color-rgb),0.3)] hover:shadow-[0_8px_25px_rgba(var(--primary-color-rgb),0.4)] active:scale-95 transition-all disabled:opacity-50 disabled:grayscale flex items-center gap-2 uppercase tracking-wider"
+                >
+                  <span
+                    class="material-symbols-rounded text-sm animate-spin"
+                    *ngIf="isSaving()"
+                    >progress_activity</span
+                  >
+                  <span
+                    class="material-symbols-rounded text-sm"
+                    *ngIf="!isSaving()"
+                    >send</span
+                  >
+                  {{
+                    isSaving()
+                      ? "Saving..."
+                      : editMode()
+                        ? "Update Order"
+                        : "Commit Order"
+                  }}
+                </button>
+              </div>
             </div>
 
-
-            <div class="flex-1 overflow-auto p-8">
-                <form [formGroup]="poForm" class="max-w-4xl space-y-8">
-
-                    <!-- Header Inputs: Supplier & Dates -->
+            <div
+              class="flex-1 overflow-auto bg-slate-50/50 dark:bg-slate-900/50 p-6"
+            >
+              <form
+                [formGroup]="poForm"
+                class="flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto h-full items-start"
+              >
+                <!-- LEFT PANE: Catalogue & Supplier Info (Scrolls independently if needed) -->
+                <div class="flex-1 space-y-6 min-w-0">
+                  <!-- Supplier Info Card -->
+                  <div
+                    class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm"
+                  >
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="space-y-2">
-                            <label class="block text-xs font-black uppercase tracking-widest text-slate-400">Supplier Selection</label>
-                            <select formControlName="supplier_id" (change)="onSupplierChange()" 
-                                    class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-4 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all appearance-none">
-                                <option [ngValue]="null">Choose a Supplier...</option>
-                                @for (supplier of suppliers(); track supplier.id) {
-                                    <option [value]="supplier.id">{{ supplier.name }}</option>
-                                }
-                            </select>
-                            
-                            @if (lastSupplierPO()) {
-                              <button type="button" (click)="repeatLastOrder()" [disabled]="isRepeatLoading()"
-                                      class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[11px] font-black rounded-lg hover:bg-blue-100 transition-all">
-                                <span class="material-symbols-rounded text-xs animate-spin" *ngIf="isRepeatLoading()">progress_activity</span>
-                                <span class="material-symbols-rounded text-xs" *ngIf="!isRepeatLoading()">history</span>
-                                Repeat Last Order ({{ lastSupplierPO()!.total_amount | currency: storeService.currency() }})
-                              </button>
-                            }
-                        </div>
-                        <div class="space-y-2">
-                            <label class="block text-xs font-black uppercase tracking-widest text-slate-400">Expected Delivery</label>
-                            <input type="date" formControlName="expected_arrival"
-                                   class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl p-4 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all">
-                            <p class="text-[10px] text-slate-400 font-medium">Auto-calculated based on supplier lead time.</p>
-                        </div>
-                    </div>
-
-                    <!-- Catalogue Grid for Selection -->
-                    <div class="space-y-4 pt-4">
-                      <div class="flex items-center justify-between">
-                        <h3 class="font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                          <span class="material-symbols-rounded text-[var(--primary-color)]">inventory_2</span>
-                          Product Catalogue
-                        </h3>
-                        
-                        <div class="flex items-center gap-3" *ngIf="_selectedSupplierId()">
-                          <select (change)="selectedCatalogCategory.set($any($event.target).value === 'null' ? null : $any($event.target).value)"
-                                  class="bg-slate-100 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-lg py-2 px-3 text-xs font-bold outline-none focus:border-[var(--primary-color)] transition-all cursor-pointer">
-                            <option value="null">All Categories</option>
-                            @for (cat of categories(); track cat.id) {
-                              <option [value]="cat.id" [selected]="selectedCatalogCategory() === cat.id">{{ cat.name }}</option>
+                      <div class="space-y-2 relative">
+                        <label
+                          class="block text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5"
+                        >
+                          <span class="material-symbols-rounded text-xs"
+                            >store</span
+                          >
+                          Supplier Selection
+                        </label>
+                        <div class="relative">
+                          <select
+                            formControlName="supplier_id"
+                            (change)="onSupplierChange()"
+                            class="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 pl-4 pr-10 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[var(--primary-color)]/20 focus:border-[var(--primary-color)] outline-none transition-all appearance-none shadow-inner"
+                          >
+                            <option [ngValue]="null">
+                              Select a provider...
+                            </option>
+                            @for (supplier of suppliers(); track supplier.id) {
+                              <option [value]="supplier.id">
+                                {{ supplier.name }}
+                              </option>
                             }
                           </select>
-
-                          <div class="relative w-64">
-                            <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
-                            <input type="text" [value]="catalogSearchQuery()" (input)="catalogSearchQuery.set($any($event.target).value)"
-                                   placeholder="Search items..."
-                                   class="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-transparent rounded-lg text-xs outline-none focus:ring-2 focus:ring-[var(--primary-color)]/30 transition-all">
-                          </div>
+                          <span
+                            class="material-symbols-rounded absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"
+                            >expand_more</span
+                          >
                         </div>
+
+                        @if (lastSupplierPO()) {
+                          <button
+                            type="button"
+                            (click)="repeatLastOrder()"
+                            [disabled]="isRepeatLoading()"
+                            class="absolute -bottom-8 left-0 flex items-center gap-1 text-[var(--primary-color)] text-[10px] font-black hover:underline transition-all"
+                          >
+                            <span
+                              class="material-symbols-rounded text-[14px]"
+                              [class.animate-spin]="isRepeatLoading()"
+                            >
+                              {{
+                                isRepeatLoading()
+                                  ? "progress_activity"
+                                  : "history"
+                              }}
+                            </span>
+                            Quick-Fill from Last Order ({{
+                              lastSupplierPO()!.total_amount
+                                | currency: storeService.currency()
+                            }})
+                          </button>
+                        }
+                      </div>
+                      <div class="space-y-2">
+                        <label
+                          class="block text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5"
+                        >
+                          <span class="material-symbols-rounded text-xs"
+                            >event</span
+                          >
+                          Expected Delivery
+                        </label>
+                        <input
+                          type="date"
+                          formControlName="expected_arrival"
+                          class="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-[var(--primary-color)]/20 focus:border-[var(--primary-color)] outline-none transition-all shadow-inner"
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      class="mt-6 pt-5 border-t border-slate-100 dark:border-slate-700/50"
+                    >
+                      <label
+                        class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1.5"
+                      >
+                        <span class="material-symbols-rounded text-xs"
+                          >notes</span
+                        >
+                        Internal / Supplier Notes
+                      </label>
+                      <textarea
+                        formControlName="notes"
+                        rows="2"
+                        placeholder="Add receiving instructions, references, or context..."
+                        class="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-[var(--primary-color)]/20 focus:border-[var(--primary-color)] outline-none transition-all resize-none shadow-inner"
+                      ></textarea>
+                    </div>
+                  </div>
+
+                  <!-- Catalogue Grid section -->
+                  <div class="space-y-4">
+                    <div class="flex items-end justify-between">
+                      <div>
+                        <h3
+                          class="font-black text-slate-800 dark:text-slate-200 text-lg flex items-center gap-2"
+                        >
+                          Master Catalogue
+                        </h3>
+                        <p
+                          class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5"
+                        >
+                          Click items to add to workbench
+                        </p>
                       </div>
 
-                      @if (!_selectedSupplierId()) {
-                        <div class="py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl opacity-50">
-                          <span class="material-symbols-rounded text-4xl mb-2">local_shipping</span>
-                          <span class="text-sm font-bold uppercase tracking-widest">Select a supplier to start</span>
+                      <div
+                        class="flex items-center gap-2"
+                        *ngIf="_selectedSupplierId()"
+                      >
+                        <select
+                          (change)="
+                            selectedCatalogCategory.set(
+                              $any($event.target).value === 'null'
+                                ? null
+                                : $any($event.target).value
+                            )
+                          "
+                          class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 pl-4 pr-8 text-xs font-bold outline-none focus:ring-2 focus:ring-[var(--primary-color)]/20 focus:border-[var(--primary-color)] transition-all cursor-pointer shadow-sm appearance-none bg-no-repeat bg-[right_0.5rem_center] bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:0.6rem_auto]"
+                        >
+                          <option value="null">All Categories</option>
+                          @for (cat of categories(); track cat.id) {
+                            <option
+                              [value]="cat.id"
+                              [selected]="selectedCatalogCategory() === cat.id"
+                            >
+                              {{ cat.name }}
+                            </option>
+                          }
+                        </select>
+
+                        <div class="relative w-56">
+                          <span
+                            class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[16px]"
+                            >search</span
+                          >
+                          <input
+                            type="text"
+                            [value]="catalogSearchQuery()"
+                            (input)="
+                              catalogSearchQuery.set($any($event.target).value)
+                            "
+                            placeholder="Search inventory..."
+                            class="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[var(--primary-color)]/20 focus:border-[var(--primary-color)] transition-all shadow-sm"
+                          />
                         </div>
-                      } @else {
-                        <!-- restockSuggestions banner -->
-                        @if (restockSuggestions().length > 0) {
-                          <div class="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl animate-in fade-in slide-in-from-top-2">
-                            <div class="flex items-center gap-3">
-                              <span class="material-symbols-rounded text-amber-600">notification_important</span>
-                              <span class="text-xs font-bold text-amber-800 dark:text-amber-300">
-                                {{ restockSuggestions().length }} items need restocking.
-                              </span>
+                      </div>
+                    </div>
+
+                    @if (!_selectedSupplierId()) {
+                      <div
+                        class="py-16 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-800/30 border border-dashed border-slate-300 dark:border-slate-700/50 rounded-3xl"
+                      >
+                        <div
+                          class="w-16 h-16 rounded-2xl bg-[var(--primary-color)]/10 flex items-center justify-center mb-3"
+                        >
+                          <span
+                            class="material-symbols-rounded text-3xl text-[var(--primary-color)]"
+                            >handshake</span
+                          >
+                        </div>
+                        <span
+                          class="text-xs font-black uppercase tracking-widest text-slate-500 mb-1"
+                          >Awaiting Supplier</span
+                        >
+                        <p
+                          class="text-[10px] text-slate-400 font-medium text-center max-w-[200px]"
+                        >
+                          Choose a supplier above to load their linked product
+                          catalogue.
+                        </p>
+                      </div>
+                    } @else {
+                      <!-- restockSuggestions banner -->
+                      @if (restockSuggestions().length > 0) {
+                        <div
+                          class="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border border-orange-200/50 dark:border-orange-800/50 rounded-2xl animate-in fade-in slide-in-from-top-2 shadow-sm"
+                        >
+                          <div class="flex items-center gap-3">
+                            <div
+                              class="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center"
+                            >
+                              <span
+                                class="material-symbols-rounded text-orange-600 dark:text-orange-400 text-sm"
+                                >warning</span
+                              >
                             </div>
-                            <button type="button" (click)="preloadLowStockItems()"
-                                    class="px-4 py-2 bg-amber-100 dark:bg-amber-800 text-amber-900 dark:text-amber-200 text-xs font-black rounded-lg hover:bg-amber-200 transition-all">
-                              Pre-fill All
-                            </button>
+                            <div>
+                              <div
+                                class="text-[11px] font-black uppercase tracking-widest text-orange-800 dark:text-orange-300 leading-tight"
+                              >
+                                Low Stock Alert
+                              </div>
+                              <div
+                                class="text-[10px] text-orange-600/80 font-bold"
+                              >
+                                {{ restockSuggestions().length }} products have
+                                triggered reorder points.
+                              </div>
+                            </div>
                           </div>
-                        }
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4">
-                          @for (product of catalogueProducts(); track product.id) {
-                            <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border-2 transition-all group relative"
-                                 [ngClass]="{
-                                    'border-[var(--primary-color)] bg-blue-50/30': isInOrder(product.id),
-                                    'border-transparent': !isInOrder(product.id)
-                                 }">
-                              
-                              <div *ngIf="isInOrder(product.id)" class="absolute -top-2 -right-2 w-6 h-6 bg-[var(--primary-color)] text-white rounded-full flex items-center justify-center shadow-lg animate-in zoom-in border-2 border-white dark:border-slate-800">
-                                <span class="material-symbols-rounded text-sm">check</span>
+                          <button
+                            type="button"
+                            (click)="preloadLowStockItems()"
+                            class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-500/20 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 uppercase tracking-wider"
+                          >
+                            <span class="material-symbols-rounded text-[14px]"
+                              >bolt</span
+                            >
+                            Auto-Fill
+                          </button>
+                        </div>
+                      }
+
+                      <!-- Dynamic Grid -->
+                      <div
+                        class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
+                      >
+                        @for (
+                          product of catalogueProducts();
+                          track product.id
+                        ) {
+                          <div
+                            class="bg-white dark:bg-slate-800 rounded-2xl border-2 transition-all group overflow-hidden flex flex-col"
+                            [ngClass]="{
+                              'border-[var(--primary-color)] shadow-[0_4px_15px_rgba(var(--primary-color-rgb),0.1)]':
+                                isInOrder(product.id),
+                              'border-transparent shadow-sm hover:border-slate-300 dark:hover:border-slate-600':
+                                !isInOrder(product.id),
+                            }"
+                          >
+                            <!-- Top Info area -->
+                            <div class="p-3.5 flex-1 relative">
+                              <div
+                                *ngIf="isInOrder(product.id)"
+                                class="absolute top-3 right-3 w-5 h-5 bg-[var(--primary-color)] text-white rounded-full flex items-center justify-center animate-in zoom-in"
+                              >
+                                <span
+                                  class="material-symbols-rounded text-[10px] font-black"
+                                  >check</span
+                                >
                               </div>
 
-                              <div class="font-bold text-slate-800 dark:text-slate-100 text-sm truncate mb-0.5">{{ product.name }}</div>
-                              <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5" [class.text-red-500]="(product.stock_quantity || 0) <= 0">
-                                <span class="material-symbols-rounded text-xs">{{ (product.stock_quantity || 0) <= 0 ? 'block' : 'inventory' }}</span>
-                                Stock: {{ product.stock_quantity || 0 }}
+                              <div
+                                class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center mb-2"
+                              >
+                                <span
+                                  class="material-symbols-rounded text-[16px] text-slate-400"
+                                  >category</span
+                                >
                               </div>
 
-                              <div class="flex items-center gap-2 mt-auto" (click)="$event.stopPropagation()">
-                                <div class="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden flex-1 h-9 border border-slate-200 dark:border-slate-600">
-                                  <button type="button" (click)="setCardQty(product.id, getCardQty(product.id)-1)" class="flex-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-bold text-slate-500">&minus;</button>
-                                  <span class="px-2 text-xs font-black text-slate-700 dark:text-slate-200">{{ getCardQty(product.id) }}</span>
-                                  <button type="button" (click)="setCardQty(product.id, getCardQty(product.id)+1)" class="flex-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-bold text-slate-500">&plus;</button>
+                              <div
+                                class="font-black text-slate-800 dark:text-slate-100 text-[13px] leading-snug line-clamp-2 mb-2"
+                              >
+                                {{ product.name }}
+                              </div>
+
+                              <div class="flex items-center gap-1.5">
+                                <span
+                                  class="w-2 h-2 rounded-full"
+                                  [ngClass]="
+                                    (product.stock_quantity || 0) <= 0
+                                      ? 'bg-red-500'
+                                      : 'bg-green-500'
+                                  "
+                                ></span>
+                                <span
+                                  class="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                                >
+                                  {{ product.stock_quantity || 0 }} in stock
+                                </span>
+                              </div>
+                            </div>
+
+                            <!-- Bottom Action area -->
+                            <div
+                              class="p-2 bg-slate-50/80 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-700/50 shrink-0"
+                            >
+                              <div
+                                class="flex items-center gap-2"
+                                (click)="$event.stopPropagation()"
+                              >
+                                <div
+                                  class="flex items-center bg-white dark:bg-slate-900 rounded-lg overflow-hidden flex-1 h-8 border border-slate-200 dark:border-slate-700 shadow-inner"
+                                >
+                                  <button
+                                    type="button"
+                                    (click)="
+                                      setCardQty(
+                                        product.id,
+                                        getCardQty(product.id) - 1
+                                      )
+                                    "
+                                    class="w-8 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-black text-slate-400"
+                                  >
+                                    &minus;
+                                  </button>
+                                  <input
+                                    type="text"
+                                    [value]="getCardQty(product.id)"
+                                    readonly
+                                    class="w-8 text-center text-[11px] font-black bg-transparent border-none p-0 focus:ring-0"
+                                  />
+                                  <button
+                                    type="button"
+                                    (click)="
+                                      setCardQty(
+                                        product.id,
+                                        getCardQty(product.id) + 1
+                                      )
+                                    "
+                                    class="w-8 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-black text-slate-400"
+                                  >
+                                    &plus;
+                                  </button>
                                 </div>
-                                <button type="button" (click)="addProductToOrder(product)"
-                                        class="h-9 w-9 flex items-center justify-center bg-[var(--primary-color)] text-white rounded-lg hover:brightness-110 active:scale-90 transition-all shadow-sm">
-                                  <span class="material-symbols-rounded text-sm">add_shopping_cart</span>
+                                <button
+                                  type="button"
+                                  (click)="addProductToOrder(product)"
+                                  class="h-8 w-10 flex items-center justify-center bg-[var(--primary-color)] text-white rounded-lg hover:brightness-110 active:scale-90 transition-all shadow-md shadow-[var(--primary-color)]/20 shrink-0 group-hover:scale-105"
+                                >
+                                  <span
+                                    class="material-symbols-rounded text-[15px]"
+                                    >add_shopping_cart</span
+                                  >
                                 </button>
                               </div>
                             </div>
-                          } @empty {
-                            <div class="col-span-full py-12 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/10 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 opacity-60">
-                              <span class="material-symbols-rounded text-4xl mb-3 text-slate-300">inventory_2</span>
-                              <div class="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">Catalogue Empty</div>
-                              <p class="text-[10px] text-slate-400 max-w-[200px] text-center px-4 leading-relaxed font-medium">
-                                No products found. You must create products in the Inventory Manager before you can order them.
-                              </p>
+                          </div>
+                        } @empty {
+                          <div
+                            class="col-span-full py-16 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-800/30 rounded-3xl opacity-60"
+                          >
+                            <span
+                              class="material-symbols-rounded text-4xl mb-3 text-slate-400"
+                              >search_off</span
+                            >
+                            <span
+                              class="text-xs font-black uppercase tracking-widest text-slate-500 mb-1"
+                              >No matches found</span
+                            >
+                            <p class="text-[10px] text-slate-400 font-medium">
+                              Try adjusting your search or category filter.
+                            </p>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+                <!-- End Left Pane -->
+
+                <!-- RIGHT PANE: Sticky Cart / Order Breakdown -->
+                <div class="w-full lg:w-[450px] shrink-0 sticky top-4">
+                  <div
+                    class="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 shadow-[0_15px_40px_rgba(0,0,0,0.06)] dark:shadow-[0_15px_40px_rgba(0,0,0,0.4)] flex flex-col max-h-[calc(100vh-180px)] overflow-hidden"
+                  >
+                    <!-- Cart Header -->
+                    <div
+                      class="p-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50"
+                    >
+                      <h3
+                        class="font-black text-slate-800 dark:text-slate-200 text-sm flex items-center gap-2"
+                      >
+                        <div
+                          class="w-6 h-6 rounded bg-[var(--primary-color)]/10 flex items-center justify-center"
+                        >
+                          <span
+                            class="material-symbols-rounded text-[var(--primary-color)] text-[14px]"
+                            >receipt_long</span
+                          >
+                        </div>
+                        Workbench
+                      </h3>
+                      <span
+                        class="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-[10px] font-black tracking-widest uppercase rounded-md text-slate-500 border border-slate-300 dark:border-slate-600"
+                      >
+                        {{ items.length }} Line{{
+                          items.length !== 1 ? "s" : ""
+                        }}
+                      </span>
+                    </div>
+
+                    <!-- Cart Items (Scrollable) -->
+                    <div
+                      class="flex-1 overflow-y-auto bg-slate-50/30 dark:bg-slate-900/20"
+                      formArrayName="items"
+                    >
+                      @if (items.length > 0) {
+                        <div class="p-2 space-y-2">
+                          @for (
+                            item of items.controls;
+                            track item;
+                            let i = $index
+                          ) {
+                            <div
+                              [formGroupName]="i"
+                              class="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 pr-2 shadow-sm relative overflow-hidden transition-all hover:border-[var(--primary-color)]/50"
+                            >
+                              <!-- Delete Button -->
+                              <button
+                                type="button"
+                                (click)="removeItem(i)"
+                                class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all opacity-0 group-hover:opacity-100 z-10"
+                              >
+                                <span
+                                  class="material-symbols-rounded text-[16px]"
+                                  >close</span
+                                >
+                              </button>
+
+                              <!-- Product Name -->
+                              <div
+                                class="font-black text-slate-800 dark:text-slate-200 text-xs pr-8 mb-2 leading-tight"
+                              >
+                                {{
+                                  getProductName(item.get("product_id")?.value)
+                                }}
+                              </div>
+
+                              <div class="flex items-end justify-between gap-3">
+                                <!-- Qty Input -->
+                                <div class="w-16">
+                                  <label
+                                    class="block text-[8px] font-black uppercase text-slate-400 mb-0.5"
+                                    >QTY</label
+                                  >
+                                  <input
+                                    type="number"
+                                    formControlName="quantity"
+                                    min="1"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 px-2 text-center text-xs font-black text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-[var(--primary-color)]/20 outline-none transition-all"
+                                  />
+                                </div>
+
+                                <!-- Cost Input -->
+                                <div class="flex-1">
+                                  <label
+                                    class="block text-[8px] font-black uppercase text-slate-400 mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
+                                    >Unit Cost ({{
+                                      storeService.currency()
+                                    }})</label
+                                  >
+                                  <input
+                                    type="number"
+                                    formControlName="cost"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 px-2 text-left text-xs font-bold text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-[var(--primary-color)]/20 outline-none transition-all"
+                                  />
+                                </div>
+
+                                <!-- Row Total -->
+                                <div class="text-right pb-1">
+                                  <div
+                                    class="text-[13px] font-black text-slate-900 dark:text-slate-100 tabular-nums tracking-tight"
+                                  >
+                                    {{
+                                      (item.get("quantity")?.value || 0) *
+                                        (item.get("cost")?.value || 0)
+                                        | currency: storeService.currency()
+                                    }}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           }
+                        </div>
+                      } @else {
+                        <div
+                          class="h-48 flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 m-4 rounded-2xl"
+                        >
+                          <div
+                            class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3"
+                          >
+                            <span
+                              class="material-symbols-rounded text-slate-300 dark:text-slate-600 text-xl"
+                              >shopping_cart</span
+                            >
+                          </div>
+                          <span
+                            class="text-xs font-black uppercase tracking-widest text-slate-400 mb-1"
+                            >Cart Empty</span
+                          >
+                          <p class="text-[10px] font-medium text-slate-400">
+                            Add products from the catalogue to build your order.
+                          </p>
                         </div>
                       }
                     </div>
 
-                    <!-- Items Summary List -->
-                    @if (items.length > 0) {
-                      <div class="space-y-4">
-                        <h3 class="font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                          <span class="material-symbols-rounded text-[var(--primary-color)]">receipt_long</span>
-                          Order Breakdown
-                          <span class="px-2.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-[10px] font-black rounded-full text-slate-500">{{ items.length }} SKU{{ items.length !== 1 ? 's' : '' }}</span>
-                        </h3>
-                        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                          <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-50 dark:bg-slate-800/50 font-black text-slate-400 text-[10px] uppercase tracking-widest border-b border-slate-200 dark:border-slate-700">
-                              <tr>
-                                <th class="px-6 py-4">Product Detail</th>
-                                <th class="px-4 py-4 text-center">Quantity</th>
-                                <th class="px-4 py-4 text-right">Unit Price</th>
-                                <th class="px-4 py-4 text-right">Total</th>
-                                <th class="px-6 py-4"></th>
-                              </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700" formArrayName="items">
-                              @for (item of items.controls; track item.get('product_id')?.value; let i = $index) {
-                                <tr [formGroupName]="i" class="group hover:bg-slate-50 dark:hover:bg-slate-900/10 transition-colors">
-                                  <td class="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">{{ getProductName(item.get('product_id')?.value) }}</td>
-                                  <td class="px-4 py-4">
-                                    <input type="number" formControlName="quantity" min="1"
-                                           class="w-16 mx-auto block bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-lg p-2 text-center font-bold focus:border-[var(--primary-color)] outline-none transition-all">
-                                  </td>
-                                  <td class="px-4 py-4 text-right">
-                                    <div class="flex items-center justify-end gap-1 font-bold">
-                                      <span class="text-[10px] opacity-30">{{ storeService.currency() }}</span>
-                                      <input type="number" formControlName="cost" min="0" step="0.01"
-                                             class="w-24 bg-slate-100 dark:bg-slate-700 border-2 border-transparent rounded-lg p-2 text-right outline-none focus:border-[var(--primary-color)] transition-all">
-                                    </div>
-                                  </td>
-                                  <td class="px-4 py-4 text-right font-black text-slate-900 dark:text-slate-100">
-                                    {{ (item.get('quantity')?.value || 0) * (item.get('cost')?.value || 0) | currency: storeService.currency() }}
-                                  </td>
-                                  <td class="px-6 py-4 text-right">
-                                    <button type="button" (click)="removeItem(i)" class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
-                                      <span class="material-symbols-rounded text-base">delete_sweep</span>
-                                    </button>
-                                  </td>
-                                </tr>
-                              }
-                            </tbody>
-                          </table>
+                    <!-- Cart Total Footer -->
+                    <div
+                      class="p-5 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700/50 rounded-b-3xl"
+                    >
+                      <div class="flex justify-between items-end">
+                        <div class="space-y-1">
+                          <div
+                            class="text-[9px] font-black text-slate-400 uppercase tracking-widest"
+                          >
+                            Estimated Total
+                          </div>
+                          <div class="text-[10px] font-bold text-slate-500">
+                            Excl. Shipping & Tax
+                          </div>
+                        </div>
+                        <div
+                          class="text-3xl font-black text-[var(--primary-color)] tracking-tighter shadow-sm"
+                        >
+                          <span class="text-[16px] mr-0.5 opacity-60 font-bold"
+                            >$</span
+                          >{{ calculateTotal() | number: "1.2-2" }}
                         </div>
                       </div>
-                    }
-
-                    <!-- Notes -->
-                    <div class="space-y-2">
-                        <label class="block text-xs font-black uppercase tracking-widest text-slate-400">Notes & Special Instructions</label>
-                        <textarea formControlName="notes" rows="3"
-                                  placeholder="Type any instructions for the supplier or internal reminders here..."
-                                  class="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 text-sm font-medium focus:border-[var(--primary-color)] outline-none transition-all resize-none shadow-sm"></textarea>
                     </div>
-
-                    <!-- Order Total Summary -->
-                    <div class="flex justify-end pt-6 border-t border-slate-200 dark:border-slate-700">
-                      <div class="w-80 p-6 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                         <div class="flex justify-between text-slate-500 font-bold text-xs uppercase tracking-widest">
-                           <span>Estimated Subtotal</span>
-                           <span>{{ calculateTotal() | currency: storeService.currency() }}</span>
-                         </div>
-                         <div class="h-px bg-slate-200 dark:bg-slate-700 my-2"></div>
-                         <div class="flex justify-between items-center">
-                           <span class="font-black text-slate-800 dark:text-slate-200 text-sm">TOTAL PAYABLE</span>
-                           <span class="text-2xl font-black text-[var(--primary-color)]">{{ calculateTotal() | currency: storeService.currency() }}</span>
-                         </div>
-                      </div>
-                    </div>
-
-                </form>
-            </div>
-
-            <!-- Form Footer Actions -->
-            <div class="px-8 py-6 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex justify-end gap-4 flex-shrink-0 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
-                <button type="button" (click)="discardForm()"
-                        class="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors uppercase tracking-widest">
-                  Cancel
-                </button>
-                <button type="button" (click)="savePO()"
-                        [disabled]="poForm.invalid || items.length === 0 || isSaving()"
-                        class="px-10 py-3 bg-[var(--primary-color)] text-white text-sm font-black rounded-xl shadow-xl hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 uppercase tracking-widest">
-                    <span class="material-symbols-rounded text-sm animate-spin" *ngIf="isSaving()">progress_activity</span>
-                    <span class="material-symbols-rounded text-sm" *ngIf="!isSaving()">save</span>
-                    {{ isSaving() ? 'Processing...' : (editMode() ? 'Update Order' : 'Commit Order') }}
-                </button>
+                  </div>
+                </div>
+                <!-- End Right Pane -->
+              </form>
             </div>
           </div>
         }
 
-        @if (viewState() === 'LIST' && !selectedPO() && !editMode()) {
-           <div class="flex-1 flex flex-col items-center justify-center text-slate-400 gap-6 animate-in fade-in zoom-in duration-500 max-w-sm mx-auto text-center px-10">
-              <div class="w-40 h-40 rounded-[3.5rem] bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none mb-4">
-                <span class="material-symbols-rounded text-7xl opacity-20 text-[var(--primary-color)]">fact_check</span>
+        @if (viewState() === "LIST" && !selectedPO() && !editMode()) {
+          <div
+            class="flex-1 flex flex-col items-center justify-center text-slate-400 gap-6 animate-in fade-in zoom-in duration-500 max-w-sm mx-auto text-center px-10"
+          >
+            <div
+              class="w-40 h-40 rounded-[3.5rem] bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none mb-4"
+            >
+              <span
+                class="material-symbols-rounded text-7xl opacity-20 text-[var(--primary-color)]"
+                >fact_check</span
+              >
+            </div>
+            <div>
+              <div
+                class="text-2xl font-black text-slate-800 dark:text-slate-200 uppercase tracking-tighter"
+              >
+                Procurement Hub
               </div>
-              <div>
-                <div class="text-2xl font-black text-slate-800 dark:text-slate-200 uppercase tracking-tighter">Procurement Hub</div>
-                <p class="text-sm mt-3 text-slate-500 dark:text-slate-400 leading-relaxed font-medium">Select a purchase order from the side list to review its status, or start a new requisition to replenish stock levels across your organization.</p>
-              </div>
-              <button (click)="startNewPO()" class="mt-4 px-10 py-4 bg-[var(--primary-color)] text-white text-xs font-black rounded-2xl shadow-2xl hover:brightness-110 hover:-translate-y-1 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest">
-                 <span class="material-symbols-rounded text-sm">add_circle</span>
-                 New Procurement Request
-              </button>
-           </div>
+              <p
+                class="text-sm mt-3 text-slate-500 dark:text-slate-400 leading-relaxed font-medium"
+              >
+                Select a purchase order from the side list to review its status,
+                or start a new requisition to replenish stock levels across your
+                organization.
+              </p>
+            </div>
+            <button
+              (click)="startNewPO()"
+              class="mt-4 px-10 py-4 bg-[var(--primary-color)] text-white text-xs font-black rounded-2xl shadow-2xl hover:brightness-110 hover:-translate-y-1 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest"
+            >
+              <span class="material-symbols-rounded text-sm">add_circle</span>
+              New Procurement Request
+            </button>
+          </div>
         }
-
       </div>
     </div>
-  `
+  `,
 })
 export class PurchaseOrderComponent {
   supabase = inject(MockSupabaseService);
@@ -647,21 +1447,21 @@ export class PurchaseOrderComponent {
   /** Static gradient palettes for the KPI tiles */
   readonly kpiStyles = {
     items: {
-      background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-      'box-shadow': '0 8px 20px rgba(139, 92, 246, 0.35)'
+      background: "linear-gradient(135deg, #8b5cf6, #a855f7)",
+      "box-shadow": "0 8px 20px rgba(139, 92, 246, 0.35)",
     },
     value: {
-      background: 'linear-gradient(135deg, #10b981, #0d9488)',
-      'box-shadow': '0 8px 20px rgba(16, 185, 129, 0.35)'
+      background: "linear-gradient(135deg, #10b981, #0d9488)",
+      "box-shadow": "0 8px 20px rgba(16, 185, 129, 0.35)",
     },
     delivery: {
-      background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
-      'box-shadow': '0 8px 20px rgba(14, 165, 233, 0.35)'
-    }
+      background: "linear-gradient(135deg, #0ea5e9, #3b82f6)",
+      "box-shadow": "0 8px 20px rgba(14, 165, 233, 0.35)",
+    },
   };
 
   // ── View State ──────────────────────────────────────────────────────────
-  viewState = signal<'LIST' | 'CREATE' | 'EDIT' | 'DETAIL'>('LIST');
+  viewState = signal<"LIST" | "CREATE" | "EDIT" | "DETAIL">("LIST");
   selectedPO = signal<PurchaseOrder | null>(null);
   currentDate = new Date();
   isSaving = signal(false);
@@ -672,8 +1472,8 @@ export class PurchaseOrderComponent {
   editingPoId = signal<string | null>(null);
 
   // ── List Filtering ───────────────────────────────────────────────────────
-  statusFilter = signal<string>('ALL');
-  searchQuery = signal<string>('');
+  statusFilter = signal<string>("ALL");
+  searchQuery = signal<string>("");
 
   // ── Receive Dialog State ─────────────────────────────────────────────────
   showReceiveDialog = signal(false);
@@ -700,21 +1500,24 @@ export class PurchaseOrderComponent {
 
   purchaseOrders = toSignal(
     this.storeService.currentStore$.pipe(
-      switchMap(store => store ? this.supabase.getPurchaseOrders(store.id) : of([]))
+      switchMap((store) =>
+        store ? this.supabase.getPurchaseOrders(store.id) : of([]),
+      ),
     ),
-    { initialValue: [] }
+    { initialValue: [] },
   );
 
   filteredPOs = computed(() => {
     let pos = this.purchaseOrders();
-    if (this.statusFilter() !== 'ALL') {
-      pos = pos.filter(po => po.status === this.statusFilter());
+    if (this.statusFilter() !== "ALL") {
+      pos = pos.filter((po) => po.status === this.statusFilter());
     }
-    const query = (this.searchQuery() || '').toLowerCase().trim();
+    const query = (this.searchQuery() || "").toLowerCase().trim();
     if (query) {
-      pos = pos.filter(po =>
-        (po.id || '').toLowerCase().includes(query) ||
-        (po.supplier?.name || '').toLowerCase().includes(query)
+      pos = pos.filter(
+        (po) =>
+          (po.id || "").toLowerCase().includes(query) ||
+          (po.supplier?.name || "").toLowerCase().includes(query),
       );
     }
     return pos;
@@ -722,40 +1525,49 @@ export class PurchaseOrderComponent {
 
   suppliers = toSignal(
     this.storeService.currentStore$.pipe(
-      switchMap(store => store ? this.supabase.getSuppliers(store.id) : of([]))
+      switchMap((store) =>
+        store ? this.supabase.getSuppliers(store.id) : of([]),
+      ),
     ),
-    { initialValue: [] }
+    { initialValue: [] },
   );
 
   products = toSignal(
     this.storeService.currentStore$.pipe(
-      switchMap(store => store ? this.supabase.getProducts(store.id) : of([]))
+      switchMap((store) =>
+        store ? this.supabase.getProducts(store.id) : of([]),
+      ),
     ),
-    { initialValue: [] }
+    { initialValue: [] },
   );
 
   categories = toSignal(
     this.storeService.currentStore$.pipe(
-      switchMap(store => store ? this.supabase.getCategories(store.id) : of([]))
+      switchMap((store) =>
+        store ? this.supabase.getCategories(store.id) : of([]),
+      ),
     ),
-    { initialValue: [] }
+    { initialValue: [] },
   );
 
   /** P3: Products at or below the low-stock threshold, sorted most-critical first */
   lowStockProducts = computed(() =>
     this.products()
-      .filter(p => (p.stock_quantity ?? Infinity) <= 5)
-      .sort((a, b) => (a.stock_quantity ?? 0) - (b.stock_quantity ?? 0))
+      .filter((p) => (p.stock_quantity ?? Infinity) <= 5)
+      .sort((a, b) => (a.stock_quantity ?? 0) - (b.stock_quantity ?? 0)),
   );
 
   /** P3: Count of products that are completely out of stock */
-  outOfStockCount = computed(() =>
-    this.lowStockProducts().filter(p => (p.stock_quantity ?? 0) === 0).length
+  outOfStockCount = computed(
+    () =>
+      this.lowStockProducts().filter((p) => (p.stock_quantity ?? 0) === 0)
+        .length,
   );
 
   /** P3: Count of products that are low but not yet zero */
-  criticallyLowCount = computed(() =>
-    this.lowStockProducts().filter(p => (p.stock_quantity ?? 0) > 0).length
+  criticallyLowCount = computed(
+    () =>
+      this.lowStockProducts().filter((p) => (p.stock_quantity ?? 0) > 0).length,
   );
 
   // filteredProductsForSupplier is defined after poForm so it can reactively bind to supplier_id valueChanges
@@ -763,23 +1575,23 @@ export class PurchaseOrderComponent {
   // ── Form ─────────────────────────────────────────────────────────────────
   poForm: FormGroup = this.fb.group({
     supplier_id: [null, Validators.required],
-    expected_arrival: [null],   // P1: now a real editable field
-    notes: [null],              // P1: new field
-    items: this.fb.array([])
+    expected_arrival: [null], // P1: now a real editable field
+    notes: [null], // P1: new field
+    items: this.fb.array([]),
   });
 
   get items() {
-    return this.poForm.get('items') as FormArray;
+    return this.poForm.get("items") as FormArray;
   }
 
   // ── Reactive supplier_id signal (must come AFTER poForm is initialised) ────
   private _selectedSupplierId = toSignal(
-    this.poForm.get('supplier_id')!.valueChanges,
-    { initialValue: null as string | null }
+    this.poForm.get("supplier_id")!.valueChanges,
+    { initialValue: null as string | null },
   );
 
   // ── Catalogue UI state ───────────────────────────────────────────────────
-  catalogSearchQuery = signal<string>('');
+  catalogSearchQuery = signal<string>("");
   selectedCatalogCategory = signal<string | null>(null);
   /** Tracks the desired qty on each product card before adding to the order */
   cardQties = signal<Record<string, number>>({});
@@ -788,7 +1600,9 @@ export class PurchaseOrderComponent {
   filteredProductsForSupplier = computed(() => {
     const supplierId = this._selectedSupplierId();
     if (!supplierId) return this.products();
-    const supplierProducts = this.products().filter(p => p.supplier_id === supplierId);
+    const supplierProducts = this.products().filter(
+      (p) => p.supplier_id === supplierId,
+    );
     return supplierProducts.length > 0 ? supplierProducts : this.products();
   });
 
@@ -796,7 +1610,7 @@ export class PurchaseOrderComponent {
   hasSupplierProducts = computed(() => {
     const supplierId = this._selectedSupplierId();
     if (!supplierId) return true;
-    return this.products().some(p => p.supplier_id === supplierId);
+    return this.products().some((p) => p.supplier_id === supplierId);
   });
 
   /** Supplier's products further filtered by the catalogue search bar */
@@ -807,14 +1621,15 @@ export class PurchaseOrderComponent {
 
     // Prioritize Category Filtering
     let filtered = base;
-    if (catId && catId !== 'null') {
-      filtered = base.filter(p => String(p.category_id) === String(catId));
+    if (catId && catId !== "null") {
+      filtered = base.filter((p) => String(p.category_id) === String(catId));
     }
 
     if (!q) return filtered;
-    return filtered.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.barcode || '').toLowerCase().includes(q)
+    return filtered.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.barcode || "").toLowerCase().includes(q),
     );
   });
 
@@ -826,15 +1641,19 @@ export class PurchaseOrderComponent {
   restockSuggestions = computed(() => {
     const supplierId = this._selectedSupplierId();
     if (!supplierId) return [] as Product[];
-    return this.filteredProductsForSupplier().filter(p =>
-      (p.stock_quantity ?? Infinity) <= (p.reorder_point ?? 0) &&
-      (p.reorder_quantity ?? 0) > 0
+    return this.filteredProductsForSupplier().filter(
+      (p) =>
+        (p.stock_quantity ?? Infinity) <= (p.reorder_point ?? 0) &&
+        (p.reorder_quantity ?? 0) > 0,
     );
   });
 
   /** Total units that would be ordered if pre-fill runs */
   restockTotalUnits = computed(() =>
-    this.restockSuggestions().reduce((sum, p) => sum + (p.reorder_quantity ?? 0), 0)
+    this.restockSuggestions().reduce(
+      (sum, p) => sum + (p.reorder_quantity ?? 0),
+      0,
+    ),
   );
 
   /**
@@ -845,7 +1664,9 @@ export class PurchaseOrderComponent {
     const supplierId = this._selectedSupplierId();
     if (!supplierId) return null;
     const supplierPOs = this.purchaseOrders()
-      .filter(po => po.supplier_id === supplierId && po.status !== 'CANCELLED')
+      .filter(
+        (po) => po.supplier_id === supplierId && po.status !== "CANCELLED",
+      )
       .sort((a, b) => {
         const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
         const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -865,28 +1686,31 @@ export class PurchaseOrderComponent {
    */
   lastPOItems = signal<any[]>([]);
 
-  private _priceMemoryEffect = effect(() => {
-    const po = this.lastSupplierPO();
-    if (!po) {
-      this.lastPOItems.set([]);
-      return;
-    }
-    // Load items for the last PO silently in the background
-    this.supabase.getPurchaseOrderItems(po.id).subscribe({
-      next: (items) => this.lastPOItems.set(items),
-      error: () => this.lastPOItems.set([])
-    });
-  }, { allowSignalWrites: true });
+  private _priceMemoryEffect = effect(
+    () => {
+      const po = this.lastSupplierPO();
+      if (!po) {
+        this.lastPOItems.set([]);
+        return;
+      }
+      // Load items for the last PO silently in the background
+      this.supabase.getPurchaseOrderItems(po.id).subscribe({
+        next: (items) => this.lastPOItems.set(items),
+        error: () => this.lastPOItems.set([]),
+      });
+    },
+    { allowSignalWrites: true },
+  );
 
   // ── Status helper ─────────────────────────────────────────────────────────
   getStatusClass(status: POStatus | string): Record<string, boolean> {
     return {
-      'bg-slate-100 text-slate-600': status === 'DRAFT',
-      'bg-blue-100 text-blue-800': status === 'SENT',
-      'bg-purple-100 text-purple-800': status === 'ORDERED',
-      'bg-orange-100 text-orange-800': status === 'PARTIAL',
-      'bg-green-100 text-green-800': status === 'RECEIVED',
-      'bg-red-100 text-red-800': status === 'CANCELLED',
+      "bg-slate-100 text-slate-600": status === "DRAFT",
+      "bg-blue-100 text-blue-800": status === "SENT",
+      "bg-purple-100 text-purple-800": status === "ORDERED",
+      "bg-orange-100 text-orange-800": status === "PARTIAL",
+      "bg-green-100 text-green-800": status === "RECEIVED",
+      "bg-red-100 text-red-800": status === "CANCELLED",
     };
   }
 
@@ -895,21 +1719,25 @@ export class PurchaseOrderComponent {
   startNewPO() {
     this.editMode.set(false);
     this.editingPoId.set(null);
-    this.catalogSearchQuery.set('');
+    this.catalogSearchQuery.set("");
     this.selectedCatalogCategory.set(null);
     this.cardQties.set({});
-    this.poForm.reset({ supplier_id: null, expected_arrival: null, notes: null });
+    this.poForm.reset({
+      supplier_id: null,
+      expected_arrival: null,
+      notes: null,
+    });
     this.items.clear();
-    this.viewState.set('CREATE');
+    this.viewState.set("CREATE");
   }
 
   startEditPO(po: PurchaseOrder) {
-    if (po.status !== 'DRAFT') return; // Guard: only DRAFT POs can be edited
+    if (po.status !== "DRAFT") return; // Guard: only DRAFT POs can be edited
 
     this.editMode.set(true);
     this.editingPoId.set(po.id);
     this.isSaving.set(false);
-    this.catalogSearchQuery.set('');
+    this.catalogSearchQuery.set("");
     this.selectedCatalogCategory.set(null);
     this.cardQties.set({});
 
@@ -922,36 +1750,43 @@ export class PurchaseOrderComponent {
         this.poForm.patchValue({
           supplier_id: po.supplier_id,
           expected_arrival: po.expected_arrival ?? null,
-          notes: po.notes ?? null
+          notes: po.notes ?? null,
         });
 
         // Re-build items FormArray from existing PO items
-        items.forEach(item => {
-          this.items.push(this.fb.group({
-            product_id: [item.product_id, Validators.required],
-            quantity: [item.quantity_ordered, [Validators.required, Validators.min(1)]],
-            cost: [item.unit_cost, [Validators.required, Validators.min(0)]]
-          }));
+        items.forEach((item) => {
+          this.items.push(
+            this.fb.group({
+              product_id: [item.product_id, Validators.required],
+              quantity: [
+                item.quantity_ordered,
+                [Validators.required, Validators.min(1)],
+              ],
+              cost: [item.unit_cost, [Validators.required, Validators.min(0)]],
+            }),
+          );
         });
 
-        this.viewState.set('EDIT');
+        this.viewState.set("EDIT");
       },
-      error: (err) => console.error('Failed to load PO for editing', err)
+      error: (err) => console.error("Failed to load PO for editing", err),
     });
   }
 
   discardForm() {
     this.editMode.set(false);
     this.editingPoId.set(null);
-    this.viewState.set('LIST');
+    this.viewState.set("LIST");
   }
 
   addItem() {
-    this.items.push(this.fb.group({
-      product_id: [null, Validators.required],
-      quantity: [1, [Validators.required, Validators.min(1)]],
-      cost: [0, [Validators.required, Validators.min(0)]]
-    }));
+    this.items.push(
+      this.fb.group({
+        product_id: [null, Validators.required],
+        quantity: [1, [Validators.required, Validators.min(1)]],
+        cost: [0, [Validators.required, Validators.min(0)]],
+      }),
+    );
   }
 
   removeItem(index: number) {
@@ -960,18 +1795,18 @@ export class PurchaseOrderComponent {
 
   /** P1: When a supplier is selected, auto-fill expected_arrival + reset catalogue state */
   onSupplierChange() {
-    const supplierId = this.poForm.get('supplier_id')?.value;
+    const supplierId = this.poForm.get("supplier_id")?.value;
     // Reset catalogue state whenever supplier changes
-    this.catalogSearchQuery.set('');
+    this.catalogSearchQuery.set("");
     this.cardQties.set({});
     this.items.clear(); // Clear existing order items when supplier changes
     if (!supplierId) return;
-    const supplier = this.suppliers().find(s => s.id === supplierId);
+    const supplier = this.suppliers().find((s) => s.id === supplierId);
     if (supplier?.lead_time_days) {
       const arrivalDate = new Date();
       arrivalDate.setDate(arrivalDate.getDate() + supplier.lead_time_days);
       this.poForm.patchValue({
-        expected_arrival: arrivalDate.toISOString().split('T')[0]
+        expected_arrival: arrivalDate.toISOString().split("T")[0],
       });
     }
   }
@@ -985,18 +1820,25 @@ export class PurchaseOrderComponent {
 
   /** Updates the card stepper qty, clamping to a minimum of 1 */
   setCardQty(productId: string, qty: number) {
-    this.cardQties.update(q => ({ ...q, [productId]: Math.max(1, Number(qty) || 1) }));
+    this.cardQties.update((q) => ({
+      ...q,
+      [productId]: Math.max(1, Number(qty) || 1),
+    }));
   }
 
   /** True if the product already has a row in the order */
   isInOrder(productId: string): boolean {
-    return this.items.controls.some(c => c.get('product_id')?.value === productId);
+    return this.items.controls.some(
+      (c) => c.get("product_id")?.value === productId,
+    );
   }
 
   /** Returns the ordered quantity for a product already in the FormArray */
   getOrderQty(productId: string): number {
-    const ctrl = this.items.controls.find(c => c.get('product_id')?.value === productId);
-    return ctrl ? (Number(ctrl.get('quantity')?.value) || 0) : 0;
+    const ctrl = this.items.controls.find(
+      (c) => c.get("product_id")?.value === productId,
+    );
+    return ctrl ? Number(ctrl.get("quantity")?.value) || 0 : 0;
   }
 
   /**
@@ -1005,7 +1847,7 @@ export class PurchaseOrderComponent {
    */
   /** Sprint 4: Returns the last known supplier-specific unit cost, or null if unknown */
   getHistoricalCost(productId: string): number | null {
-    const item = this.lastPOItems().find(i => i.product_id === productId);
+    const item = this.lastPOItems().find((i) => i.product_id === productId);
     return item != null ? item.unit_cost : null;
   }
 
@@ -1014,22 +1856,28 @@ export class PurchaseOrderComponent {
     // Sprint 4: prefer supplier's historical price over catalogue cost_price
     const historicalCost = this.getHistoricalCost(product.id);
     const cost = historicalCost ?? product.cost_price ?? 0;
-    const existing = this.items.controls.find(c => c.get('product_id')?.value === product.id);
+    const existing = this.items.controls.find(
+      (c) => c.get("product_id")?.value === product.id,
+    );
     if (existing) {
-      const currentQty = Number(existing.get('quantity')?.value) || 0;
+      const currentQty = Number(existing.get("quantity")?.value) || 0;
       existing.patchValue({ quantity: currentQty + qty });
     } else {
-      this.items.push(this.fb.group({
-        product_id: [product.id, Validators.required],
-        quantity: [qty, [Validators.required, Validators.min(1)]],
-        cost: [cost, [Validators.required, Validators.min(0)]]
-      }));
+      this.items.push(
+        this.fb.group({
+          product_id: [product.id, Validators.required],
+          quantity: [qty, [Validators.required, Validators.min(1)]],
+          cost: [cost, [Validators.required, Validators.min(0)]],
+        }),
+      );
     }
   }
 
   /** Removes a product from the order by its product_id */
   removeFromOrder(productId: string) {
-    const idx = this.items.controls.findIndex(c => c.get('product_id')?.value === productId);
+    const idx = this.items.controls.findIndex(
+      (c) => c.get("product_id")?.value === productId,
+    );
     if (idx !== -1) this.items.removeAt(idx);
   }
 
@@ -1041,19 +1889,24 @@ export class PurchaseOrderComponent {
    */
   preloadLowStockItems() {
     const suggestions = this.restockSuggestions();
-    suggestions.forEach(product => {
+    suggestions.forEach((product) => {
       const alreadyIn = this.items.controls.some(
-        c => c.get('product_id')?.value === product.id
+        (c) => c.get("product_id")?.value === product.id,
       );
       if (!alreadyIn) {
         // Sprint 4: use supplier's historical price if available
         const historicalCost = this.getHistoricalCost(product.id);
         const cost = historicalCost ?? product.cost_price ?? 0;
-        this.items.push(this.fb.group({
-          product_id: [product.id, Validators.required],
-          quantity: [product.reorder_quantity ?? 1, [Validators.required, Validators.min(1)]],
-          cost: [cost, [Validators.required, Validators.min(0)]]
-        }));
+        this.items.push(
+          this.fb.group({
+            product_id: [product.id, Validators.required],
+            quantity: [
+              product.reorder_quantity ?? 1,
+              [Validators.required, Validators.min(1)],
+            ],
+            cost: [cost, [Validators.required, Validators.min(0)]],
+          }),
+        );
       }
     });
   }
@@ -1071,53 +1924,99 @@ export class PurchaseOrderComponent {
     this.isRepeatLoading.set(true);
     this.supabase.getPurchaseOrderItems(lastPO.id).subscribe({
       next: (items) => {
-        items.forEach(item => {
+        items.forEach((item) => {
           const alreadyIn = this.items.controls.some(
-            c => c.get('product_id')?.value === item.product_id
+            (c) => c.get("product_id")?.value === item.product_id,
           );
           if (!alreadyIn) {
-            this.items.push(this.fb.group({
-              product_id: [item.product_id, Validators.required],
-              quantity: [item.quantity_ordered, [Validators.required, Validators.min(1)]],
-              cost: [item.unit_cost, [Validators.required, Validators.min(0)]]
-            }));
+            this.items.push(
+              this.fb.group({
+                product_id: [item.product_id, Validators.required],
+                quantity: [
+                  item.quantity_ordered,
+                  [Validators.required, Validators.min(1)],
+                ],
+                cost: [
+                  item.unit_cost,
+                  [Validators.required, Validators.min(0)],
+                ],
+              }),
+            );
           }
         });
         this.isRepeatLoading.set(false);
       },
       error: (err) => {
-        console.error('Failed to load last PO items:', err);
+        console.error("Failed to load last PO items:", err);
         this.isRepeatLoading.set(false);
-      }
+      },
+    });
+  }
+
+  /**
+   * Solution 2: The One-Click Clone.
+   * Takes a historical PO, switches to the CREATE view, auto-selects the supplier,
+   * sets up the delivery date, adds a note referencing the original, and loads all
+   * items and their historical prices into the draft.
+   */
+  cloneOrder(po: PurchaseOrder) {
+    this.startNewPO();
+    this.poForm.patchValue({
+      supplier_id: po.supplier_id,
+      notes: `Cloned from PO-${po.id.substring(0, 8)}. Please review quantities before committing.`,
+    });
+    this.onSupplierChange(); // Resets catalogue and sets expected_arrival
+
+    // Fetch the actual line items for the PO being cloned
+    this.supabase.getPurchaseOrderItems(po.id).subscribe({
+      next: (items) => {
+        items.forEach((item) => {
+          this.items.push(
+            this.fb.group({
+              product_id: [item.product_id, Validators.required],
+              quantity: [
+                item.quantity_ordered,
+                [Validators.required, Validators.min(1)],
+              ],
+              cost: [item.unit_cost, [Validators.required, Validators.min(0)]],
+            }),
+          );
+        });
+      },
+      error: (err) => {
+        console.error("Failed to clone items:", err);
+      },
     });
   }
 
   onProductSelect(index: number) {
     const control = this.items.at(index);
-    const productId = control.get('product_id')?.value;
+    const productId = control.get("product_id")?.value;
     if (!productId) return;
 
     // P2: Duplicate guard — check if this product already exists in another row
     const duplicateIndex = this.items.controls.findIndex(
-      (c, i) => i !== index && c.get('product_id')?.value === productId
+      (c, i) => i !== index && c.get("product_id")?.value === productId,
     );
 
     if (duplicateIndex !== -1) {
       // Auto-merge: add 1 to the existing row's quantity and delete the duplicate row
       const existingControl = this.items.at(duplicateIndex);
-      const existingQty = Number(existingControl.get('quantity')?.value) || 0;
+      const existingQty = Number(existingControl.get("quantity")?.value) || 0;
       existingControl.patchValue({ quantity: existingQty + 1 });
       this.items.removeAt(index);
 
       const productName = this.getProductName(productId);
-      this.duplicateWarning.set(`"${productName}" was already in the list — quantities merged.`);
+      this.duplicateWarning.set(
+        `"${productName}" was already in the list — quantities merged.`,
+      );
       // Auto-clear the warning after 5 seconds
       setTimeout(() => this.duplicateWarning.set(null), 5000);
       return;
     }
 
     // Normal path: auto-fill the cost price from the product catalogue
-    const product = this.products().find(p => p.id === productId);
+    const product = this.products().find((p) => p.id === productId);
     if (product) {
       const costPrice = product.cost_price ?? 0;
       control.patchValue({ cost: costPrice });
@@ -1131,16 +2030,16 @@ export class PurchaseOrderComponent {
    */
   getItemCostMissing(index: number): boolean {
     const control = this.items.at(index);
-    const hasProduct = !!(control.get('product_id')?.value);
-    const cost = Number(control.get('cost')?.value ?? 0);
+    const hasProduct = !!control.get("product_id")?.value;
+    const cost = Number(control.get("cost")?.value ?? 0);
     return hasProduct && cost === 0;
   }
 
   calculateTotal(): number {
     return this.items.controls.reduce((acc, control) => {
-      const qty = control.get('quantity')?.value || 0;
-      const cost = control.get('cost')?.value || 0;
-      return acc + (qty * cost);
+      const qty = control.get("quantity")?.value || 0;
+      const cost = control.get("cost")?.value || 0;
+      return acc + qty * cost;
     }, 0);
   }
 
@@ -1156,7 +2055,7 @@ export class PurchaseOrderComponent {
     const poItems = formVal.items.map((item: any) => ({
       product_id: item.product_id,
       quantity_ordered: item.quantity,
-      unit_cost: item.cost
+      unit_cost: item.cost,
     }));
 
     const totalAmount = this.calculateTotal();
@@ -1167,41 +2066,45 @@ export class PurchaseOrderComponent {
         supplier_id: formVal.supplier_id,
         total_amount: totalAmount,
         expected_arrival: formVal.expected_arrival || null,
-        notes: formVal.notes || null
+        notes: formVal.notes || null,
       };
-      this.supabase.updatePurchaseOrder(this.editingPoId()!, updates, poItems).subscribe({
-        next: () => {
-          this.isSaving.set(false);
-          this.editMode.set(false);
-          this.editingPoId.set(null);
-          this.viewState.set('LIST');
-        },
-        error: (err) => {
-          console.error('Failed to update PO', err);
-          this.isSaving.set(false);
-        }
-      });
-
+      this.supabase
+        .updatePurchaseOrder(this.editingPoId()!, updates, poItems)
+        .subscribe({
+          next: () => {
+            this.isSaving.set(false);
+            this.editMode.set(false);
+            this.editingPoId.set(null);
+            this.viewState.set("LIST");
+          },
+          error: (err) => {
+            console.error("Failed to update PO", err);
+            this.isSaving.set(false);
+          },
+        });
     } else {
       // ── CREATE new PO ────────────────────────────────────────────────
       const poData: Partial<PurchaseOrder> = {
         store_id: storeId,
         supplier_id: formVal.supplier_id,
-        status: 'DRAFT',
+        status: "DRAFT",
         total_amount: totalAmount,
-        expected_arrival: formVal.expected_arrival ||
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        notes: formVal.notes || null
+        expected_arrival:
+          formVal.expected_arrival ||
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0],
+        notes: formVal.notes || null,
       };
       this.supabase.createPurchaseOrder(poData as any, poItems).subscribe({
         next: () => {
           this.isSaving.set(false);
-          this.viewState.set('LIST');
+          this.viewState.set("LIST");
         },
         error: (err) => {
-          console.error('Failed to create PO', err);
+          console.error("Failed to create PO", err);
           this.isSaving.set(false);
-        }
+        },
       });
     }
   }
@@ -1217,18 +2120,27 @@ export class PurchaseOrderComponent {
       },
       error: (err) => {
         console.error(`Failed to update status to ${newStatus}`, err);
-        if (newStatus === 'ORDERED') {
-          alert(`Note: The 'ORDERED' status is a new feature. You can ignore this error for now—I've enabled the "Receive Order" button directly on your 'SENT' orders so you aren't blocked!`);
+        if (newStatus === "ORDERED") {
+          alert(
+            `Note: The 'ORDERED' status is a new feature. You can ignore this error for now—I've enabled the "Receive Order" button directly on your 'SENT' orders so you aren't blocked!`,
+          );
         } else {
-          alert(`Database Error: Could not update status. Please ensure your internet connection is stable.`);
+          alert(
+            `Database Error: Could not update status. Please ensure your internet connection is stable.`,
+          );
         }
-      }
+      },
     });
   }
 
   cancelPO(po: PurchaseOrder) {
-    if (!confirm(`Cancel Purchase Order #${po.id.substring(0, 8)}?\n\nThis will mark the order as cancelled and cannot be undone.`)) return;
-    this.advanceStatus(po, 'CANCELLED');
+    if (
+      !confirm(
+        `Cancel Purchase Order #${po.id.substring(0, 8)}?\n\nThis will mark the order as cancelled and cannot be undone.`,
+      )
+    )
+      return;
+    this.advanceStatus(po, "CANCELLED");
   }
 
   // ── Receive Dialog ────────────────────────────────────────────────────────
@@ -1239,21 +2151,22 @@ export class PurchaseOrderComponent {
 
     this.supabase.getPurchaseOrderItems(po.id).subscribe({
       next: (items) => {
-        const dialogItems = items.map(item => ({
+        const dialogItems = items.map((item) => ({
           ...item,
-          receiving_now: (item.quantity_ordered - (item.quantity_received || 0)) > 0
-            ? (item.quantity_ordered - (item.quantity_received || 0))
-            : 0,
-          serial_numbers_input: ''
+          receiving_now:
+            item.quantity_ordered - (item.quantity_received || 0) > 0
+              ? item.quantity_ordered - (item.quantity_received || 0)
+              : 0,
+          serial_numbers_input: "",
         }));
         this.receiveItems.set(dialogItems);
         this.isReceiving.set(false);
         this.showReceiveDialog.set(true);
       },
       error: (err) => {
-        console.error('Failed to fetch PO items for receiving', err);
+        console.error("Failed to fetch PO items for receiving", err);
         this.isReceiving.set(false);
-      }
+      },
     });
   }
 
@@ -1266,11 +2179,14 @@ export class PurchaseOrderComponent {
 
   hasValidReceiveQuantities(): boolean {
     const items = this.receiveItems();
-    const hasReceiving = items.some(item => item.receiving_now > 0);
+    const hasReceiving = items.some((item) => item.receiving_now > 0);
     if (!hasReceiving) return false;
     for (const item of items) {
       if (item.receiving_now > 0 && this.isProductSerialized(item.product_id)) {
-        const serials = (item.serial_numbers_input || '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        const serials = (item.serial_numbers_input || "")
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0);
         if (serials.length !== item.receiving_now) return false;
       }
     }
@@ -1282,17 +2198,20 @@ export class PurchaseOrderComponent {
     if (!po) return;
 
     const itemsToReceive = this.receiveItems()
-      .filter(item => item.receiving_now > 0)
-      .map(item => {
+      .filter((item) => item.receiving_now > 0)
+      .map((item) => {
         const serials = this.isProductSerialized(item.product_id)
-          ? (item.serial_numbers_input || '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+          ? (item.serial_numbers_input || "")
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter((s: string) => s.length > 0)
           : undefined;
         return {
           item_id: item.id,
           product_id: item.product_id,
           received_amount: item.receiving_now,
           unit_cost: item.unit_cost,
-          serial_numbers: serials
+          serial_numbers: serials,
         };
       });
 
@@ -1300,17 +2219,21 @@ export class PurchaseOrderComponent {
 
     // P2: Overage confirmation gate — require explicit acknowledgment before
     // accepting more stock than was originally ordered
-    const overageItems = this.receiveItems().filter(item =>
-      item.receiving_now > 0 &&
-      item.receiving_now > (item.quantity_ordered - (item.quantity_received || 0))
+    const overageItems = this.receiveItems().filter(
+      (item) =>
+        item.receiving_now > 0 &&
+        item.receiving_now >
+          item.quantity_ordered - (item.quantity_received || 0),
     );
     if (overageItems.length > 0) {
-      const names = overageItems.map(i => this.getProductName(i.product_id)).join(', ');
+      const names = overageItems
+        .map((i) => this.getProductName(i.product_id))
+        .join(", ");
       const confirmed = confirm(
         `Overage detected on: ${names}\n\n` +
-        `You are receiving more units than originally ordered.\n` +
-        `This may indicate a billing discrepancy with your supplier.\n\n` +
-        `Continue anyway?`
+          `You are receiving more units than originally ordered.\n` +
+          `This may indicate a billing discrepancy with your supplier.\n\n` +
+          `Continue anyway?`,
       );
       if (!confirmed) return;
     }
@@ -1320,28 +2243,32 @@ export class PurchaseOrderComponent {
     this.supabase.receivePO(po.id, itemsToReceive).subscribe({
       next: (result) => {
         if (this.selectedPO()?.id === po.id) {
-          this.supabase.getPurchaseOrderItems(po.id).subscribe(items => {
-            this.selectedPO.set({ ...po, status: result.newStatus as any, items });
+          this.supabase.getPurchaseOrderItems(po.id).subscribe((items) => {
+            this.selectedPO.set({
+              ...po,
+              status: result.newStatus as any,
+              items,
+            });
           });
         }
         this.isReceiving.set(false);
         this.closeReceiveDialog();
       },
       error: (err) => {
-        console.error('Failed to receive PO', err);
+        console.error("Failed to receive PO", err);
         this.isReceiving.set(false);
         this.receiveError.set(
-          typeof err?.message === 'string'
+          typeof err?.message === "string"
             ? `Receipt failed: ${err.message}`
-            : 'An unexpected error occurred. Please try again.'
+            : "An unexpected error occurred. Please try again.",
         );
-      }
+      },
     });
   }
 
   viewPODetail(po: PurchaseOrder) {
     this.selectedPO.set(po);
-    this.viewState.set('DETAIL');
+    this.viewState.set("DETAIL");
     this.isLoadingItems.set(true);
     this.selectedPOItems.set([]);
 
@@ -1352,21 +2279,26 @@ export class PurchaseOrderComponent {
         this.isLoadingItems.set(false);
       },
       error: (err) => {
-        console.error('Failed to fetch PO items', err);
+        console.error("Failed to fetch PO items", err);
         this.isLoadingItems.set(false);
-      }
+      },
     });
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   getProductName(productId: string): string {
-    return this.products().find(p => p.id === productId)?.name || 'Unknown Product';
+    return (
+      this.products().find((p) => p.id === productId)?.name || "Unknown Product"
+    );
   }
 
   getSupplierName(supplierId: string | null | undefined): string {
-    if (!supplierId) return 'No supplier set';
-    return this.suppliers().find(s => s.id === supplierId)?.name || 'Unknown Supplier';
+    if (!supplierId) return "No supplier set";
+    return (
+      this.suppliers().find((s) => s.id === supplierId)?.name ||
+      "Unknown Supplier"
+    );
   }
 
   /** P3: One-click reorder — pre-fills the PO form from a low-stock product */
@@ -1384,23 +2316,27 @@ export class PurchaseOrderComponent {
       this.items.at(0).patchValue({
         product_id: product.id,
         quantity: 10, // Sensible default — user can adjust
-        cost: (product as any).cost_price || 0
+        cost: (product as any).cost_price || 0,
       });
     }
   }
 
   isProductSerialized(productId: string): boolean {
-    return this.products().find(p => p.id === productId)?.is_serialized || false;
+    return (
+      this.products().find((p) => p.id === productId)?.is_serialized || false
+    );
   }
 
   getValidSerialCount(input: string | undefined | null): number {
     if (!input) return 0;
-    return input.split(',').filter(s => s.trim().length > 0).length;
+    return input.split(",").filter((s) => s.trim().length > 0).length;
   }
   // ── P2: Calculate Open Value ───────────────────────────────────────────
   calculateOpenValue(): number {
     return this.purchaseOrders()
-      .filter(po => ['DRAFT', 'SENT', 'ORDERED', 'PARTIAL'].includes(po.status))
+      .filter((po) =>
+        ["DRAFT", "SENT", "ORDERED", "PARTIAL"].includes(po.status),
+      )
       .reduce((sum, po) => sum + (po.total_amount || 0), 0);
   }
 
@@ -1415,9 +2351,9 @@ export class PurchaseOrderComponent {
         this.isLoadingItems.set(false);
       },
       error: (err) => {
-        console.error('Failed to load items for printing', err);
+        console.error("Failed to load items for printing", err);
         this.isLoadingItems.set(false);
-      }
+      },
     });
   }
 }
