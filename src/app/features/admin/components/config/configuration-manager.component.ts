@@ -48,13 +48,24 @@ import { DialogService } from '../../../../core/services/dialog.service';
 
               <!-- Financials -->
               <div class="space-y-4">
-                 <h3 class="font-bold text-sm uppercase tracking-widest text-[var(--primary-color)]">Financial Settings</h3>
-                 <div>
-                    <label class="block text-sm font-medium mb-1">Default Tax Rate (%)</label>
-                    <input formControlName="tax_rate" type="number" step="0.01" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+                 <div class="flex items-center justify-between">
+                     <h3 class="font-bold text-sm uppercase tracking-widest text-[var(--primary-color)]">Financial Settings</h3>
+                     <div class="flex items-center gap-2">
+                         <span class="text-xs font-bold text-slate-500 uppercase">Enable Tax Collection</span>
+                         <label class="relative inline-flex items-center cursor-pointer">
+                             <input formControlName="tax_enabled" type="checkbox" class="sr-only peer">
+                             <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-[var(--primary-color)]"></div>
+                         </label>
+                     </div>
                  </div>
-                 <div class="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <input formControlName="enable_low_stock_alerts" type="checkbox" id="alerts" class="w-5 h-5 rounded text-[var(--primary-color)]">
+                 
+                 <div [class.opacity-50]="!configForm.get('tax_enabled')?.value" class="transition-opacity">
+                    <label class="block text-sm font-medium mb-1">Global Tax Rate (%)</label>
+                    <input formControlName="tax_rate" type="number" step="0.01" min="0" max="100" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50" [attr.disabled]="!configForm.get('tax_enabled')?.value ? '' : null">
+                 </div>
+                 
+                 <div class="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 mt-4">
+                    <input formControlName="enable_low_stock_alerts" type="checkbox" id="alerts" class="w-5 h-5 rounded text-[var(--primary-color)] cursor-pointer">
                     <label for="alerts" class="text-sm font-medium cursor-pointer">Enable Low Stock Notifications</label>
                  </div>
               </div>
@@ -109,6 +120,7 @@ export class ConfigurationManagerComponent {
       name: ['', Validators.required],
       currency: ['USD', Validators.required],
       primary_color: ['#3b82f6', Validators.required],
+      tax_enabled: [false],
       tax_rate: [0, [Validators.required, Validators.min(0)]],
       enable_low_stock_alerts: [true],
       address: [''],
@@ -133,8 +145,9 @@ export class ConfigurationManagerComponent {
                name: store.name || '',
                currency: store.config?.currency || 'USD',
                primary_color: store.config?.primaryColor || '#3b82f6',
-               tax_rate: store.metadata?.tax_rate || 0,
-               enable_low_stock_alerts: store.metadata?.low_stock_alerts !== false
+               tax_enabled: store.config?.tax_enabled || false,
+               tax_rate: (store.config?.tax_rate || 0) * 100, // Display as %
+               enable_low_stock_alerts: store.config?.features?.lowStockAlerts !== false
             });
 
             // Load Store Profile
@@ -159,19 +172,20 @@ export class ConfigurationManagerComponent {
       const store = this.storeService.currentStore();
       if (this.configForm.invalid || !store) return;
 
-      const { name, currency, primary_color, tax_rate, enable_low_stock_alerts, address, business_hours } = this.configForm.value;
+      const { name, currency, primary_color, tax_enabled, tax_rate, enable_low_stock_alerts, address, business_hours } = this.configForm.value;
 
       const updates: Partial<Store> = {
          name,
          config: {
             ...store.config,
             currency,
-            primaryColor: primary_color
-         },
-         metadata: {
-            ...store.metadata,
-            tax_rate,
-            low_stock_alerts: enable_low_stock_alerts
+            primaryColor: primary_color,
+            tax_enabled,
+            tax_rate: tax_rate / 100, // Convert % back to decimal
+            features: {
+               ...(store.config?.features || {}),
+               lowStockAlerts: enable_low_stock_alerts
+            }
          }
       };
 

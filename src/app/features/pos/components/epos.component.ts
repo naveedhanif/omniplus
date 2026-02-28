@@ -376,10 +376,12 @@ import { FormsModule } from '@angular/forms';
                 <span class="text-slate-500">Subtotal</span>
                 <span class="font-medium">{{ subtotal() | currency:storeService.currentStore()?.config?.currency }}</span>
               </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-slate-500">Tax (10%)</span>
-                <span class="font-medium">{{ tax() | currency:storeService.currentStore()?.config?.currency }}</span>
-              </div>
+              @if (storeService.currentStore()?.config?.tax_enabled) {
+                  <div class="flex justify-between text-sm">
+                    <span class="text-slate-500">Tax ({{ (storeService.currentStore()?.config?.tax_rate || 0) * 100 }}%)</span>
+                    <span class="font-medium">{{ tax() | currency:storeService.currentStore()?.config?.currency }}</span>
+                  </div>
+              }
               <div class="flex justify-between items-end pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
                 <span class="font-bold text-xl">Total</span>
                 <span class="font-extrabold text-2xl text-[var(--primary-color)]">{{ total() | currency:storeService.currentStore()?.config?.currency }}</span>
@@ -682,10 +684,12 @@ import { FormsModule } from '@angular/forms';
                                       <span>Sub Total</span>
                                       <span>{{ (tx.total_amount - (tx.tax_amount || 0)) | currency:storeService.currentStore()?.config?.currency }}</span>
                                   </div>
-                                  <div class="flex justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
-                                      <span>Tax</span>
-                                      <span>{{ (tx.tax_amount || 0) | currency:storeService.currentStore()?.config?.currency }}</span>
-                                  </div>
+                                  @if (storeService.currentStore()?.config?.tax_enabled) {
+                                      <div class="flex justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                                          <span>Tax</span>
+                                          <span>{{ (tx.tax_amount || 0) | currency:storeService.currentStore()?.config?.currency }}</span>
+                                      </div>
+                                  }
                                   <div class="flex justify-between items-end border-t-2 border-slate-800 pt-3 mt-3">
                                       <span class="font-black text-lg uppercase tracking-wider text-slate-800">Total</span>
                                       <span class="font-black text-3xl text-slate-800 leading-none">{{ tx.total_amount | currency:storeService.currentStore()?.config?.currency }}</span>
@@ -1022,7 +1026,13 @@ export class EposComponent {
         return this.cart().reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
     });
 
-    tax = computed(() => this.subtotal() * 0.10); // Mock 10% tax
+    tax = computed(() => {
+        const store = this.storeService.currentStore();
+        if (store?.config?.tax_enabled) {
+            return this.subtotal() * (store.config.tax_rate ?? 0);
+        }
+        return 0;
+    });
 
     total = computed(() => this.subtotal() + this.tax());
 

@@ -15,6 +15,8 @@ export interface StoreConfig {
     primaryColor: string;
     darkMode: boolean;
     currency: string;
+    tax_enabled?: boolean;
+    tax_rate?: number;
     logoUrl?: string;
     features: {
         trackExpiry?: boolean;
@@ -22,6 +24,7 @@ export interface StoreConfig {
         showIngredients?: boolean;
         tableMap?: boolean;
         aisleLocation?: boolean;
+        lowStockAlerts?: boolean;
     };
 }
 
@@ -565,9 +568,9 @@ export class MockSupabaseService {
 
     addStore(name: string, type: StoreType): Observable<Store> {
         const defaults: Record<StoreType, Omit<Store, 'id' | 'name' | 'type'>> = {
-            MEDICAL: { config: { primaryColor: '#10b981', darkMode: false, currency: '$', features: { trackExpiry: true, trackBatch: true } } },
-            RESTAURANT: { config: { primaryColor: '#f59e0b', darkMode: true, currency: '€', features: { showIngredients: true, tableMap: true } } },
-            HARDWARE: { config: { primaryColor: '#3b82f6', darkMode: false, currency: '$', features: { aisleLocation: true } } }
+            MEDICAL: { config: { primaryColor: '#10b981', darkMode: false, currency: '$', tax_enabled: true, tax_rate: 0.10, features: { trackExpiry: true, trackBatch: true } } },
+            RESTAURANT: { config: { primaryColor: '#f59e0b', darkMode: true, currency: '€', tax_enabled: true, tax_rate: 0.10, features: { showIngredients: true, tableMap: true } } },
+            HARDWARE: { config: { primaryColor: '#3b82f6', darkMode: false, currency: '$', tax_enabled: true, tax_rate: 0.10, features: { aisleLocation: true } } }
         };
         const newStoreData = { name, type, ...defaults[type] };
 
