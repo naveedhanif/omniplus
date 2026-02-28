@@ -1117,7 +1117,7 @@ export class InventoryManagerComponent {
 
   inventoryStats = computed(() => {
     const products = this.productsSignal();
-    const totalValue = products.reduce((acc, p) => acc + (p.stock_quantity * (p.cost_price || 0)), 0);
+    const totalValue = products.reduce((acc, p) => acc + (p.stock_quantity * (p.metadata?.mac ?? p.cost_price ?? 0)), 0);
     const retailValue = products.reduce((acc, p) => acc + (p.stock_quantity * p.price), 0);
     const lowStock = products.filter(p => p.stock_quantity > 0 && p.stock_quantity < (p.reorder_point || 5)).length;
     const outOfStock = products.filter(p => p.stock_quantity === 0).length;
@@ -1444,7 +1444,8 @@ export class InventoryManagerComponent {
       compatible_models: typeof raw.compatible_models === 'string'
         ? raw.compatible_models.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
         : (raw.compatible_models || []),
-      attribute_data: this.currentAttributeData
+      attribute_data: this.currentAttributeData,
+      metadata: { ...(product.metadata || {}), ...(raw.metadata || {}) }
     };
 
     // Postgres rejects empty strings for date columns

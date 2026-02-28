@@ -1289,6 +1289,13 @@ export class EposComponent {
                 this.dialog.alert('Payment Successful', msg);
                 this.cart.set([]);
                 this.orderNumber.set(Math.floor(Math.random() * 1000) + 1000);
+
+                // Refresh products to sync store stock levels immediately
+                const store = this.storeService.currentStore();
+                if (store) {
+                    this.supabase.getProducts(store.id).subscribe();
+                }
+
                 this.goHome(); // Reset view to scan-forward for next customer
             },
             error: (err) => {

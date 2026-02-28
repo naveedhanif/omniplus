@@ -3,8 +3,7 @@ import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/comm
 import { FormsModule } from '@angular/forms';
 import { MockSupabaseService, Transaction, TransactionItem, Product } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
-import { forkJoin, from } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { switchMap } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 
 @Component({
@@ -19,21 +18,27 @@ import { toSignal } from '@angular/core/rxjs-interop';
         <div>
           <h2 class="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
              <span class="material-symbols-rounded text-blue-600 dark:text-blue-400 text-[32px]">insights</span>
-             Business Analytics
+             Business Analytics & P&L
           </h2>
           <p class="text-sm font-bold opacity-60 mt-1 uppercase tracking-widest">Financial & Stock Performance</p>
         </div>
         
         <div class="flex gap-2">
-            <!-- Simulated Filter Pills -->
-            <button class="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-xl text-sm font-bold shadow-sm hover:border-[var(--primary-color)] transition-colors text-slate-500 dark:text-slate-400">
+            <!-- Functional Timeframe Filters -->
+            <button (click)="setTimeframe('TODAY')" 
+                [ngClass]="{'bg-blue-50 dark:bg-blue-900 border-blue-300 text-blue-700 dark:text-blue-300': timeframe() === 'TODAY'}" 
+                class="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-xl text-sm font-bold shadow-sm hover:border-[var(--primary-color)] transition-colors text-slate-500 dark:text-slate-400">
                 Today
             </button>
-            <button class="px-5 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50 text-blue-700 dark:text-blue-400 rounded-xl text-sm font-bold shadow-sm">
+            <button (click)="setTimeframe('MONTH')" 
+                [ngClass]="{'bg-blue-50 dark:bg-blue-900 border-blue-300 text-blue-700 dark:text-blue-300': timeframe() === 'MONTH'}" 
+                class="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-xl text-sm font-bold shadow-sm hover:border-[var(--primary-color)] transition-colors text-slate-500 dark:text-slate-400">
                 This Month
             </button>
-            <button class="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-xl text-sm font-bold shadow-sm hover:border-[var(--primary-color)] transition-colors text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                <span class="material-symbols-rounded text-[18px]">calendar_month</span> Custom
+            <button (click)="setTimeframe('ALL')" 
+                [ngClass]="{'bg-blue-50 dark:bg-blue-900 border-blue-300 text-blue-700 dark:text-blue-300': timeframe() === 'ALL'}"
+                class="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-xl text-sm font-bold shadow-sm hover:border-[var(--primary-color)] transition-colors text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                All Time
             </button>
         </div>
       </div>
@@ -48,7 +53,6 @@ import { toSignal } from '@angular/core/rxjs-interop';
                 <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
                     <span class="material-symbols-rounded">payments</span>
                 </div>
-                <span class="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-full shadow-sm">+12.5%</span>
             </div>
             <div class="relative z-10">
                 <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Gross Revenue</div>
@@ -66,10 +70,11 @@ import { toSignal } from '@angular/core/rxjs-interop';
                 <div class="w-10 h-10 rounded-xl bg-white/20 text-white flex items-center justify-center shadow-inner backdrop-blur-sm">
                     <span class="material-symbols-rounded">trending_up</span>
                 </div>
-                <!-- Sparkline placeholder -->
+                <!-- Dynamic display based on positive profit -->
+                <span *ngIf="metrics().profit > 0" class="flex items-center gap-1 text-[11px] font-bold bg-white/20 px-2 py-1 rounded-full"><span class="material-symbols-rounded text-[14px]">arrow_upward</span></span>
             </div>
             <div class="relative z-10">
-                <div class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1">Net Profit</div>
+                <div class="text-xs font-bold uppercase tracking-wider text-white/80 mb-1">True Net Profit</div>
                 <div class="text-3xl font-extrabold tracking-tight">
                     {{ metrics().profit | currency:storeService.currency() }}
                 </div>
@@ -83,10 +88,10 @@ import { toSignal } from '@angular/core/rxjs-interop';
                 <div class="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center shadow-inner">
                     <span class="material-symbols-rounded">inventory</span>
                 </div>
-                <span class="px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded-full shadow-sm">Variable Cost</span>
+                <span class="px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded-full shadow-sm" title="Moving Average Cost">MAC Sourced</span>
             </div>
             <div class="relative z-10">
-                <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Real COGS</div>
+                <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Cost of Goods (COGS)</div>
                 <div class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                     {{ metrics().cogs | currency:storeService.currency() }}
                 </div>
@@ -114,98 +119,198 @@ import { toSignal } from '@angular/core/rxjs-interop';
       </div>
 
       <!-- Advanced Reports Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 animate-in slide-in-from-bottom-4 duration-500 delay-150">
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 animate-in slide-in-from-bottom-4 duration-500 delay-150">
           
-          <!-- Top Selling Products (Profit-based) -->
-          <div class="col-span-1 lg:col-span-2 bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
-              <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
-                  <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-                      <span class="material-symbols-rounded text-indigo-500">star</span> 
-                      Top Performing Items (By Profit)
-                  </h3>
+          <!-- Master Ledger Area -->
+          <div class="col-span-1 lg:col-span-3 bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden h-[600px]">
+              
+              <!-- Tabs Header -->
+              <div class="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center bg-slate-50/50 dark:bg-slate-800/30">
+                  <div class="flex items-center gap-2 bg-slate-200/50 dark:bg-slate-900 rounded-lg p-1">
+                      <button (click)="activeTab.set('LEDGER')" [class.bg-white]="activeTab() === 'LEDGER'" [class.shadow-sm]="activeTab() === 'LEDGER'" [ngClass]="{'dark:bg-slate-700': activeTab() === 'LEDGER'}" class="px-5 py-1.5 rounded-md text-sm font-bold transition-all text-slate-700 dark:text-slate-300">
+                          <div class="flex items-center gap-2"><span class="material-symbols-rounded text-[18px]">receipt_long</span> Transaction Ledger</div>
+                      </button>
+                      <button (click)="activeTab.set('PRODUCTS')" [class.bg-white]="activeTab() === 'PRODUCTS'" [class.shadow-sm]="activeTab() === 'PRODUCTS'" [ngClass]="{'dark:bg-slate-700': activeTab() === 'PRODUCTS'}" class="px-5 py-1.5 rounded-md text-sm font-bold transition-all text-slate-700 dark:text-slate-300">
+                          <div class="flex items-center gap-2"><span class="material-symbols-rounded text-[18px]">star</span> Top Products</div>
+                      </button>
+                  </div>
               </div>
-              <div class="flex-1 overflow-auto p-0">
-                  <table class="w-full text-left text-sm">
-                      <thead class="bg-white dark:bg-slate-900 text-slate-400 font-bold border-b border-slate-100 dark:border-slate-800 uppercase tracking-wider text-[10px] sticky top-0 z-10 backdrop-blur-md">
-                          <tr>
-                              <th class="p-4">SKU / Product</th>
-                              <th class="p-4 text-right">Units Sold</th>
-                              <th class="p-4 text-right">Revenue</th>
-                              <th class="p-4 text-right">True Profit</th>
-                              <th class="p-4 text-right">Margin</th>
-                          </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-50 dark:divide-slate-800/50">
-                          @for(item of topProducts(); track item.productId) {
-                              <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
-                                  <td class="p-4">
-                                      <div class="font-bold text-slate-900 dark:text-white">{{ item.name }}</div>
-                                      <div class="text-[10px] opacity-60 font-mono">{{ item.category }}</div>
-                                  </td>
-                                  <td class="p-4 text-right font-bold">{{ item.qty }}</td>
-                                  <td class="p-4 text-right font-mono">{{ item.revenue | currency:storeService.currency() }}</td>
-                                  <td class="p-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                      {{ item.profit | currency:storeService.currency() }}
-                                  </td>
-                                  <td class="p-4 text-right">
-                                      <span class="px-2 py-1 rounded-md text-[10px] font-bold"
-                                            [class.bg-green-100]="item.margin >= 30"
-                                            [class.text-green-700]="item.margin >= 30"
-                                            [class.bg-amber-100]="item.margin < 30 && item.margin >= 15"
-                                            [class.text-amber-700]="item.margin < 30 && item.margin >= 15"
-                                            [class.bg-red-100]="item.margin < 15"
-                                            [class.text-red-700]="item.margin < 15">
-                                          {{ item.margin | number:'1.0-1' }}%
-                                      </span>
-                                  </td>
+
+              <div class="flex-1 overflow-auto p-0 relative">
+                  
+                  <!-- LEDGER TAB -->
+                  @if(activeTab() === 'LEDGER') {
+                      <table class="w-full text-left text-sm">
+                          <thead class="bg-white dark:bg-slate-900 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px] sticky top-0 z-10 shadow-sm">
+                              <tr>
+                                  <th class="px-4 py-3 w-10"></th>
+                                  <th class="px-4 py-3">Date & Time</th>
+                                  <th class="px-4 py-3">Receipt ID</th>
+                                  <th class="px-4 py-3 text-right">Revenue</th>
+                                  <th class="px-4 py-3 text-right">COGS (MAC)</th>
+                                  <th class="px-4 py-3 text-right">True Profit</th>
+                                  <th class="px-4 py-3 text-right">Margin</th>
                               </tr>
-                          } @empty {
-                              <tr><td colspan="5" class="p-12 text-center opacity-50 italic">Insufficient data for this period.</td></tr>
-                          }
-                      </tbody>
-                  </table>
+                          </thead>
+                          <tbody class="divide-y divide-slate-100 dark:divide-slate-800/50">
+                              @for(tx of ledgerTxs(); track tx.id) {
+                                  <ng-container>
+                                      <!-- Main Row -->
+                                      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group cursor-pointer" 
+                                          (click)="toggleExpanded(tx.id)"
+                                          [ngClass]="{
+                                              'bg-blue-50 dark:bg-slate-800/60': expandedTxId() === tx.id,
+                                              'opacity-50': tx.isVoid
+                                          }">
+                                          
+                                          <td class="px-4 py-3 text-center">
+                                              <span class="material-symbols-rounded text-slate-400 transition-transform duration-200" [class.rotate-90]="expandedTxId() === tx.id">chevron_right</span>
+                                          </td>
+                                          <td class="px-4 py-3 whitespace-nowrap">
+                                              <div class="font-bold text-slate-900 dark:text-white">{{ tx.created_at | date:'MMM d, yyyy' }}</div>
+                                              <div class="text-[10px] opacity-60">{{ tx.created_at | date:'shortTime' }}</div>
+                                          </td>
+                                          <td class="px-4 py-3 font-mono text-xs">
+                                              {{ tx.id.substring(0, 8).toUpperCase() }}
+                                              <span *ngIf="tx.isVoid" class="text-red-500 ml-2 font-bold px-2 bg-red-100 rounded">VOID</span>
+                                          </td>
+                                          <td class="px-4 py-3 text-right tracking-tight font-medium text-slate-900 dark:text-white">{{ tx.revenue | currency:storeService.currency() }}</td>
+                                          <td class="px-4 py-3 text-right tracking-tight font-medium text-orange-600 dark:text-orange-400">{{ tx.cogs | currency:storeService.currency() }}</td>
+                                          <td class="px-4 py-3 text-right font-black tracking-tight" [class.text-emerald-600]="tx.profit > 0">{{ tx.profit | currency:storeService.currency() }}</td>
+                                          <td class="px-4 py-3 text-right">
+                                              <span *ngIf="!tx.isVoid" class="px-2 py-1 rounded-md text-[10px] font-black border"
+                                                    [class.bg-emerald-50]="tx.margin >= 30" [class.text-emerald-700]="tx.margin >= 30" [class.border-emerald-200]="tx.margin >= 30"
+                                                    [class.bg-amber-50]="tx.margin < 30 && tx.margin >= 15" [class.text-amber-700]="tx.margin < 30 && tx.margin >= 15" [class.border-amber-200]="tx.margin < 30 && tx.margin >= 15"
+                                                    [class.bg-red-50]="tx.margin < 15" [class.text-red-700]="tx.margin < 15" [class.border-red-200]="tx.margin < 15">
+                                                  {{ tx.margin | number:'1.0-1' }}%
+                                              </span>
+                                          </td>
+                                      </tr>
+                                      
+                                      <!-- Details Drill-down -->
+                                      @if(expandedTxId() === tx.id) {
+                                          <tr class="bg-indigo-50/40 dark:bg-indigo-900/10">
+                                              <td colspan="7" class="p-0 border-b-2 border-indigo-200 dark:border-indigo-900/50">
+                                                  <div class="px-16 py-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                      <div class="flex items-center gap-2 mb-3">
+                                                          <span class="material-symbols-rounded text-indigo-500 text-[18px]">search</span>
+                                                          <span class="text-[11px] uppercase tracking-widest font-bold text-indigo-700 dark:text-indigo-400">Line Item Forensics</span>
+                                                      </div>
+                                                      <table class="w-full text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-indigo-100 dark:border-indigo-800/30 overflow-hidden">
+                                                          <thead class="bg-indigo-50/50 dark:bg-indigo-900/30 border-b border-indigo-100 dark:border-indigo-800/30 font-bold uppercase tracking-wider text-[9px] text-indigo-900 dark:text-indigo-300">
+                                                              <tr>
+                                                                  <th class="px-4 py-2 text-left">Product Name</th>
+                                                                  <th class="px-4 py-2 text-center">Qty</th>
+                                                                  <th class="px-4 py-2 text-right">Sale Price</th>
+                                                                  <th class="px-4 py-2 text-right">Frozen MAC (Cost)</th>
+                                                                  <th class="px-4 py-2 text-right text-emerald-600">Net Profit</th>
+                                                              </tr>
+                                                          </thead>
+                                                          <tbody class="divide-y divide-indigo-50 dark:divide-indigo-800/20">
+                                                              @for(item of tx.details; track $index) {
+                                                                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                                                      <td class="px-4 py-2 font-bold">{{ item.name }}</td>
+                                                                      <td class="px-4 py-2 text-center">x{{ item.quantity }}</td>
+                                                                      <td class="px-4 py-2 text-right font-mono">{{ item.price | currency:storeService.currency() }}</td>
+                                                                      <td class="px-4 py-2 text-right font-mono text-orange-600/90">{{ item.cost | currency:storeService.currency() }}</td>
+                                                                      <td class="px-4 py-2 text-right font-mono font-black text-emerald-600">{{ item.profit | currency:storeService.currency() }}</td>
+                                                                  </tr>
+                                                              }
+                                                          </tbody>
+                                                      </table>
+                                                  </div>
+                                              </td>
+                                          </tr>
+                                      }
+                                  </ng-container>
+                              } @empty {
+                                  <tr><td colspan="7" class="p-16 flex flex-col items-center justify-center opacity-40">
+                                      <span class="material-symbols-rounded text-5xl mb-3">history_toggle_off</span>
+                                      <span class="font-bold text-lg">No Transactions</span>
+                                      <span class="text-sm">There are no sales for the selected timeframe.</span>
+                                  </td></tr>
+                              }
+                          </tbody>
+                      </table>
+                  }
+
+                  <!-- TOP PRODUCTS TAB -->
+                  @if(activeTab() === 'PRODUCTS') {
+                      <table class="w-full text-left text-sm">
+                          <thead class="bg-white dark:bg-slate-900 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px] sticky top-0 z-10 shadow-sm">
+                              <tr>
+                                  <th class="px-5 py-4">Product Name</th>
+                                  <th class="px-5 py-4 text-right">Units Sold</th>
+                                  <th class="px-5 py-4 text-right">Revenue Generated</th>
+                                  <th class="px-5 py-4 text-right">True Net Profit</th>
+                                  <th class="px-5 py-4 text-right">Blended Margin</th>
+                              </tr>
+                          </thead>
+                          <tbody class="divide-y divide-slate-100 dark:divide-slate-800/50">
+                              @for(item of topProducts(); track item.productId) {
+                                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
+                                      <td class="px-5 py-4">
+                                          <div class="font-bold text-slate-900 dark:text-white text-base">{{ item.name }}</div>
+                                          <div class="text-[10px] opacity-60 font-mono tracking-wider">ID: {{ item.productId.substring(0,8).toUpperCase() }}</div>
+                                      </td>
+                                      <td class="px-5 py-4 text-right font-bold">{{ item.qty }}</td>
+                                      <td class="px-5 py-4 text-right font-mono">{{ item.revenue | currency:storeService.currency() }}</td>
+                                      <td class="px-5 py-4 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                          {{ item.profit | currency:storeService.currency() }}
+                                      </td>
+                                      <td class="px-5 py-4 text-right">
+                                          <span class="px-2 py-1 rounded-md text-[10px] font-black border"
+                                                [class.bg-emerald-50]="item.margin >= 30" [class.text-emerald-700]="item.margin >= 30" [class.border-emerald-200]="item.margin >= 30"
+                                                [class.bg-amber-50]="item.margin < 30 && item.margin >= 15" [class.text-amber-700]="item.margin < 30 && item.margin >= 15" [class.border-amber-200]="item.margin < 30 && item.margin >= 15"
+                                                [class.bg-red-50]="item.margin < 15" [class.text-red-700]="item.margin < 15" [class.border-red-200]="item.margin < 15">
+                                              {{ item.margin | number:'1.0-1' }}%
+                                          </span>
+                                      </td>
+                                  </tr>
+                              } @empty {
+                                  <tr><td colspan="5" class="p-16 flex flex-col items-center justify-center opacity-40">
+                                      <span class="material-symbols-rounded text-5xl mb-3">production_quantity_limits</span>
+                                      <span class="font-bold text-lg">Not Enough Data</span>
+                                      <span class="text-sm">No positive profit records found for this period.</span>
+                                  </td></tr>
+                              }
+                          </tbody>
+                      </table>
+                  }
+
               </div>
           </div>
 
           <!-- Quick Report Actions -->
           <div class="col-span-1 flex flex-col gap-6">
               
-              <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col overflow-hidden">
+              <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
                   <div class="p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between items-center">
                      <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
                          <span class="material-symbols-rounded text-[var(--primary-color)]">download</span> 
-                         Export Reports
+                         Export Tools
                      </h3>
                   </div>
                   <div class="p-5 space-y-4">
                       
-                      <button class="w-full relative overflow-hidden group flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 transition-colors bg-white dark:bg-slate-800 text-left">
-                          <div class="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex flex-shrink-0 items-center justify-center">
+                      <!-- Functional Export Ledger button -->
+                      <button (click)="exportLedgerToCSV()" class="w-full relative overflow-hidden group flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 transition-colors bg-white dark:bg-slate-800 text-left active:scale-95">
+                          <div class="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex flex-shrink-0 items-center justify-center transition-transform group-hover:scale-110">
                               <span class="material-symbols-rounded text-[20px]">table_chart</span>
                           </div>
                           <div>
-                              <div class="font-bold text-slate-900 dark:text-white mb-0.5">Full Profit/Loss (Excel)</div>
-                              <div class="text-xs opacity-60">Complete ledger of all transactions with associated COGS.</div>
+                              <div class="font-bold text-slate-900 dark:text-white mb-0.5">Download P&L CSV</div>
+                              <div class="text-xs opacity-60">Complete ledger of {{ timeframe().toLowerCase() }}'s transactions with associated COGS.</div>
                           </div>
                       </button>
 
-                      <button class="w-full relative overflow-hidden group flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-purple-500 dark:hover:border-purple-500 transition-colors bg-white dark:bg-slate-800 text-left">
+                      <button class="w-full relative overflow-hidden group flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-purple-500 dark:hover:border-purple-500 transition-colors bg-white dark:bg-slate-800 text-left opacity-70">
                           <div class="w-10 h-10 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 flex flex-shrink-0 items-center justify-center">
                               <span class="material-symbols-rounded text-[20px]">inventory_2</span>
                           </div>
                           <div>
-                              <div class="font-bold text-slate-900 dark:text-white mb-0.5">Supplier Spend Report</div>
-                              <div class="text-xs opacity-60">Purchase price variance & total volume by vendor.</div>
-                          </div>
-                      </button>
-
-                      <button class="w-full relative overflow-hidden group flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors bg-white dark:bg-slate-800 text-left">
-                          <div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex flex-shrink-0 items-center justify-center">
-                              <span class="material-symbols-rounded text-[20px]">groups</span>
-                          </div>
-                          <div>
-                              <div class="font-bold text-slate-900 dark:text-white mb-0.5">Staff Performance</div>
-                              <div class="text-xs opacity-60">Revenue generated and returns processed per employee.</div>
+                              <div class="font-bold text-slate-900 dark:text-white mb-0.5">Supplier Spend</div>
+                              <div class="text-[10px] text-purple-600 font-bold uppercase tracking-wider mt-1">Coming Soon</div>
                           </div>
                       </button>
 
@@ -226,6 +331,11 @@ export class AnalyticsDashboardComponent implements OnInit {
     items = signal<TransactionItem[]>([]);
     products = signal<Product[]>([]);
 
+    // UI State
+    timeframe = signal<'TODAY' | 'MONTH' | 'ALL'>('MONTH');
+    activeTab = signal<'LEDGER' | 'PRODUCTS'>('LEDGER');
+    expandedTxId = signal<string | null>(null);
+
     ngOnInit() {
         this.loadData();
         // Listen to store changes
@@ -239,8 +349,6 @@ export class AnalyticsDashboardComponent implements OnInit {
         const store = this.storeService.currentStore();
         if (!store) return;
 
-        // Let's pretend we have a reporting RPC that aggregates this
-        // but for now we calculate in-memory for the demo.
         this.supabase.getTransactions(store.id).pipe(
             switchMap(txs => {
                 this.transactions.set(txs);
@@ -253,10 +361,8 @@ export class AnalyticsDashboardComponent implements OnInit {
             const txs = this.transactions();
             let allItems: TransactionItem[] = [];
 
-            // Note: highly inefficient strictly for demo purposes locally!
-            // In reality, this would be computed quickly via Supabase DB View
             const tClient = (this.supabase as any).supabase;
-            if (tClient) {
+            if (tClient && txs.length > 0) {
                 const { data } = await tClient
                     .from('transaction_items')
                     .select('*')
@@ -268,57 +374,109 @@ export class AnalyticsDashboardComponent implements OnInit {
         });
     }
 
-    metrics = computed(() => {
-        const txs = this.transactions();
-        const txItems = this.items();
-        const prods = this.products();
+    setTimeframe(tf: 'TODAY' | 'MONTH' | 'ALL') {
+        this.timeframe.set(tf);
+        this.expandedTxId.set(null);
+    }
 
+    toggleExpanded(id: string) {
+        if (this.expandedTxId() === id) {
+            this.expandedTxId.set(null);
+        } else {
+            this.expandedTxId.set(id);
+        }
+    }
+
+    // Advanced Data Pipeline specific to Timeframe
+    filteredData = computed(() => {
+        const tf = this.timeframe();
+        const txs = this.transactions() || [];
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const monthStr = now.toISOString().slice(0, 7);
+
+        const okTxs = txs.filter(t => {
+            if (tf === 'ALL') return true;
+            const txDate = new Date(t.created_at || '').toISOString();
+            if (tf === 'TODAY') return txDate.split('T')[0] === todayStr;
+            if (tf === 'MONTH') return txDate.slice(0, 7) === monthStr;
+            return true;
+        });
+
+        // Sort latest first
+        okTxs.sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime());
+        return okTxs;
+    });
+
+    // Calculates all detailed ledger lines and exact P&L
+    ledgerTxs = computed(() => {
+        const items = this.items();
+        const prods = this.products();
+        return this.filteredData().map(tx => {
+            const isVoid = tx.metadata?.status === 'VOID';
+            const myItems = items.filter(i => i.transaction_id === tx.id);
+
+            let revenue = 0;
+            let cogs = 0;
+
+            const details = myItems.map(ti => {
+                let saleCost = ti.cost_at_sale;
+                if (saleCost === null || saleCost === undefined) {
+                    const p = prods.find(pr => pr.id === ti.product_id);
+                    saleCost = p?.metadata?.mac ?? p?.cost_price ?? (ti.price_at_sale * 0.6);
+                }
+                const rev = Number(ti.price_at_sale) * ti.quantity;
+                const lineCogs = saleCost * ti.quantity;
+                revenue += rev;
+                cogs += lineCogs;
+
+                const pName = prods.find(pr => pr.id === ti.product_id)?.name || 'Unknown Item';
+                return { name: pName, quantity: ti.quantity, price: ti.price_at_sale, cost: saleCost, rev, profit: rev - lineCogs };
+            });
+
+            // If voided, we show zero profit/revenue so it doesn't skew numbers
+            if (isVoid) {
+                return { ...tx, isVoid, revenue: 0, cogs: 0, profit: 0, margin: 0, details };
+            }
+
+            const profit = revenue - cogs;
+            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+            return { ...tx, isVoid, revenue, cogs, profit, margin, details };
+        });
+    });
+
+    metrics = computed(() => {
+        const ledger = this.ledgerTxs();
         let revenue = 0;
         let cogs = 0;
+        let profit = 0;
 
-        txs.forEach(t => {
-            if (t.metadata?.status !== 'VOID') {
-                revenue += Number(t.total_amount);
-            }
+        ledger.forEach(l => {
+            revenue += l.revenue;
+            cogs += l.cogs;
+            profit += l.profit;
         });
 
-        txItems.forEach(ti => {
-            // Find parent tx to ensure it is not voided
-            const pt = txs.find(t => t.id === ti.transaction_id);
-            if (pt && pt.metadata?.status !== 'VOID') {
-                // If no historic cost_at_sale, fallback to current base product cost
-                let saleCost = ti.cost_at_sale || 0;
-                if (!saleCost) {
-                    const p = prods.find(pr => pr.id === ti.product_id);
-                    saleCost = p?.cost_price || (ti.price_at_sale * 0.6); // Fallback: 40% margin estimate if no COGS logged
-                }
-                cogs += (saleCost * ti.quantity);
-            }
-        });
-
-        const profit = revenue - cogs;
         const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
         return { revenue, cogs, profit, margin };
     });
 
     topProducts = computed(() => {
         const txItems = this.items();
         const prods = this.products();
-        const txs = this.transactions();
 
-        // Group by product
+        // Only include non-voided transactions mapped from the currently filtered timeframe
+        const validTxIds = new Set(this.ledgerTxs().filter(t => !t.isVoid).map(t => t.id));
+
         const stats: Record<string, any> = {};
 
         txItems.forEach(ti => {
-            const pt = txs.find(t => t.id === ti.transaction_id);
-            if (pt && pt.metadata?.status !== 'VOID') {
+            if (validTxIds.has(ti.transaction_id)) {
                 if (!stats[ti.product_id]) {
                     const p = prods.find(pr => pr.id === ti.product_id);
                     stats[ti.product_id] = {
                         productId: ti.product_id,
                         name: p?.name || 'Unknown',
-                        category: p?.category_id || 'Retail', // Could lookup category name
                         qty: 0,
                         revenue: 0,
                         cogs: 0
@@ -328,24 +486,39 @@ export class AnalyticsDashboardComponent implements OnInit {
                 stats[ti.product_id].qty += ti.quantity;
                 stats[ti.product_id].revenue += Number(ti.price_at_sale) * ti.quantity;
 
-                let saleCost = ti.cost_at_sale || 0;
-                if (!saleCost) {
+                let saleCost = ti.cost_at_sale;
+                if (saleCost === null || saleCost === undefined) {
                     const p = prods.find(pr => pr.id === ti.product_id);
-                    saleCost = p?.cost_price || (ti.price_at_sale * 0.6);
+                    saleCost = p?.metadata?.mac ?? p?.cost_price ?? (ti.price_at_sale * 0.6);
                 }
                 stats[ti.product_id].cogs += (saleCost * ti.quantity);
             }
         });
 
-        // Compute profit & flatten
         let arr = Object.values(stats).map(s => {
             s.profit = s.revenue - s.cogs;
             s.margin = s.revenue > 0 ? (s.profit / s.revenue) * 100 : 0;
             return s;
         });
 
-        // Sort by Profit DESC
         arr.sort((a, b) => b.profit - a.profit);
-        return arr.slice(0, 5); // top 5
+        return arr.slice(0, 15); // Top 15 
     });
+
+    exportLedgerToCSV() {
+        const rows = this.ledgerTxs();
+        let csv = 'Date,Receipt ID,Status,Revenue,MAC COGS,True Profit,Margin (%)\n';
+        rows.forEach(r => {
+            const date = r.created_at ? new Date(r.created_at).toLocaleString().replace(/,/g, '') : '';
+            const status = r.isVoid ? 'VOID' : 'COMPLETED';
+            csv += `${date},${r.id},${status},${r.revenue.toFixed(2)},${r.cogs.toFixed(2)},${r.profit.toFixed(2)},${(r.margin || 0).toFixed(2)}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `profit_loss_ledger_${this.timeframe().toLowerCase()}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
 }

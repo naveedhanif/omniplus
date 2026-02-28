@@ -89,6 +89,29 @@ import { PurchaseOrderPrintComponent } from "../../../../shared/components/purch
               </div>
             }
 
+            <!-- Target Destination Selector -->
+            <div class="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <span class="material-symbols-rounded">location_on</span>
+                </div>
+                <div>
+                  <div class="text-[10px] font-black uppercase tracking-widest text-blue-500">Destination Location</div>
+                  <div class="text-sm font-bold text-slate-700 dark:text-slate-200">Where should this stock be placed?</div>
+                </div>
+              </div>
+              
+              <div class="flex-1 max-w-xs">
+                <select [ngModel]="selectedReceiveLocationId()" 
+                        (ngModelChange)="selectedReceiveLocationId.set($event)"
+                        class="w-full bg-white dark:bg-slate-800 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-sm">
+                  @for (loc of stockLocations(); track loc.id) {
+                    <option [value]="loc.id">{{ loc.name }} ({{ loc.location_type }})</option>
+                  }
+                </select>
+              </div>
+            </div>
+
             <div
               class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"
             >
@@ -1480,6 +1503,7 @@ export class PurchaseOrderComponent {
   selectedPOToReceive = signal<PurchaseOrder | null>(null);
   receiveItems = signal<any[]>([]);
   receiveError = signal<string | null>(null);
+  selectedReceiveLocationId = signal<string | null>(null);
 
   // ── P2: Duplicate product warning ────────────────────────────────────────
   duplicateWarning = signal<string | null>(null);
@@ -1545,6 +1569,15 @@ export class PurchaseOrderComponent {
     this.storeService.currentStore$.pipe(
       switchMap((store) =>
         store ? this.supabase.getCategories(store.id) : of([]),
+      ),
+    ),
+    { initialValue: [] },
+  );
+
+  stockLocations = toSignal(
+    this.storeService.currentStore$.pipe(
+      switchMap((store) =>
+        store ? this.supabase.getStockLocations(store.id) : of([]),
       ),
     ),
     { initialValue: [] },
@@ -2160,6 +2193,11 @@ export class PurchaseOrderComponent {
           serial_numbers_input: "",
         }));
         this.receiveItems.set(dialogItems);
+
+        // Auto-select first warehouse as default
+        const defaultLoc = this.stockLocations().find(l => l.location_type === 'WAREHOUSE') || this.stockLocations()[0];
+        if (defaultLoc) this.selectedReceiveLocationId.set(defaultLoc.id);
+
         this.isReceiving.set(false);
         this.showReceiveDialog.set(true);
       },
@@ -2202,9 +2240,9 @@ export class PurchaseOrderComponent {
       .map((item) => {
         const serials = this.isProductSerialized(item.product_id)
           ? (item.serial_numbers_input || "")
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter((s: string) => s.length > 0)
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter((s: string) => s.length > 0)
           : undefined;
         return {
           item_id: item.id,
@@ -2223,7 +2261,7 @@ export class PurchaseOrderComponent {
       (item) =>
         item.receiving_now > 0 &&
         item.receiving_now >
-          item.quantity_ordered - (item.quantity_received || 0),
+        item.quantity_ordered - (item.quantity_received || 0),
     );
     if (overageItems.length > 0) {
       const names = overageItems
@@ -2231,16 +2269,16 @@ export class PurchaseOrderComponent {
         .join(", ");
       const confirmed = confirm(
         `Overage detected on: ${names}\n\n` +
-          `You are receiving more units than originally ordered.\n` +
-          `This may indicate a billing discrepancy with your supplier.\n\n` +
-          `Continue anyway?`,
+        `You are receiving more units than originally ordered.\n` +
+        `This may indicate a billing discrepancy with your supplier.\n\n` +
+        `Continue anyway?`,
       );
       if (!confirmed) return;
     }
 
     this.isReceiving.set(true);
     this.receiveError.set(null);
-    this.supabase.receivePO(po.id, itemsToReceive).subscribe({
+    this.supabase.receivePO(po.id, itemsToReceive, this.selectedReceiveLocationId() || undefined).subscribe({
       next: (result) => {
         if (this.selectedPO()?.id === po.id) {
           this.supabase.getPurchaseOrderItems(po.id).subscribe((items) => {

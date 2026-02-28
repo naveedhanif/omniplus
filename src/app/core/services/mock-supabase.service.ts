@@ -178,6 +178,7 @@ export interface PurchaseOrder {
     notes?: string;
     created_at: string;
     items?: PurchaseOrderItem[];
+    total_quantity?: number;
 }
 
 export interface PurchaseOrderItem {
@@ -454,7 +455,11 @@ export class MockSupabaseService {
             console.error('Error fetching staff:', staffError);
             this.staff$.next([]);
         } else {
+            this.staff$.next(staff || []);
         }
+
+        // 5. Fetch POs
+        this.refreshPOs();
     }
 
     private async ensureDefaultLocations(storeId: string) {
@@ -1685,6 +1690,7 @@ export class MockSupabaseService {
                                 product_id: item.product.id,
                                 quantity: 1,
                                 price_at_sale: item.product.price,
+                                cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0,
                                 serial_number_id: serial.id,
                             });
                             serialUpdates.push(
@@ -1696,48 +1702,68 @@ export class MockSupabaseService {
                         // Legacy generic deduction
                         stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.serials.length }));
 
-                        // New Stock Ledger logic (required for Command Center UI)
+                        // New Stock Ledger logic
                         if (defaultLocationId) {
                             stockUpdates.push(this.supabase.from('stock_ledger').insert({
-                                movement_type: 'SALE',
+                                store_id: txData.store_id,
                                 product_id: item.product.id,
                                 location_id: defaultLocationId,
-                                quantity: -item.serials.length,
-                                reference_type: 'TRANSACTION',
+                                quantity_change: -item.serials.length,
+                                reason: 'SALE',
                                 reference_id: tx.id,
                                 notes: `POS Sale #${tx.id.substring(0, 8)}`
                             }));
                         }
+
+                        // LEGACY SYNC: Update products table for UI compatibility
+                        stockUpdates.push(this.supabase.from('products')
+                            .update({
+                                stock_shop: (item.product.stock_shop || 0) - item.serials.length,
+                                stock_quantity: (item.product.stock_quantity || 0) - item.serials.length
+                            })
+                            .eq('id', item.product.id));
                     } else {
                         txItemsData.push({
                             transaction_id: tx.id,
                             product_id: item.product.id,
                             quantity: item.quantity,
                             price_at_sale: item.product.price,
-                            cost_at_sale: item.product.cost_price || 0
+                            cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0
                         });
 
                         // Legacy hook
                         stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.quantity }));
 
-                        // New Stock Ledger logic (required for Command Center UI)
+                        // New Stock Ledger logic
                         if (defaultLocationId) {
                             stockUpdates.push(this.supabase.from('stock_ledger').insert({
-                                movement_type: 'SALE',
+                                store_id: txData.store_id,
                                 product_id: item.product.id,
                                 location_id: defaultLocationId,
-                                quantity: -item.quantity,
-                                reference_type: 'TRANSACTION',
+                                quantity_change: -item.quantity,
+                                reason: 'SALE',
                                 reference_id: tx.id,
                                 notes: `POS Sale #${tx.id.substring(0, 8)}`
                             }));
                         }
+
+                        // LEGACY SYNC: Update products table for UI compatibility
+                        stockUpdates.push(this.supabase.from('products')
+                            .update({
+                                stock_shop: (item.product.stock_shop || 0) - item.quantity,
+                                stock_quantity: (item.product.stock_quantity || 0) - item.quantity
+                            })
+                            .eq('id', item.product.id));
                     }
                 }
 
                 await this.supabase.from('transaction_items').insert(txItemsData);
                 await Promise.all(serialUpdates);
                 await Promise.all(stockUpdates);
+
+                // --- SYNC LOCAL STATE START ---
+                await this.refreshProducts(); // Ensure BehaviorSubject is updated for all UI components
+                // --- SYNC LOCAL STATE END ---
 
                 // --- ACCOUNT HANDLING START ---
                 // Phase 2: Handle multiple payments
@@ -1965,8 +1991,8 @@ export class MockSupabaseService {
         // time the component subscribes (e.g. on navigation) when data is already loaded.
         if (this._lastPoStoreId !== storeId) {
             this._lastPoStoreId = storeId;
-            this.refreshPOs(storeId);
         }
+        this.refreshPOs(storeId);
         return this.purchaseOrders$.asObservable();
     }
 
@@ -1977,12 +2003,18 @@ export class MockSupabaseService {
         try {
             const { data, error } = await this.supabase
                 .from('purchase_orders')
-                .select('*, supplier:suppliers(*)')
+                .select('*, supplier:suppliers(*), items:purchase_order_items(quantity_ordered)')
                 .eq('store_id', id)
                 .order('created_at', { ascending: false });
             if (error && error.code === '42P01') { this.purchaseOrders$.next([]); return; }
             if (error) throw error;
-            this.purchaseOrders$.next((data as PurchaseOrder[]) ?? []);
+
+            const mappedPOs = (data || []).map((po: any) => ({
+                ...po,
+                total_quantity: (po.items || []).reduce((sum: number, item: any) => sum + (item.quantity_ordered || 0), 0)
+            }));
+
+            this.purchaseOrders$.next(mappedPOs as PurchaseOrder[]);
         } catch (err) {
             console.error('Failed to refresh PO list:', err);
         }
@@ -2096,7 +2128,17 @@ export class MockSupabaseService {
         }));
     }
 
-    receivePO(poId: string, itemsToReceive: { item_id: string, product_id: string, received_amount: number, unit_cost: number, serial_numbers?: string[] }[]): Observable<{ success: boolean, newStatus: POStatus }> {
+    getStockLocations(storeId: string): Observable<any[]> {
+        return from(
+            this.supabase
+                .from('stock_locations')
+                .select('*')
+                .eq('store_id', storeId)
+                .then(r => r.data || [])
+        );
+    }
+
+    receivePO(poId: string, itemsToReceive: { item_id: string, product_id: string, received_amount: number, unit_cost: number, serial_numbers?: string[] }[], destinationLocationId?: string): Observable<{ success: boolean, newStatus: POStatus }> {
         return from(new Promise<{ success: boolean, newStatus: POStatus }>(async (resolve, reject) => {
             try {
                 // 1. Fetch PO and all its items
@@ -2113,27 +2155,36 @@ export class MockSupabaseService {
                     return;
                 }
 
-                // 2. Ensure Warehouse Location
-                const { data: locations } = await this.supabase
-                    .from('stock_locations')
-                    .select('id, location_type')
-                    .eq('store_id', po.store_id)
-                    .eq('location_type', 'WAREHOUSE')
-                    .limit(1);
+                // 2. Resolve Target Location
+                let targetId = destinationLocationId;
+                let targetLocationType = 'WAREHOUSE';
 
-                let warehouseId = locations && locations.length > 0 ? locations[0].id : null;
-                if (!warehouseId) {
-                    await this.ensureDefaultLocations(po.store_id);
-                    const { data: retryLocs } = await this.supabase
+                if (targetId) {
+                    const { data: loc } = await this.supabase.from('stock_locations').select('location_type').eq('id', targetId).single();
+                    if (loc) targetLocationType = loc.location_type;
+                } else {
+                    // Default to WAREHOUSE if none specified
+                    const { data: locations } = await this.supabase
                         .from('stock_locations')
-                        .select('id')
+                        .select('id, location_type')
                         .eq('store_id', po.store_id)
                         .eq('location_type', 'WAREHOUSE')
                         .limit(1);
-                    warehouseId = retryLocs && retryLocs.length > 0 ? retryLocs[0].id : null;
+
+                    targetId = locations && locations.length > 0 ? locations[0].id : null;
+                    if (!targetId) {
+                        await this.ensureDefaultLocations(po.store_id);
+                        const { data: retryLocs } = await this.supabase
+                            .from('stock_locations')
+                            .select('id, location_type')
+                            .eq('store_id', po.store_id)
+                            .eq('location_type', 'WAREHOUSE')
+                            .limit(1);
+                        targetId = retryLocs && retryLocs.length > 0 ? retryLocs[0].id : null;
+                    }
                 }
 
-                if (!warehouseId) throw new Error('Warehouse location not found/created');
+                if (!targetId) throw new Error('Target stock location not found');
 
                 let totalOrderedAcrossAllItems = 0;
                 let totalReceivedAcrossAllItems = 0;
@@ -2159,17 +2210,29 @@ export class MockSupabaseService {
 
                     // B: Update Stock Values
                     if (receivePayload.received_amount > 0) {
-                        const { data: product } = await this.supabase.from('products').select('stock_warehouse, stock_quantity, cost_price, is_serialized').eq('id', receivePayload.product_id).single();
+                        const { data: product } = await this.supabase.from('products').select('stock_warehouse, stock_shop, stock_quantity, cost_price, is_serialized, metadata').eq('id', receivePayload.product_id).single();
 
                         if (product) {
-                            const newWhouse = (product.stock_warehouse || 0) + receivePayload.received_amount;
                             const newTotal = (product.stock_quantity || 0) + receivePayload.received_amount;
+                            let newWhouse = product.stock_warehouse || 0;
+                            let newShop = product.stock_shop || 0;
 
-                            // Calculate Moving Average Cost (MAC) for legacy data
+                            if (targetLocationType === 'STORE') {
+                                newShop += receivePayload.received_amount;
+                            } else {
+                                newWhouse += receivePayload.received_amount;
+                            }
+
+                            // Calculate strict Moving Average Cost (MAC)
                             const currentTotalQty = product.stock_quantity || 0;
-                            const currentTotalVal = currentTotalQty * (product.cost_price || 0);
+                            // Prefer existing MAC from metadata, fallback to cost_price if missing
+                            const currentMAC = product.metadata?.mac ?? product.cost_price ?? 0;
+                            const currentTotalVal = currentTotalQty * currentMAC;
                             const incomingVal = receivePayload.received_amount * receivePayload.unit_cost;
                             const newMAC = newTotal > 0 ? ((currentTotalVal + incomingVal) / newTotal) : 0;
+
+                            // Preserve existing metadata
+                            const safeMetadata = product.metadata || {};
 
                             // B.1 FIFO Engine: Insert new batch into `stock_batches`
                             await this.supabase.from('stock_batches').insert({
@@ -2177,23 +2240,38 @@ export class MockSupabaseService {
                                 product_id: receivePayload.product_id,
                                 supplier_id: po.supplier_id,
                                 po_id: po.id,
+                                location_id: targetId,
                                 unit_cost: receivePayload.unit_cost,
                                 initial_quantity: receivePayload.received_amount,
                                 remaining_quantity: receivePayload.received_amount,
                                 batch_number: `PO-${po.id.substring(0, 8)}`
                             });
 
-                            // B.1.1 Update Legacy Product flat values (for UI that hasn't migrated to read from batches yet)
+                            // B.1.1 Update True Financial MAC purely in metadata so catalog edits don't break accounting
                             await this.supabase.from('products').update({
-                                cost_price: newMAC
+                                stock_warehouse: newWhouse,
+                                stock_shop: newShop,
+                                stock_quantity: newTotal,
+                                metadata: { ...safeMetadata, mac: newMAC }
                             }).eq('id', receivePayload.product_id);
+
+                            // B.1.2: SYNC Master Stock Ledger (stock_levels table)
+                            // This ensures the "Stock Levels" tab updates instantly
+                            await this.supabase.from('stock_levels').upsert({
+                                store_id: po.store_id,
+                                product_id: receivePayload.product_id,
+                                location_id: targetId,
+                                available_quantity: targetLocationType === 'STORE' ? newShop : newWhouse,
+                                physical_quantity: targetLocationType === 'STORE' ? newShop : newWhouse,
+                                quantity: targetLocationType === 'STORE' ? newShop : newWhouse // Legacy support
+                            }, { onConflict: 'product_id,location_id' });
 
                             // B.1.5: Insert Serials if applicable
                             if (product.is_serialized && receivePayload.serial_numbers && receivePayload.serial_numbers.length > 0) {
                                 const serialsData = receivePayload.serial_numbers.map(sn => ({
                                     store_id: po.store_id,
                                     product_id: receivePayload.product_id,
-                                    current_location_id: warehouseId,
+                                    current_location_id: targetId,
                                     serial_number: sn,
                                     status: 'IN_STOCK'
                                 }));
@@ -2203,40 +2281,41 @@ export class MockSupabaseService {
                             }
 
                             // B.2: Update Advanced Stock (stock_levels) mapping
-
-                            // Get current stock level to calculate new warehouse total accurately
                             const { data: currentLevel } = await this.supabase.from('stock_levels')
-                                .select('quantity')
+                                .select('available_quantity')
                                 .eq('product_id', receivePayload.product_id)
-                                .eq('location_id', warehouseId)
-                                .single();
+                                .eq('location_id', targetId)
+                                .maybeSingle();
 
-                            const currentWhouseQty = currentLevel ? currentLevel.quantity : 0;
-                            const updatedWhouseQty = currentWhouseQty + receivePayload.received_amount;
+                            const currentLocQty = currentLevel ? currentLevel.available_quantity : 0;
+                            const updatedLocQty = currentLocQty + receivePayload.received_amount;
 
-                            await this.supabase.from('stock_levels').upsert({
-                                store_id: po.store_id,
+                            const { error: upsertErr } = await this.supabase.from('stock_levels').upsert({
                                 product_id: receivePayload.product_id,
-                                location_id: warehouseId,
-                                quantity: updatedWhouseQty
+                                location_id: targetId,
+                                available_quantity: updatedLocQty,
+                                physical_quantity: updatedLocQty,
+                                stock_value: updatedLocQty * (receivePayload.unit_cost || product.cost_price || 0),
+                                last_movement_at: new Date().toISOString()
                             }, { onConflict: 'product_id,location_id' });
+
+                            if (upsertErr) console.error('Stock levels upsert failed:', upsertErr);
 
                             // B.3: Ledger Entry
                             const ledgerEntry = {
                                 store_id: po.store_id,
                                 product_id: receivePayload.product_id,
-                                location_id: warehouseId,
+                                location_id: targetId,
                                 quantity_change: receivePayload.received_amount,
-                                balance_after: updatedWhouseQty,
+                                balance_after: updatedLocQty,
                                 reason: 'RECEIVE_PO',
                                 reference_id: po.id,
-                                notes: `Partial/Full Receive PO #${po.id.substring(0, 8)}`
+                                notes: `PO Receipt: PO-${po.id.substring(0, 8)}`,
+                                created_by: '00000000-0000-0000-0000-000000000000'
                             };
 
-                            // Check if stock_ledger exists gracefully
                             const { error: ledgerErr } = await this.supabase.from('stock_ledger').insert(ledgerEntry);
-                            // Not failing entire transaction if ledger missing in mock DB, just log
-                            if (ledgerErr && ledgerErr.code !== '42P01') console.error("Ledger write failed", ledgerErr);
+                            if (ledgerErr) console.error("Ledger write failed", ledgerErr);
 
                         }
                     }
@@ -2262,10 +2341,7 @@ export class MockSupabaseService {
                 if (statusErr) throw statusErr;
 
                 // 6. P0-B Fix: Push the updated PO list into the live BehaviorSubject
-                //    so every toSignal() subscriber (e.g. the PO list view) sees the
-                //    new status badge without requiring a page navigation.
                 await this.refreshPOs();
-                // Also refresh products so updated stock_warehouse is visible elsewhere
                 this.fetchAllData();
 
                 resolve({ success: true, newStatus: finalStatus });

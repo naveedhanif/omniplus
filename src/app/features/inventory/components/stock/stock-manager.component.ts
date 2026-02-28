@@ -1,8 +1,8 @@
 import { Component, inject, signal, computed, OnInit, effect } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, FormsModule, Validators } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { switchMap, of, BehaviorSubject, retry, catchError, tap, map } from 'rxjs';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
+import { switchMap, of, BehaviorSubject, retry, catchError, tap, map, combineLatest, Subject } from 'rxjs';
 import {
     StockManagementService,
     StockLevel,
@@ -22,7 +22,7 @@ import { MockSupabaseService, Product } from '../../../../core/services/mock-sup
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
 
-type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS';
+type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS' | 'CONSIGNMENTS';
 
 @Component({
     selector: 'app-stock-manager',
@@ -36,44 +36,79 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
             .animate-progress-slide {
                 animation: slideProgress 1s linear infinite;
             }
-            /* Hide scrollbars for a cleaner UI if needed later */
             .hide-scrollbar::-webkit-scrollbar { display: none; }
             .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+            /* Premium Glass Drawer Styles */
+            .glass-drawer {
+                background: rgba(255, 255, 255, 0.85);
+                backdrop-filter: blur(20px);
+                border-left: 1px solid rgba(255, 255, 255, 0.3);
+            }
+            .dark .glass-drawer {
+                background: rgba(15, 23, 42, 0.85);
+                border-left: 1px solid rgba(51, 65, 85, 0.5);
+            }
+            .glass-input {
+                background: rgba(255, 255, 255, 0.5);
+                border: 1px solid rgba(203, 213, 225, 0.5);
+                transition: all 0.2s ease;
+            }
+            .dark .glass-input {
+                background: rgba(30, 41, 59, 0.4);
+                border: 1px solid rgba(51, 65, 85, 0.5);
+            }
+            .glass-input:focus {
+                background: rgba(255, 255, 255, 0.9);
+                border-color: var(--primary-color);
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+            }
+            .dark .glass-input:focus {
+                background: rgba(30, 41, 59, 0.8);
+            }
+            
+            .premium-gradient-btn {
+                background: linear-gradient(135deg, var(--primary-color), #4f46e5);
+                box-shadow: 0 4px 15px -3px rgba(79, 70, 229, 0.4);
+            }
+            .premium-gradient-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.5);
+            }
         </style>
         <div class="space-y-6">
             <!-- Header -->
-            <div class="flex justify-between items-center">
+            <div class="flex justify-between items-end mb-2">
                 <div>
-                    <h2 class="text-2xl font-bold">Stock Management</h2>
-                    <p class="text-sm opacity-60">Movement-based inventory tracking with full audit trail</p>
+                    <div class="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-black uppercase tracking-tighter mb-2 border border-blue-100 dark:border-blue-800/30">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                        </span>
+                        Enterprise Inventory System
+                    </div>
+                    <h2 class="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Stock Management</h2>
+                    <p class="text-slate-500 text-sm mt-1">Audit-ready inventory tracking & supply chain orchestration</p>
                 </div>
-                <div class="flex gap-2">
-                    <button 
-                        (click)="showLocationModal.set(true)"
-                        class="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                        <span class="material-symbols-rounded text-sm">add_location_alt</span> Location
-                    </button>
-                    <button 
-                        (click)="openAdjustmentModal()"
-                        class="px-4 py-2 bg-[var(--primary-color)] text-white rounded-lg font-bold hover:brightness-110 transition-all">
-                        <span class="material-symbols-rounded text-sm">add</span> Adjustment
-                    </button>
-                    <button 
-                        (click)="openTransferModal()"
-                        class="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                        <span class="material-symbols-rounded text-sm">swap_horiz</span> New Transfer
-                    </button>
+                <div class="flex items-center gap-3">
                     <button 
                         (click)="refreshAll()"
-                        class="p-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg shadow-sm hover:brightness-95 transition-all text-slate-500 hover:text-[var(--primary-color)]"
-                        title="Refresh Data">
+                        class="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:shadow-md transition-all text-slate-500 hover:text-[var(--primary-color)] active:scale-95"
+                        title="Refresh Intelligence">
                         <span class="material-symbols-rounded">refresh</span>
+                    </button>
+                    <div class="h-10 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+                    <button 
+                        (click)="openCommand('ADJUST')"
+                        class="premium-gradient-btn pl-4 pr-6 py-3 text-white rounded-2xl font-black text-sm transition-all flex items-center gap-2">
+                        <span class="material-symbols-rounded">inventory_2</span> 
+                        Operations Hub
                     </button>
                 </div>
             </div>
 
             <!-- 🎨 COMMAND CENTER: Bento Box Dashboard -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <!-- Card 1: Portfolio Value (Glassmorphism & Sparkline) -->
                 <div class="relative overflow-hidden bg-gradient-to-br from-[var(--card-bg)] to-slate-50 dark:to-slate-800/50 rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700/60 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
@@ -149,23 +184,86 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                     </div>
                 </div>
 
-                <!-- Card 4: Network Map (Visual Node Map feeling) -->
+                <!-- Card 4: Inbound Consignments (New) -->
                 <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-700 p-5 group cursor-pointer transition-all duration-300 hover:-translate-y-1"
-                     (click)="viewMode.set('LOCATIONS')">
-                     <!-- Dotted background -->
-                     <div class="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] bg-[radial-gradient(circle_at_center,theme(colors.slate.900)_1.5px,transparent_1.5px)] dark:bg-[radial-gradient(circle_at_center,theme(colors.slate.100)_1.5px,transparent_1.5px)]" style="background-size: 16px 16px;"></div>
-                     
+                     (click)="viewMode.set('CONSIGNMENTS')">
+                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/5 dark:bg-amber-500/10 blur-2xl rounded-full transition-colors group-hover:bg-amber-500/20"></div>
                     <div class="flex justify-between items-start mb-4 relative z-10">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
-                            <span class="material-symbols-rounded">hub</span>
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-rounded">downloading</span>
                         </div>
+                        @if (pendingConsignmentsCount() > 0) {
+                            <span class="px-2 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-black rounded-full shadow-sm animate-bounce">
+                                {{ pendingConsignmentsCount() }} Pending
+                            </span>
+                        }
                     </div>
                     <div class="relative z-10">
-                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Active Nodes</div>
-                        <div class="text-3xl font-extrabold tracking-tight">{{ locations().length }}</div>
-                        <div class="text-[10px] opacity-80 mt-1 flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.8)]"></span> Network Synced
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Incoming Consignments</div>
+                        <div class="text-3xl font-extrabold tracking-tight">{{ pendingConsignmentsCount() }}</div>
+                        <div class="text-[10px] opacity-60 mt-1">Purchase orders awaiting receipt</div>
+                    </div>
+                </div>
+
+                <!-- Card 5 (Action): Stock Adjustment -->
+                <div (click)="openCommand('ADJUST')"
+                     class="group relative overflow-hidden bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl p-5 shadow-lg shadow-blue-500/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]">
+                    <div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-start relative z-10 mb-6">
+                        <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center">
+                            <span class="material-symbols-rounded">box_edit</span>
                         </div>
+                        <span class="material-symbols-rounded text-white/40 group-hover:text-white transition-colors">arrow_forward_ios</span>
+                    </div>
+                    <div class="relative z-10 text-white">
+                        <div class="text-[10px] font-black uppercase tracking-widest opacity-80">Inventory Action</div>
+                        <div class="text-xl font-black">Adjust Stock</div>
+                        <div class="text-xs opacity-70 mt-1 font-medium">Corrections & Damages</div>
+                    </div>
+                </div>
+
+                <!-- Card 6 (Action): Rapid Transfer -->
+                <div (click)="openCommand('TRANSFER')"
+                     class="group relative overflow-hidden bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-5 shadow-lg shadow-purple-500/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]">
+                    <div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-start relative z-10 mb-6">
+                        <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center">
+                            <span class="material-symbols-rounded">move_item</span>
+                        </div>
+                        <span class="material-symbols-rounded text-white/40 group-hover:text-white transition-colors">arrow_forward_ios</span>
+                    </div>
+                    <div class="relative z-10 text-white">
+                        <div class="text-[10px] font-black uppercase tracking-widest opacity-80">Logistics Flow</div>
+                        <div class="text-xl font-black">Inter-Store Transfer</div>
+                        <div class="text-xs opacity-70 mt-1 font-medium">Rebalance Inventory</div>
+                    </div>
+                </div>
+
+                <!-- Card 7 (Action): Manage Nodes -->
+                <div (click)="openCommand('LOCATIONS')"
+                     class="group relative overflow-hidden bg-[var(--card-bg)] rounded-2xl p-5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer transition-all">
+                    <div class="flex flex-col items-center justify-center h-full gap-2 py-2">
+                        <div class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-emerald-500 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-900/20 flex items-center justify-center transition-all">
+                            <span class="material-symbols-rounded text-2xl">add_location_alt</span>
+                        </div>
+                        <div class="text-sm font-bold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Manage Locations</div>
+                    </div>
+                </div>
+
+                <!-- Card 8 (Action): Stock Receipt -->
+                <div (click)="openCommand('RECEIVE')"
+                     class="group relative overflow-hidden bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 shadow-lg shadow-amber-500/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]">
+                    <div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-start relative z-10 mb-6">
+                        <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center">
+                            <span class="material-symbols-rounded">download_for_offline</span>
+                        </div>
+                        <span class="material-symbols-rounded text-white/40 group-hover:text-white transition-colors">arrow_forward_ios</span>
+                    </div>
+                    <div class="relative z-10 text-white">
+                        <div class="text-[10px] font-black uppercase tracking-widest opacity-80">Procurement</div>
+                        <div class="text-xl font-black">Stock Receipt</div>
+                        <div class="text-xs opacity-70 mt-1 font-medium">Receive Inbound POs</div>
                     </div>
                 </div>
             </div>
@@ -208,6 +306,14 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                     [class]="viewMode() === 'LOCATIONS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
                     class="px-4 py-2 text-sm rounded-lg transition-all">
                     Locations
+                </button>
+                <div class="w-px bg-slate-200 dark:bg-slate-700 my-2 mx-1"></div>
+                <button 
+                    (click)="viewMode.set('CONSIGNMENTS')"
+                    [class]="viewMode() === 'CONSIGNMENTS' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                    class="px-5 py-2 text-sm rounded-lg transition-all flex items-center gap-2">
+                    <span class="material-symbols-rounded text-amber-500 text-[18px]">downloading</span>
+                    Inbound Queue
                 </button>
             </div>
 
@@ -376,50 +482,85 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                 </div>
             }
 
-            <!-- Movement History View -->
+            <!-- Movements History View -->
             @if (viewMode() === 'MOVEMENTS') {
-                <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
-                    <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-                        <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-                            <span class="material-symbols-rounded text-indigo-500 text-[18px]">history</span> 
-                            Global Movement History
-                        </h3>
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+                        <div>
+                            <h3 class="font-bold text-xl flex items-center gap-2">
+                                <span class="material-symbols-rounded text-indigo-500 bg-indigo-500/10 p-1.5 rounded-lg text-[20px]">manage_search</span> 
+                                Official Movement Ledger
+                            </h3>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 ml-10">Permanent audit trail of all physical quantity changes</p>
+                        </div>
+                        <button class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-2">
+                            <span class="material-symbols-rounded text-[18px]">download</span> Export CSV
+                        </button>
                     </div>
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50/50 dark:bg-slate-800/30 text-slate-500 flex-1 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px]">
-                            <tr>
-                                <th class="p-4">Time</th>
-                                <th class="p-4">Type</th>
-                                <th class="p-4">Product</th>
-                                <th class="p-4">Location</th>
-                                <th class="p-4 text-right">Quantity</th>
-                                <th class="p-4">Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                            @for (movement of movements(); track movement.id) {
-                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
-                                    <td class="p-4 opacity-60 text-xs">{{ movement.created_at | date:'MMM d, HH:mm' }}</td>
-                                    <td class="p-4">
-                                        <span class="px-2 py-1 rounded-full text-[10px] font-bold"
-                                              [class]="getMovementTypeClass(movement.movement_type)">
-                                            {{ movement.movement_type }}
-                                        </span>
-                                    </td>
-                                    <td class="p-4 font-medium">{{ getProductName(movement.product_id) }}</td>
-                                    <td class="p-4 opacity-60">{{ getLocationName(movement.location_id) }}</td>
-                                    <td class="p-4 text-right font-mono font-bold"
-                                        [class.text-green-600]="movement.quantity > 0"
-                                        [class.text-red-600]="movement.quantity < 0">
-                                        {{ movement.quantity > 0 ? '+' : '' }}{{ movement.quantity }}
-                                    </td>
-                                    <td class="p-4 opacity-60 text-xs">{{ movement.reason || movement.notes || '-' }}</td>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm align-middle">
+                            <thead class="bg-slate-50 dark:bg-slate-800/40 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-widest text-[10px]">
+                                <tr>
+                                    <th class="px-6 py-4">Date & Time</th>
+                                    <th class="px-6 py-4">Transaction Type</th>
+                                    <th class="px-6 py-4">Product</th>
+                                    <th class="px-6 py-4">Location</th>
+                                    <th class="px-6 py-4 text-right">Qty Change</th>
+                                    <th class="px-6 py-4">Details / Reason</th>
                                 </tr>
-                            } @empty {
-                                <tr><td colspan="6" class="p-12 text-center opacity-50 italic">No movements found</td></tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
+                                @for (movement of movements(); track movement.id) {
+                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group">
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="font-medium text-slate-900 dark:text-slate-100">{{ movement.created_at | date:'MMM d, yyyy' }}</div>
+                                            <div class="text-xs text-slate-500">{{ movement.created_at | date:'h:mm a' }}</div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border"
+                                                  [class]="getMovementTypeClass(movement.movement_type)">
+                                                <span class="material-symbols-rounded text-[14px]">{{ getMovementTypeIcon(movement.movement_type) }}</span>
+                                                {{ formatMovementType(movement.movement_type) }}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="font-bold">{{ getProductName(movement.product_id) }}</div>
+                                            <div class="text-[10px] text-slate-400 font-mono tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">ID: {{ movement.product_id.substring(0,8) }}</div>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                                            <span class="flex items-center gap-1.5"><span class="material-symbols-rounded text-[16px] opacity-40">location_on</span> {{ getLocationName(movement.location_id) }}</span>
+                                        </td>
+                                        <td class="px-6 py-4 text-right font-mono text-base whitespace-nowrap">
+                                            <div class="inline-flex items-center justify-end font-black drop-shadow-sm"
+                                                [class.text-emerald-600]="movement.quantity > 0"
+                                                [class.dark:text-emerald-400]="movement.quantity > 0"
+                                                [class.text-red-500]="movement.quantity < 0"
+                                                [class.text-slate-400]="movement.quantity === 0">
+                                                {{ movement.quantity > 0 ? '+' : '' }}{{ movement.quantity }}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 max-w-xs">
+                                            <div class="truncate font-medium">{{ formatMovementReason(movement) }}</div>
+                                            @if(movement.notes) {
+                                                <div class="text-xs opacity-70 truncate" title="{{ formatMovementNotes(movement) }}">{{ formatMovementNotes(movement) }}</div>
+                                            }
+                                        </td>
+                                    </tr>
+                                } @empty {
+                                    <tr>
+                                        <td colspan="6" class="p-16 text-center">
+                                            <div class="flex flex-col items-center justify-center opacity-40">
+                                                <span class="material-symbols-rounded text-6xl mb-4">history_toggle_off</span>
+                                                <h3 class="text-lg font-bold">No Movement History</h3>
+                                                <p class="text-sm mt-1">There have been no stock changes recorded yet.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             }
 
@@ -664,165 +805,441 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                     </table>
                 </div>
             }
+
+            <!-- Consignments Inbound Queue View (New) -->
+            @if (viewMode() === 'CONSIGNMENTS') {
+                <div class="bg-[var(--card-bg)] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                    <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-amber-50/50 dark:bg-amber-900/10 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <h3 class="font-bold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                                <span class="material-symbols-rounded text-[18px]">downloading</span> 
+                                Procurement Inbound Queue
+                            </h3>
+                            @if (isRefreshingPOs()) {
+                                <div class="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 rounded-full animate-pulse">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"></div>
+                                    <span class="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-tighter">Syncing...</span>
+                                </div>
+                            }
+                        </div>
+                        <button 
+                            (click)="refreshInboundQueue()"
+                            [disabled]="isRefreshingPOs()"
+                            class="p-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 transition-all active:scale-95 disabled:opacity-50">
+                            <span class="material-symbols-rounded text-[18px]" [class.animate-spin]="isRefreshingPOs()">refresh</span>
+                        </button>
+                    </div>
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50/50 dark:bg-slate-800/30 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px]">
+                            <tr>
+                                <th class="p-4">Reference</th>
+                                <th class="p-4">Supplier</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-center">Qty</th>
+                                <th class="p-4 text-right">Value</th>
+                                <th class="p-4">Ordered On</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                            @for (po of purchaseOrders(); track po.id) {
+                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors group">
+                                    <td class="p-4 font-mono font-bold text-xs">PO-{{ po.id.substring(0,8).toUpperCase() }}</td>
+                                    <td class="p-4">{{ po.supplier?.name || po.supplier_id }}</td>
+                                    <td class="p-4">
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border border-current"
+                                            [class]="po.status === 'PARTIAL' ? 'text-orange-500' : 
+                                                     po.status === 'RECEIVED' ? 'text-emerald-500' :
+                                                     po.status === 'DRAFT' ? 'text-slate-400' : 'text-blue-500'">
+                                            {{ po.status }}
+                                        </span>
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <div class="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg font-mono font-bold text-xs inline-block min-w-[32px]">
+                                            {{ po.total_quantity || 0 }}
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-right font-bold">{{ po.total_amount | currency:storeService.currency() }}</td>
+                                    <td class="p-4 opacity-60 text-xs">{{ po.created_at | date:'MMM d, y' }}</td>
+                                    <td class="p-4 text-right">
+                                        @if (po.status !== 'RECEIVED' && po.status !== 'CANCELLED') {
+                                            <button 
+                                                (click)="receivePOFromInventory(po)"
+                                                class="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 shadow-sm transition-all flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100">
+                                                <span class="material-symbols-rounded text-sm">download_for_offline</span> Receive
+                                            </button>
+                                        } @else {
+                                            <div class="text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1 font-bold text-xs">
+                                                <span class="material-symbols-rounded text-sm">check_circle</span> Processed
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            } @empty {
+                                <tr>
+                                    <td colspan="6" class="p-20 text-center flex flex-col items-center justify-center gap-4 text-slate-400">
+                                        <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+                                            @if (isRefreshingPOs()) {
+                                                <span class="material-symbols-rounded text-4xl opacity-50 animate-spin text-amber-500">progress_activity</span>
+                                            } @else {
+                                                <span class="material-symbols-rounded text-4xl opacity-20">inventory</span>
+                                            }
+                                        </div>
+                                        <div>
+                                            <p class="text-base font-bold text-slate-900 dark:text-white mb-1">
+                                                {{ isRefreshingPOs() ? 'Syncing Consignments...' : 'Queue is Empty' }}
+                                            </p>
+                                            <p class="text-sm">
+                                                {{ isRefreshingPOs() ? 'Retrieving latest procurement data from ALDeem store...' : 'No incoming consignments are currently pending receipt.' }}
+                                            </p>
+                                            @if (!isRefreshingPOs()) {
+                                                <button (click)="refreshInboundQueue()" class="mt-4 px-6 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:scale-105 active:scale-95 transition-all">
+                                                    Check for Updates
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
 
-        <!-- Stock Adjustment Modal -->
-        @if (showAdjustmentModal()) {
-            <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-md p-6">
-                    <h3 class="text-lg font-bold mb-4">Stock Adjustment</h3>
-                    <form [formGroup]="adjustmentForm" (ngSubmit)="submitAdjustment()" class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Product</label>
-                            <select formControlName="product_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white">
-                                <option value="" class="text-slate-900 dark:text-white">Select product...</option>
-                                @for (product of products(); track product.id) {
-                                    <option [value]="product.id" class="text-slate-900 dark:text-white">{{ product.name }}</option>
-                                }
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Location</label>
-                            <select formControlName="location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white">
-                                <option value="" class="text-slate-900 dark:text-white">Select location...</option>
-                                @for (loc of locations(); track loc.id) {
-                                    <option [value]="loc.id" class="text-slate-900 dark:text-white">{{ loc.name }}</option>
-                                }
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Adjustment Type</label>
-                            <select formControlName="movement_type" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white">
-                                <option value="ADJUSTMENT_IN" class="text-slate-900 dark:text-white">Add Stock (+)</option>
-                                <option value="ADJUSTMENT_OUT" class="text-slate-900 dark:text-white">Remove Stock (-)</option>
-                                <option value="DAMAGE_WRITE_OFF" class="text-slate-900 dark:text-white">Damage Write-Off</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Quantity</label>
-                            <input type="number" formControlName="quantity" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Reason</label>
-                            <textarea formControlName="reason" rows="3" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2"></textarea>
-                        </div>
-                        <div class="flex gap-2 pt-4">
-                            <button type="button" (click)="showAdjustmentModal.set(false)" class="flex-1 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium">Cancel</button>
-                            <button type="submit" [disabled]="!adjustmentForm.valid" class="flex-1 py-2 bg-[var(--primary-color)] text-white rounded-lg font-bold disabled:opacity-50">Submit</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        }
-
-        <!-- Transfer Modal -->
-        @if (showTransferModal()) {
-            <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-md p-6">
-                    <h3 class="text-lg font-bold mb-4">New Stock Transfer</h3>
-                    <form [formGroup]="transferForm" (ngSubmit)="submitTransfer()" class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
+        <!-- 🛠️ INVENTORY COMMAND CENTER (Premium Drawer) -->
+        @if (showCommandCenter()) {
+            <div class="fixed inset-0 z-[110] flex justify-end" (click)="closeCommandCenter()">
+                <!-- Ultra-premium Backdrop -->
+                <div class="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md transition-all duration-500 animate-in fade-in"></div>
+                
+                <!-- The Command Drawer -->
+                <div class="relative w-full max-w-lg h-full glass-drawer shadow-[-20px_0_50px_rgba(0,0,0,0.2)] dark:shadow-[-20px_0_50px_rgba(0,0,0,0.5)] flex flex-col animate-in slide-in-from-right duration-500" 
+                     (click)="$event.stopPropagation()">
+                    
+                    <!-- Drawer Header -->
+                    <div class="p-8 border-b border-slate-200 dark:border-slate-800 relative overflow-hidden">
+                        <!-- Content -->
+                        <div class="relative z-10 flex justify-between items-start">
                             <div>
-                                <label class="block text-sm font-medium mb-1">From Location</label>
-                                <select formControlName="from_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                                    <option value="">Select source...</option>
-                                    @for (loc of locations(); track loc.id) {
-                                        <option [value]="loc.id">{{ loc.name }}</option>
-                                    }
-                                </select>
+                                <h2 class="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                                    @if (activeCommand() === 'ADJUST') { Stock Correction }
+                                    @if (activeCommand() === 'TRANSFER') { Logistics Transfer }
+                                    @if (activeCommand() === 'LOCATIONS') { Node Management }
+                                    @if (activeCommand() === 'RECEIVE') { Procurement Receipt }
+                                </h2>
+                                <p class="text-sm text-slate-500 font-medium mt-1">
+                                    @if (activeCommand() === 'ADJUST') { Adjust physical counts and log discrepancies }
+                                    @if (activeCommand() === 'TRANSFER') { Movement of assets between registered locations }
+                                    @if (activeCommand() === 'LOCATIONS') { Configure storage nodes and sales points }
+                                    @if (activeCommand() === 'RECEIVE') { Process incoming stock from purchase orders }
+                                </p>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">To Location</label>
-                                <select formControlName="to_location_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                                    <option value="">Select destination...</option>
-                                    @for (loc of locations(); track loc.id) {
-                                        <option [value]="loc.id">{{ loc.name }}</option>
-                                    }
-                                </select>
-                            </div>
+                            <button (click)="closeCommandCenter()" class="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-90 text-slate-500">
+                                <span class="material-symbols-rounded">close</span>
+                            </button>
                         </div>
+                    </div>
 
-                        <!-- Transfer Items FormArray -->
-                        <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-800/20">
-                            <div class="flex justify-between items-center mb-3">
-                                <label class="block text-sm font-bold">Transfer Items</label>
-                                <button type="button" (click)="addTransferItem()" class="text-xs font-bold text-[var(--primary-color)] flex items-center hover:opacity-80">
-                                    <span class="material-symbols-rounded text-sm mr-1">add_circle</span> Add Item
-                                </button>
-                            </div>
-                            <div formArrayName="items" class="space-y-3">
-                                @for (item of transferItems.controls; track item; let i = $index) {
-                                    <div [formGroupName]="i" class="flex gap-2 items-end">
-                                        <div class="flex-1">
-                                            <label class="block text-xs font-medium mb-1 opacity-70">Product</label>
-                                            <select formControlName="product_id" class="w-full bg-white dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm">
-                                                <option value="">Select product...</option>
-                                                @for (product of products(); track product.id) {
-                                                    <option [value]="product.id">{{ product.name }}</option>
+                    <!-- Scrollable Form Area -->
+                    <div class="flex-1 overflow-y-auto p-8 hide-scrollbar">
+                        
+                        <!-- 1. ADJUSTMENT FORM -->
+                        @if (activeCommand() === 'ADJUST') {
+                            <form [formGroup]="adjustmentForm" (ngSubmit)="submitAdjustment()" class="space-y-6">
+                                <div class="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-800/30 space-y-4">
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">Target Asset</label>
+                                        <select formControlName="product_id" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="">Search or select product...</option>
+                                            @for (product of products(); track product.id) {
+                                                <option [value]="product.id">{{ product.name }}</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">Location Node</label>
+                                        <select formControlName="location_id" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="">Select storage location...</option>
+                                            @for (loc of locations(); track loc.id) {
+                                                <option [value]="loc.id">{{ loc.name }}</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Correction Type</label>
+                                        <select formControlName="movement_type" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="ADJUSTMENT_IN">Inward (+)</option>
+                                            <option value="ADJUSTMENT_OUT">Outward (-)</option>
+                                            <option value="DAMAGE_WRITE_OFF">Damage/Loss</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Quantity</label>
+                                        <input type="number" formControlName="quantity" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold text-center" placeholder="0">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Reasoning & Audit Note</label>
+                                    <textarea formControlName="reason" rows="4" class="w-full glass-input rounded-xl px-4 py-3 text-sm" placeholder="Explain why this adjustment is being made..."></textarea>
+                                </div>
+
+                                <div class="pt-4">
+                                    <button type="submit" [disabled]="!adjustmentForm.valid" class="w-full py-4 premium-gradient-btn text-white rounded-2xl font-black shadow-lg disabled:opacity-30 disabled:grayscale transition-all active:scale-[0.98]">
+                                        Confirm Inventory Update
+                                    </button>
+                                </div>
+                            </form>
+                        }
+
+                        <!-- 2. TRANSFER FORM -->
+                        @if (activeCommand() === 'TRANSFER') {
+                            <form [formGroup]="transferForm" (ngSubmit)="submitTransfer()" class="space-y-6">
+                                <!-- Visualization Map -->
+                                <div class="relative p-6 bg-slate-100/50 dark:bg-slate-800/40 rounded-3xl border border-slate-200 dark:border-slate-700 mb-8 overflow-hidden">
+                                    <div class="flex items-center justify-between gap-4 relative z-10">
+                                        <div class="flex-1 text-center">
+                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Source</div>
+                                            <div class="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[44px] flex items-center justify-center">
+                                                <span class="text-xs font-bold leading-tight">{{ transferSource()?.name || '---' }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="pt-4 flex flex-col items-center gap-1">
+                                            <span class="material-symbols-rounded text-blue-500 animate-pulse">forward</span>
+                                            <div class="w-12 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
+                                        </div>
+                                        <div class="flex-1 text-center">
+                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Destination</div>
+                                            <div class="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[44px] flex items-center justify-center tracking-tighter">
+                                                <span class="text-xs font-bold leading-tight">{{ transferDest()?.name || '---' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Background flourish -->
+                                    <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full"></div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">From Node</label>
+                                        <select formControlName="from_location_id" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="">Origin...</option>
+                                            @for (loc of locations(); track loc.id) {
+                                                <option [value]="loc.id">{{ loc.name }}</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">To Node</label>
+                                        <select formControlName="to_location_id" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="">Destination...</option>
+                                            @for (loc of locations(); track loc.id) {
+                                                <option [value]="loc.id">{{ loc.name }}</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Item Manifest -->
+                                <div class="space-y-3 pt-2">
+                                    <div class="flex justify-between items-center px-1">
+                                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Manifest Items</label>
+                                        <button type="button" (click)="addTransferItem()" class="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1 hover:brightness-90">
+                                            <span class="material-symbols-rounded text-sm">add_circle</span> Add Asset
+                                        </button>
+                                    </div>
+                                    
+                                    <div formArrayName="items" class="space-y-2">
+                                        @for (item of transferItems.controls; track item; let i = $index) {
+                                            <div [formGroupName]="i" class="group flex gap-2 items-center p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 transition-all hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm">
+                                                <div class="flex-1">
+                                                    <select formControlName="product_id" class="w-full bg-transparent border-none p-0 text-sm font-bold focus:ring-0">
+                                                        <option value="">Select Item...</option>
+                                                        @for (product of products(); track product.id) {
+                                                            <option [value]="product.id">{{ product.name }}</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div class="w-20">
+                                                    <input type="number" formControlName="quantity" class="w-full bg-slate-200/50 dark:bg-slate-700/50 border-none rounded-lg px-2 py-1 text-center text-sm font-black focus:ring-1 focus:ring-blue-500">
+                                                </div>
+                                                @if (transferItems.length > 1) {
+                                                    <button type="button" (click)="removeTransferItem(i)" class="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <span class="material-symbols-rounded text-[18px]">delete</span>
+                                                    </button>
                                                 }
-                                            </select>
-                                        </div>
-                                        <div class="w-24">
-                                            <label class="block text-xs font-medium mb-1 opacity-70">Qty</label>
-                                            <input type="number" formControlName="quantity" class="w-full bg-white dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-center">
-                                        </div>
-                                        @if (transferItems.length > 1) {
-                                            <button type="button" (click)="removeTransferItem(i)" class="p-2 text-slate-400 hover:text-red-500 transition-colors mb-[2px]">
-                                                <span class="material-symbols-rounded text-[20px]">delete</span>
-                                            </button>
+                                            </div>
                                         }
                                     </div>
-                                }
+                                </div>
+
+                                <div class="pt-6">
+                                    <button type="submit" [disabled]="!transferForm.valid" class="w-full py-4 premium-gradient-btn text-white rounded-2xl font-black shadow-lg disabled:opacity-30 transition-all active:scale-[0.98]">
+                                        Execute Transfer Protocol
+                                    </button>
+                                </div>
+                            </form>
+                        }
+
+                        <!-- 3. LOCATIONS FORM -->
+                        @if (activeCommand() === 'LOCATIONS') {
+                            <div class="space-y-8">
+                                <!-- Create New Node -->
+                                <div class="p-6 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-3xl border border-emerald-100 dark:border-emerald-800/30">
+                                    <h4 class="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4 flex items-center gap-2">
+                                        <span class="material-symbols-rounded text-sm font-black">add_location_alt</span> Define New Node
+                                    </h4>
+                                    <form [formGroup]="locationForm" (ngSubmit)="submitLocation()" class="space-y-4">
+                                        <input type="text" formControlName="name" placeholder="Node Name (e.g. Warehouse A)" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                        <select formControlName="location_type" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                            <option value="STORE">Retail Sales Point</option>
+                                            <option value="WAREHOUSE">Deep Storage / Warehouse</option>
+                                            <option value="TRANSIT">Logistics Transit</option>
+                                        </select>
+                                        <div class="grid grid-cols-2 gap-3 pt-2">
+                                            <label class="flex items-center gap-2 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer transition-all active:scale-95">
+                                                <input type="checkbox" formControlName="allows_sales" class="w-4 h-4 rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500/20">
+                                                <span class="text-[10px] font-black uppercase tracking-tight opacity-70">POS Enabled</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer transition-all active:scale-95">
+                                                <input type="checkbox" formControlName="allows_receiving" class="w-4 h-4 rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500/20">
+                                                <span class="text-[10px] font-black uppercase tracking-tight opacity-70">Can Receive PO</span>
+                                            </label>
+                                        </div>
+                                        <button type="submit" [disabled]="!locationForm.valid" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-md transition-all active:scale-95 disabled:opacity-30 mt-2">
+                                            Initialize Network Node
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <!-- Node List -->
+                                <div class="space-y-3">
+                                    <label class="text-[10px] font-black uppercase tracking-widest text-slate-500 px-1">Active Network Nodes</label>
+                                    <div class="space-y-2">
+                                        @for (loc of locations(); track loc.id) {
+                                            <div class="group flex items-center justify-between p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-all">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
+                                                        <span class="material-symbols-rounded text-xl">
+                                                            {{ loc.location_type === 'WAREHOUSE' ? 'warehouse' : loc.location_type === 'STORE' ? 'storefront' : 'local_shipping' }}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-sm font-black text-slate-900 dark:text-white">{{ loc.name }}</div>
+                                                        <div class="text-[10px] font-bold text-slate-400 tracking-tighter uppercase">{{ loc.location_type }} • {{ loc.id.substring(0,8).toUpperCase() }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button (click)="openEditLocationModal(loc)" class="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all" title="Edit">
+                                                        <span class="material-symbols-rounded text-[18px]">edit</span>
+                                                    </button>
+                                                    <button (click)="deleteLocation(loc.id)" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Delete">
+                                                        <span class="material-symbols-rounded text-[18px]">delete</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        }
 
-                        <div>
-                            <label class="block text-sm font-medium mb-1 mt-2">Notes</label>
-                            <textarea formControlName="notes" rows="2" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2"></textarea>
-                        </div>
-                        <div class="flex gap-2 pt-2">
-                            <button type="button" (click)="showTransferModal.set(false)" class="flex-1 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium">Cancel</button>
-                            <button type="submit" [disabled]="!transferForm.valid" class="flex-1 py-2 bg-[var(--primary-color)] text-white rounded-lg font-bold disabled:opacity-50">Create Transfer</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        }
+                        <!-- 4. RECEIVE FORM / QUEUE -->
+                        @if (activeCommand() === 'RECEIVE') {
+                            @if (receivingPO()) {
+                                <!-- Receipt Detail Form -->
+                                <div class="space-y-6">
+                                    <div class="p-6 bg-amber-50/50 dark:bg-amber-900/10 rounded-3xl border border-amber-100 dark:border-amber-800/30">
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div class="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Incoming PO</div>
+                                                <div class="text-lg font-black">{{ receivingPO().po_number }}</div>
+                                            </div>
+                                            <button (click)="receivingPO.set(null)" class="text-[10px] font-black text-slate-400 uppercase hover:text-slate-600">Change PO</button>
+                                        </div>
+                                        
+                                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/50">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <span class="text-xs font-bold opacity-60">Total Quantity</span>
+                                                <span class="text-xs font-black">{{ receivingPO().total_quantity }} Units</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-xs font-bold opacity-60">Value</span>
+                                                <span class="text-xs font-black">{{ receivingPO().total_amount | currency:storeService.currency() }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
 
-        <!-- Add Location Modal -->
-        @if (showLocationModal()) {
-            <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-md p-6">
-                    <h3 class="text-lg font-bold mb-4">Add New Location</h3>
-                    <form [formGroup]="locationForm" (ngSubmit)="submitLocation()" class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Location Name</label>
-                            <input type="text" formControlName="name" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2" placeholder="e.g. Downtown Store">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Type</label>
-                            <select formControlName="location_type" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2">
-                                <option value="STORE">Store (Sales Point)</option>
-                                <option value="WAREHOUSE">Warehouse (Storage)</option>
-                                <option value="TRANSIT">Transit</option>
-                            </select>
-                        </div>
-                        <div class="space-y-2 pt-2">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" formControlName="allows_sales" class="w-4 h-4 rounded border-slate-300 text-[var(--primary-color)]">
-                                <span class="text-sm">Allow Sales (POS)</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" formControlName="allows_receiving" class="w-4 h-4 rounded border-slate-300 text-[var(--primary-color)]">
-                                <span class="text-sm">Allow Receiving Stock</span>
-                            </label>
-                        </div>
+                                    <form [formGroup]="receiveForm" (ngSubmit)="submitReceivePO()" class="space-y-6">
+                                        <div>
+                                            <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Destination Node (Warehouse/Store)</label>
+                                            <select formControlName="destination_location_id" class="w-full glass-input rounded-xl px-4 py-3 text-sm font-bold">
+                                                <option value="">Select storage node...</option>
+                                                @for (loc of locations(); track loc.id) {
+                                                    @if (loc.allows_receiving) {
+                                                        <option [value]="loc.id">{{ loc.name }} ({{ loc.location_type }})</option>
+                                                    }
+                                                }
+                                            </select>
+                                            <p class="text-[10px] text-slate-400 mt-2 italic px-1">* Only locations with "Allow Receiving" enabled are shown.</p>
+                                        </div>
 
-                        <div class="flex gap-2 pt-4">
-                            <button type="button" (click)="showLocationModal.set(false)" class="flex-1 py-2 border border-slate-300 dark:border-slate-700 rounded-lg font-medium">Cancel</button>
-                            <button type="submit" [disabled]="!locationForm.valid" class="flex-1 py-2 bg-[var(--primary-color)] text-white rounded-lg font-bold disabled:opacity-50">Create Location</button>
-                        </div>
-                    </form>
+                                        <div class="pt-4">
+                                            <button type="submit" [disabled]="!receiveForm.valid" class="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black shadow-lg shadow-amber-500/20 transition-all active:scale-[0.98]">
+                                                Finalize Inbound Receipt
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            } @else {
+                                <!-- Inbound Queue Summary -->
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-center px-1">
+                                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Awaiting Arrival</label>
+                                        <button (click)="refreshInboundQueue()" class="text-[10px] font-black text-blue-500 uppercase flex items-center gap-1">
+                                            <span class="material-symbols-rounded text-sm">sync</span> Sync
+                                        </button>
+                                    </div>
+
+                                    @if (inboundQueue().length === 0) {
+                                        <div class="p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
+                                            <span class="material-symbols-rounded text-4xl text-slate-200 mb-2">inbox</span>
+                                            <p class="text-xs font-bold text-slate-400">Queue is empty</p>
+                                        </div>
+                                    } @else {
+                                        <div class="space-y-2">
+                                            @for (po of inboundQueue(); track po.id) {
+                                                <div (click)="receivePOFromInventory(po)" class="group p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-700/50 shadow-sm hover:shadow-md cursor-pointer transition-all">
+                                                    <div class="flex justify-between items-start">
+                                                        <div>
+                                                            <div class="text-sm font-black text-slate-900 dark:text-white group-hover:text-amber-600 transition-colors">PO-{{ po.id.substring(0,8).toUpperCase() }}</div>
+                                                            <div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">{{ po.supplier?.name || po.supplier_id }}</div>
+                                                        </div>
+                                                        <div class="text-right">
+                                                            <div class="text-[10px] font-black uppercase tracking-tighter">{{ po.total_quantity }} Units</div>
+                                                            <div class="text-xs font-black text-slate-900 dark:text-white mt-1">{{ po.total_amount | currency:storeService.currency() }}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+
+                    </div>
+                    
+                    <!-- Drawer Footer (Branding) -->
+                    <div class="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-center gap-4 grayscale opacity-40">
+                        <span class="font-black italic text-xs tracking-tighter text-slate-400">Powered by OmniPlus Core</span>
+                        <div class="w-1 h-1 rounded-full bg-slate-300"></div>
+                        <span class="font-black italic text-xs tracking-tighter text-slate-400">Secure Audit Trail v2.0</span>
+                    </div>
                 </div>
             </div>
         }
@@ -941,10 +1358,17 @@ export class StockManagerComponent implements OnInit {
     showAdjustmentModal = signal(false);
     showTransferModal = signal(false);
     showLocationModal = signal(false);
+    showReceiveModal = signal(false);
+    receivingPO = signal<any | null>(null);
     editingLocation = signal<StockLocation | null>(null);
     selectedLocationId = '';
+    isRefreshingPOs = signal(false);
 
-    // Advanced Drawer State
+    // Command Center State (New Design)
+    showCommandCenter = signal(false);
+    activeCommand = signal<'ADJUST' | 'TRANSFER' | 'LOCATIONS' | 'RECEIVE' | null>(null);
+
+    // Advanced Drawer State (Product History)
     showDrawer = signal(false);
     selectedDrawerProduct = signal<{ productId: string, locationId: string } | null>(null);
 
@@ -953,21 +1377,42 @@ export class StockManagerComponent implements OnInit {
     // Data streams
     locations = signal<StockLocation[]>([]);
 
-    private stockLevels$ = this.refreshTrigger.pipe(
-        switchMap(() => {
-            return this.stockService.getStockLevels(
-                this.selectedLocationId || undefined
-            ).pipe(
-                map(levels => levels.filter(l => l.physical_quantity > 0)), // Hide empty locations
-                retry(3),
-                catchError(err => {
-                    console.error('Failed to load stock levels', err);
-                    return of([]);
-                })
-            );
-        })
-    );
-    stockLevels = toSignal(this.stockLevels$, { initialValue: [] as StockLevel[] });
+    // Stock Levels Computed (Fully Reactive overrides)
+    stockLevels = computed(() => {
+        const allProducts = this.products();
+        const allLocs = this.locations();
+        const allMovements = this.movements();
+        const store = this.storeService.currentStore();
+        if (!store) return [];
+
+        const enrichedLevels = [];
+        for (const product of allProducts) {
+            for (const loc of allLocs) {
+                let truthQty = 0;
+                if (loc.location_type === 'WAREHOUSE') truthQty = product.stock_warehouse || 0;
+                if (loc.location_type === 'STORE') truthQty = product.stock_shop || 0;
+
+                // Calculate damages dynamically from history
+                const damages = allMovements.filter(m =>
+                    m.product_id === product.id &&
+                    m.location_id === loc.id &&
+                    m.movement_type.includes('DAMAGE')
+                );
+                const sumDamaged = damages.reduce((acc, curr) => acc + Math.abs(curr.quantity), 0);
+
+                enrichedLevels.push({
+                    product_id: product.id,
+                    location_id: loc.id,
+                    available_quantity: truthQty, // Note: damaged quantity has already been subtracted from product truthQty during the write_off
+                    physical_quantity: truthQty,
+                    reserved_quantity: 0, // Computed from pending transfers if needed later
+                    damaged_quantity: sumDamaged
+                } as any);
+            }
+        }
+
+        return enrichedLevels.filter(l => this.selectedLocationId ? l.location_id === this.selectedLocationId : true);
+    });
 
     private movements$ = this.refreshTrigger.pipe(
         switchMap(() => this.stockService.getMovements().pipe(
@@ -1002,6 +1447,25 @@ export class StockManagerComponent implements OnInit {
     );
     lowStockAlerts = toSignal(this.lowStockAlerts$, { initialValue: [] as any[] });
 
+    private store$ = toObservable(this.storeService.currentStore);
+
+    private purchaseOrders$ = combineLatest([this.refreshTrigger, this.store$]).pipe(
+        tap(() => this.isRefreshingPOs.set(true)),
+        switchMap(([_, store]) => {
+            if (!store) return of([]);
+            // Call the service and specifically wait for it to emit
+            return this.supabase.getPurchaseOrders(store.id).pipe(
+                retry(3),
+                catchError(err => {
+                    console.error('Inbound queue fetch error:', err);
+                    return of([]);
+                }),
+                tap(() => this.isRefreshingPOs.set(false))
+            );
+        })
+    );
+    purchaseOrders = toSignal(this.purchaseOrders$, { initialValue: [] as any[] });
+
     private products$ = this.storeService.currentStore$.pipe(
         switchMap(store => store ? this.supabase.getProducts(store.id).pipe(
             retry(3),
@@ -1019,12 +1483,22 @@ export class StockManagerComponent implements OnInit {
         const prods = this.products();
         return levels.reduce((acc: number, level: any) => {
             const product = prods.find(p => p.id === level.product_id);
-            return acc + ((level.physical_quantity || 0) * (product?.price || 0));
+            // MAC Valuation: Use frozen MAC from metadata if available, fallback to cost_price. NEVER use retail price.
+            const unitValue = product?.metadata?.mac ?? product?.cost_price ?? 0;
+            return acc + ((level.physical_quantity || 0) * unitValue);
         }, 0);
     });
 
     activeTransfersCount = computed(() => {
         return this.transfers().filter(t => t.status === 'PENDING' || t.status === 'APPROVED' || t.status === 'IN_TRANSIT').length;
+    });
+
+    pendingConsignmentsCount = computed(() => {
+        return this.purchaseOrders().filter(po => po.status === 'SENT' || po.status === 'ORDERED' || po.status === 'PARTIAL' || po.status === 'DRAFT').length;
+    });
+
+    inboundQueue = computed(() => {
+        return this.purchaseOrders().filter(po => po.status !== 'RECEIVED' && po.status !== 'CANCELLED');
     });
 
     // AG Grid Setup
@@ -1052,20 +1526,24 @@ export class StockManagerComponent implements OnInit {
             type: 'numericColumn',
             sortable: true,
             filter: 'agNumberColumnFilter',
+            flex: 1,
+            cellStyle: { textAlign: 'right' },
             cellClassRules: {
                 'text-red-600 font-bold': params => params.value < 5,
                 'text-green-600 font-bold': params => params.value >= 20
             }
         },
-        { headerName: 'Reserved', valueGetter: params => params.data.reserved_quantity || 0, type: 'numericColumn', flex: 1 },
-        { headerName: 'Damaged', valueGetter: params => params.data.damaged_quantity || 0, type: 'numericColumn', cellClass: 'text-orange-600', flex: 1 },
-        { headerName: 'Physical', valueGetter: params => params.data.physical_quantity, type: 'numericColumn', sortable: true, flex: 1, cellClass: 'font-bold' },
+        { headerName: 'Reserved', valueGetter: params => params.data.reserved_quantity || 0, type: 'numericColumn', flex: 1, cellStyle: { textAlign: 'right' } },
+        { headerName: 'Damaged', valueGetter: params => params.data.damaged_quantity || 0, type: 'numericColumn', cellClass: 'text-orange-600', flex: 1, cellStyle: { textAlign: 'right' } },
+        { headerName: 'Physical', valueGetter: params => params.data.physical_quantity, type: 'numericColumn', sortable: true, flex: 1, cellClass: 'font-bold', cellStyle: { textAlign: 'right' } },
         {
             headerName: 'Value',
             valueGetter: (params) => {
                 const product = this.products().find(p => p.id === params.data.product_id);
                 const qty = params.data.physical_quantity || 0;
-                return qty * (product?.price || 0);
+                // MAC Valuation
+                const unitValue = product?.metadata?.mac ?? product?.cost_price ?? 0;
+                return qty * unitValue;
             },
             valueFormatter: (p) => {
                 const currency = this.storeService.currency();
@@ -1141,15 +1619,58 @@ export class StockManagerComponent implements OnInit {
         allows_receiving: [true]
     });
 
+    receiveForm = this.fb.group({
+        destination_location_id: ['', Validators.required]
+    });
+
     ngOnInit() { }
 
     refreshStockLevels() { this.refreshTrigger.next(); }
+
+    refreshInboundQueue() {
+        this.refreshTrigger.next();
+        const store = this.storeService.currentStore();
+        if (store) this.supabase.fetchAllData(); // Refresh underlying service caches
+    }
 
     refreshAll() {
         this.supabase.fetchAllData();
         this.loadLocations();
         this.refreshStockLevels();
     }
+
+    // Command Center Methods
+    openCommand(type: 'ADJUST' | 'TRANSFER' | 'LOCATIONS' | 'RECEIVE', data?: any) {
+        this.activeCommand.set(type);
+        this.showCommandCenter.set(true);
+
+        // Pre-fill forms if needed
+        if (type === 'ADJUST') this.adjustmentForm.reset({ movement_type: 'ADJUSTMENT_IN', product_id: '', location_id: '', quantity: 0, reason: '' });
+        if (type === 'TRANSFER') {
+            this.transferItems.clear();
+            this.addTransferItem();
+        }
+        if (type === 'RECEIVE' && data) {
+            this.receivingPO.set(data);
+            const defaultLoc = this.locations().find(l => l.location_type === 'WAREHOUSE') || this.locations().find(l => l.allows_receiving);
+            this.receiveForm.patchValue({ destination_location_id: defaultLoc?.id || '' });
+        }
+    }
+
+    closeCommandCenter() {
+        this.showCommandCenter.set(false);
+    }
+
+    // Visualization helpers for Transfer
+    transferSource = computed(() => {
+        const id = this.transferForm.get('from_location_id')?.value;
+        return this.locations().find(l => l.id === id);
+    });
+
+    transferDest = computed(() => {
+        const id = this.transferForm.get('to_location_id')?.value;
+        return this.locations().find(l => l.id === id);
+    });
 
     loadLocations() {
         this.stockService.getLocations().pipe(
@@ -1162,15 +1683,11 @@ export class StockManagerComponent implements OnInit {
     }
 
     openAdjustmentModal() {
-        this.loadLocations();
-        this.refreshStockLevels();
-        this.showAdjustmentModal.set(true);
+        this.openCommand('ADJUST');
     }
 
     openTransferModal() {
-        this.loadLocations();
-        this.refreshStockLevels();
-        this.showTransferModal.set(true);
+        this.openCommand('TRANSFER');
     }
 
     openEditLocationModal(location: StockLocation) {
@@ -1181,7 +1698,7 @@ export class StockManagerComponent implements OnInit {
             allows_sales: location.allows_sales,
             allows_receiving: location.allows_receiving
         });
-        this.showLocationModal.set(true);
+        this.openCommand('LOCATIONS');
     }
 
     deleteLocation(locationId: string) {
@@ -1211,17 +1728,55 @@ export class StockManagerComponent implements OnInit {
         return this.locations().find(l => l.id === locationId)?.name || 'Unknown';
     }
 
-    getMovementTypeClass(type: MovementType): string {
-        const classes: Record<string, string> = {
-            'SALE': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-            'PURCHASE_RECEIVE': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-            'TRANSFER_IN': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-            'TRANSFER_OUT': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-            'ADJUSTMENT_IN': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-            'ADJUSTMENT_OUT': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-            'DAMAGE_WRITE_OFF': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-        };
-        return classes[type] || 'bg-slate-100 text-slate-700';
+    getMovementTypeClass(type: string): string {
+        const t = (type || '').toUpperCase();
+        if (t.includes('RECEIVE_PO') || t.includes('PURCHASE_RECEIVE') || t === 'RECEIPT') return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
+        if (t.includes('TRANSFER_IN')) return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20';
+        if (t.includes('TRANSFER_OUT') || t === 'TRANSFER') return 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
+        if (t.includes('SALE')) return 'bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20';
+        if (t.includes('DAMAGE') || t.includes('LOSS') || t.includes('WRITE_OFF')) return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
+        if (t.includes('ADJUSTMENT') || t === 'MANUAL') return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
+        return 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20';
+    }
+
+    getMovementTypeIcon(type: string): string {
+        const t = (type || '').toUpperCase();
+        if (t.includes('PO') || t.includes('RECEIVE') || t === 'RECEIPT') return 'inventory';
+        if (t.includes('TRANSFER_IN')) return 'arrow_downward';
+        if (t.includes('TRANSFER_OUT') || t === 'TRANSFER') return 'local_shipping';
+        if (t.includes('SALE')) return 'point_of_sale';
+        if (t.includes('DAMAGE') || t.includes('LOSS') || t.includes('WRITE_OFF')) return 'delete_forever';
+        if (t.includes('ADJUSTMENT') || t === 'MANUAL') return 'tune';
+        return 'sync_alt';
+    }
+
+    formatMovementType(type: string): string {
+        const t = (type || 'UNKNOWN').replace('_', ' ');
+        if (t.includes('TRANSFER IN')) return 'TRANSFER IN';
+        if (t.includes('TRANSFER OUT')) return 'TRANSFER OUT';
+        return t;
+    }
+
+    formatMovementReason(movement: any): string {
+        const raw = movement.reason || movement.movement_type || '';
+        if (raw.includes('TRANSFER_IN from')) {
+            const parts = raw.split('from ');
+            return `Received from ${this.getLocationName(parts[1]?.trim() || '')}`;
+        }
+        if (raw.includes('TRANSFER_OUT to')) {
+            const parts = raw.split('to ');
+            return `Shipped to ${this.getLocationName(parts[1]?.trim() || '')}`;
+        }
+        return raw;
+    }
+
+    formatMovementNotes(movement: any): string {
+        const raw = movement.notes || '';
+        // If it looks like 'Received by [uuid]' we can try to suppress the UUID
+        if (raw.includes('Received by ') || raw.includes('Shipped by ')) {
+            return raw.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, 'Staff');
+        }
+        return raw;
     }
 
     getTransferStatusClass(status: string): string {
@@ -1260,7 +1815,7 @@ export class StockManagerComponent implements OnInit {
         }).subscribe({
             next: () => {
                 this.dialog.alert('Success', 'Adjustment recorded');
-                this.showAdjustmentModal.set(false);
+                this.closeCommandCenter();
                 this.adjustmentForm.reset({ movement_type: 'ADJUSTMENT_IN', quantity: 0 });
                 this.refreshStockLevels();
             },
@@ -1299,7 +1854,7 @@ export class StockManagerComponent implements OnInit {
         }).subscribe({
             next: () => {
                 this.dialog.alert('Success', 'Transfer created successfully');
-                this.showTransferModal.set(false);
+                this.closeCommandCenter();
                 this.transferForm.reset();
                 this.transferForm.setControl('items', this.fb.array([this.createTransferItem()]));
                 this.refreshAll();
@@ -1324,7 +1879,7 @@ export class StockManagerComponent implements OnInit {
             }).subscribe({
                 next: () => {
                     this.dialog.alert('Success', 'Location updated');
-                    this.showLocationModal.set(false);
+                    this.closeCommandCenter();
                     this.editingLocation.set(null);
                     this.loadLocations();
                 },
@@ -1341,13 +1896,49 @@ export class StockManagerComponent implements OnInit {
             }).subscribe({
                 next: () => {
                     this.dialog.alert('Success', 'Location created');
-                    this.showLocationModal.set(false);
+                    this.closeCommandCenter();
                     this.locationForm.reset({ name: '', location_type: 'STORE', allows_sales: true, allows_receiving: true });
                     this.loadLocations();
                 },
                 error: (err) => this.dialog.alert('Error', err.message)
             });
         }
+    }
+
+    receivePOFromInventory(po: any) {
+        this.openCommand('RECEIVE', po);
+    }
+
+    submitReceivePO() {
+        const po = this.receivingPO();
+        const locId = this.receiveForm.value.destination_location_id;
+        if (!po || !locId) return;
+
+        // Fetch PO items to calculate what's left to receive
+        this.supabase.getPurchaseOrderItems(po.id).subscribe(items => {
+            const itemsToReceive = items.map(item => ({
+                item_id: item.id,
+                product_id: item.product_id,
+                received_amount: (item.quantity_ordered || 0) - (item.quantity_received || 0),
+                unit_cost: item.unit_cost || 0
+            })).filter(i => i.received_amount > 0);
+
+            if (itemsToReceive.length === 0) {
+                this.dialog.alert('Already Received', 'This order has no more items left to receive.');
+                this.closeCommandCenter();
+                return;
+            }
+
+            this.supabase.receivePO(po.id, itemsToReceive, locId).subscribe({
+                next: () => {
+                    this.dialog.alert('Success', 'Goods received into inventory');
+                    this.closeCommandCenter();
+                    this.receivingPO.set(null);
+                    this.refreshAll();
+                },
+                error: (err: any) => this.dialog.alert('Error', err.message || 'Failed to receive goods')
+            });
+        });
     }
 
     approveTransfer(transferId: string) {
