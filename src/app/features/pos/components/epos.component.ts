@@ -15,13 +15,8 @@ import { FormsModule } from '@angular/forms';
     standalone: true,
     imports: [CommonModule, RouterLink, FormsModule],
     template: `
-    <!-- Hidden Print Style Block -->
+    <!-- Dynamic Iframe Printing handles the receipt isolation -->
     <style>
-      @media print {
-        body > * { display: none !important; }
-        #receipt-printable, #receipt-printable * { display: block !important; visibility: visible !important; }
-        #receipt-printable { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: white; color: black; }
-      }
       /* Hide scrollbar for smart pills */
       .no-scrollbar::-webkit-scrollbar {
           display: none;
@@ -137,21 +132,7 @@ import { FormsModule } from '@angular/forms';
 
           <!-- Main Content Grid -->
           <div class="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-black/20">
-            
-            <!-- TENANT INDUSTRY TOGGLE (PoC Demo Only) -->
-            <div class="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between shadow-sm">
-                <div class="flex items-center gap-2">
-                    <span class="material-symbols-rounded text-indigo-500">architecture</span>
-                    <span class="text-sm font-bold text-indigo-700 dark:text-indigo-300">Industry PoC:</span>
-                </div>
-                <div class="flex bg-white dark:bg-slate-800 rounded-lg p-1 shadow-sm border border-slate-200 dark:border-slate-700">
-                    <button (click)="tenantService.switchIndustry('retail')" [class.bg-indigo-500]="tenantService.currentTenant().industry === 'retail'" [class.text-white]="tenantService.currentTenant().industry === 'retail'" class="px-3 py-1 text-xs font-bold rounded-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">Retail</button>
-                    <button (click)="tenantService.switchIndustry('grocery')" [class.bg-indigo-500]="tenantService.currentTenant().industry === 'grocery'" [class.text-white]="tenantService.currentTenant().industry === 'grocery'" class="px-3 py-1 text-xs font-bold rounded-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">Grocery</button>
-                    <button (click)="tenantService.switchIndustry('pharmacy')" [class.bg-indigo-500]="tenantService.currentTenant().industry === 'pharmacy'" [class.text-white]="tenantService.currentTenant().industry === 'pharmacy'" class="px-3 py-1 text-xs font-bold rounded-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">Pharmacy</button>
-                    <button (click)="tenantService.switchIndustry('hardware')" [class.bg-indigo-500]="tenantService.currentTenant().industry === 'hardware'" [class.text-white]="tenantService.currentTenant().industry === 'hardware'" class="px-3 py-1 text-xs font-bold rounded-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">Hardware</button>
-                </div>
-            </div>
-            
+
             <!-- VIEW STATE 1: SCAN-FORWARD (New Initial State) -->
             @if (cart().length === 0 && !searchQuery() && !selectedCategory() && !isBrowsing()) {
                 <div class="flex flex-col items-center justify-center h-full text-center p-10 opacity-60 animate-in fade-in duration-500">
@@ -626,73 +607,121 @@ import { FormsModule } from '@angular/forms';
           </div>
       }
       
-      <!-- Transaction Detail & Receipt Modal -->
+
       @if (selectedOrder(); as tx) {
-          <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm print:p-0 print:bg-white print:fixed print:inset-0">
-             <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 print:shadow-none print:w-full print:max-w-none print:h-full print:rounded-none">
+          <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+             <!-- Modal Container -->
+             <div class="w-full max-w-[400px] relative flex flex-col items-center">
                  
-                 <!-- Printable Area -->
-                 <div id="receipt-printable" class="p-8 pb-4 text-black bg-white dark:bg-white dark:text-black">
-                      <div class="text-center mb-6">
-                          <h2 class="text-2xl font-bold uppercase tracking-wide">{{ storeService.currentStore()?.name }}</h2>
-                          <p class="text-sm opacity-60">Receipt #{{ tx.id.substring(0,8) }}</p>
-                          <p class="text-xs opacity-60">{{ tx.created_at | date:'medium' }}</p>
-                          @if (tx.metadata?.status === 'VOID') {
-                              <div class="mt-2 border-2 border-red-500 text-red-500 font-bold text-xl uppercase -rotate-6 inline-block px-4 py-1 rounded">VOID</div>
-                          }
-                          @if (tx.metadata?.type === 'RETURN') {
-                               <div class="mt-2 border-2 border-blue-500 text-blue-500 font-bold text-xl uppercase -rotate-6 inline-block px-4 py-1 rounded">RETURN</div>
-                          }
-                      </div>
+                 <!-- Top Action Badge -->
+                 <div class="absolute -top-5 bg-[var(--primary-color)] text-white px-6 py-1.5 rounded-full font-bold shadow-xl border-4 border-[var(--bg-color)] z-10 flex items-center gap-2 text-sm shadow-[var(--primary-color)]/30">
+                     <span class="material-symbols-rounded text-base">page_info</span>
+                     Receipt Details
+                 </div>
 
-                      <div class="border-t border-b border-slate-300 py-2 mb-4">
-                          <table class="w-full text-sm">
-                              <thead>
-                                  <tr class="text-xs uppercase opacity-60">
-                                      <th class="text-left py-1">Item</th>
-                                      <th class="text-right py-1">Qty</th>
-                                      <th class="text-right py-1">Price</th>
-                                  </tr>
-                              </thead>
-                              <tbody>
-                                  @for (item of selectedOrderItems(); track item.id) {
-                                      <tr>
-                                          <td class="py-1 pr-2">{{ item.product?.name || 'Unknown Item' }}</td>
-                                          <td class="py-1 text-right">{{ item.quantity }}</td>
-                                          <td class="py-1 text-right">{{ (item.price_at_sale * item.quantity) | currency:storeService.currentStore()?.config?.currency }}</td>
-                                      </tr>
-                                  }
-                              </tbody>
-                          </table>
-                      </div>
+                 <div class="bg-white text-black w-full rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 relative flex flex-col max-h-[90vh]">
+                     <!-- Colorful Top Border -->
+                     <div class="h-2 w-full bg-gradient-to-r from-blue-500 via-[var(--primary-color)] to-purple-500 shrink-0"></div>
 
-                      <div class="space-y-1 text-sm mb-6">
-                           <div class="flex justify-between font-bold text-lg border-t border-slate-300 pt-1 mt-1">
-                               <span>Total</span>
-                               <span>{{ tx.total_amount | currency:storeService.currentStore()?.config?.currency }}</span>
-                           </div>
-                           <div class="flex justify-between text-xs pt-1 uppercase">
-                               <span>Payment Method</span>
-                               <span class="font-bold">{{ tx.payment_method }}</span>
-                           </div>
-                      </div>
-                  </div>
+                     <!-- Printable Area (Scrollable if long) -->
+                     <div class="overflow-y-auto no-scrollbar shrink">
+                         <div id="receipt-printable" class="p-8 pb-6 bg-white text-black">
+                             <!-- Store Header -->
+                             <div class="text-center mb-6">
+                                 <div class="w-16 h-16 bg-slate-100 rounded-full mx-auto flex items-center justify-center mb-4 border border-slate-200">
+                                     <span class="material-symbols-rounded text-3xl text-slate-700">storefront</span>
+                                 </div>
+                                 <h2 class="text-2xl font-extrabold uppercase tracking-widest text-slate-800 leading-tight">{{ storeService.currentStore()?.name }}</h2>
+                                 <p class="text-xs text-slate-500 mt-1 tracking-wider">{{ storeService.currentStore()?.location || 'Retail Location' }}</p>
+                                 
+                                 <div class="mt-4 flex flex-col items-center justify-center gap-0.5 opacity-60">
+                                     <p class="text-[11px] font-mono font-medium">{{ tx.created_at | date:'dd MMM yyyy, HH:mm' }}</p>
+                                     <p class="text-[11px] font-mono font-medium">ORDER #{{ tx.id.substring(0,8) }}</p>
+                                 </div>
 
-                  <!-- Actions -->
-                  <div class="p-4 bg-slate-50 dark:bg-slate-700/50 border-t border-slate-200 dark:border-slate-700 flex flex-col gap-2 no-print">
-                      <div class="flex gap-2">
-                          <button (click)="printReceipt()" class="flex-1 py-2.5 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 rounded-lg font-bold hover:opacity-90 flex justify-center items-center gap-2">
-                             <span class="material-symbols-rounded">print</span> Print
-                          </button>
-                          
-                          @if (tx.metadata?.status !== 'VOID' && tx.total_amount > 0) {
-                              <button (click)="initiateReturn(tx)" class="flex-1 py-2.5 border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg font-bold hover:bg-red-50 dark:hover:bg-red-900/30 flex justify-center items-center gap-2 transition-colors">
-                                  <span class="material-symbols-rounded">keyboard_return</span> Return
-                              </button>
-                          }
-                      </div>
-                      <button (click)="selectedOrder.set(null)" class="mt-2 text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">Close</button>
-                  </div>
+                                 @if (tx.metadata?.status === 'VOID') {
+                                     <div class="mt-5 border-2 border-red-500 text-red-500 font-black text-2xl uppercase -rotate-6 inline-block px-4 py-1 rounded-lg">VOID</div>
+                                 }
+                                 @if (tx.metadata?.type === 'RETURN') {
+                                      <div class="mt-5 border-2 border-blue-500 text-blue-500 font-black text-2xl uppercase -rotate-6 inline-block px-4 py-1 rounded-lg">RETURN</div>
+                                 }
+                             </div>
+
+                             <!-- Divider -->
+                             <div class="w-full border-t border-dashed border-slate-300 my-4"></div>
+
+                             <!-- Items Table -->
+                             <table class="w-full text-sm font-medium">
+                                 <thead>
+                                     <tr class="text-[10px] uppercase text-slate-400 border-b border-slate-200">
+                                         <th class="text-left pb-2 font-bold tracking-wider">Item Details</th>
+                                         <th class="text-right pb-2 font-bold tracking-wider">Amount</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody class="divide-y divide-slate-100">
+                                     @for (item of selectedOrderItems(); track item.id) {
+                                         <tr>
+                                             <td class="py-3 pr-2">
+                                                <div class="text-slate-800 font-bold text-sm leading-tight">{{ item.product?.name || 'Unknown Item' }}</div>
+                                                <div class="text-[11px] text-slate-500 mt-0.5">{{ item.quantity }} x {{ item.price_at_sale | currency:storeService.currentStore()?.config?.currency }}</div>
+                                             </td>
+                                             <td class="py-3 text-right text-slate-800 font-bold whitespace-nowrap align-top">
+                                                 {{ (item.price_at_sale * item.quantity) | currency:storeService.currentStore()?.config?.currency }}
+                                             </td>
+                                         </tr>
+                                     }
+                                 </tbody>
+                             </table>
+
+                             <!-- Divider -->
+                             <div class="w-full border-t border-dashed border-slate-300 my-4"></div>
+
+                             <!-- Totals -->
+                             <div class="space-y-2 mb-2">
+                                  <div class="flex justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                                      <span>Sub Total</span>
+                                      <span>{{ (tx.total_amount - (tx.tax_amount || 0)) | currency:storeService.currentStore()?.config?.currency }}</span>
+                                  </div>
+                                  <div class="flex justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                                      <span>Tax</span>
+                                      <span>{{ (tx.tax_amount || 0) | currency:storeService.currentStore()?.config?.currency }}</span>
+                                  </div>
+                                  <div class="flex justify-between items-end border-t-2 border-slate-800 pt-3 mt-3">
+                                      <span class="font-black text-lg uppercase tracking-wider text-slate-800">Total</span>
+                                      <span class="font-black text-3xl text-slate-800 leading-none">{{ tx.total_amount | currency:storeService.currentStore()?.config?.currency }}</span>
+                                  </div>
+                             </div>
+                             
+                             <div class="mt-6 text-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                 <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1">Paid Via</span>
+                                 <span class="font-extrabold text-sm text-[var(--primary-color)] uppercase tracking-wider">{{ tx.payment_method }}</span>
+                             </div>
+                             
+                             <div class="mt-6 text-center text-[10px] text-slate-400 font-medium">
+                                 Thank you for your business!
+                             </div>
+                         </div>
+                     </div>
+                     
+                     <!-- Actions (Outside printable area) -->
+                     <div class="bg-slate-50 p-5 border-t border-slate-200 flex flex-col gap-3 shrink-0 rounded-b-2xl z-10 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
+                         <button (click)="printReceipt()" class="w-full py-3.5 bg-slate-800 text-white rounded-xl font-bold shadow-lg shadow-slate-800/20 hover:bg-slate-700 hover:-translate-y-0.5 active:scale-95 transition-all outline-none flex items-center justify-center gap-2">
+                             <span class="material-symbols-rounded">print</span> Print Receipt Option
+                         </button>
+                         
+                         <div class="flex gap-2">
+                             <button (click)="selectedOrder.set(null)" class="flex-[2] py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-100 shadow-sm transition-colors cursor-pointer">
+                                 Done / New Sale
+                             </button>
+                             @if (tx.metadata?.status !== 'VOID' && tx.total_amount > 0) {
+                                  <button (click)="initiateReturn(tx)" class="flex-1 py-3 border border-red-200 text-red-500 bg-red-50 rounded-xl font-bold hover:bg-red-100 transition-colors flex justify-center items-center gap-1 shadow-sm">
+                                      <span class="material-symbols-rounded text-base">undo</span> Refund
+                                  </button>
+                             }
+                         </div>
+                     </div>
+                     
+                 </div>
              </div>
           </div>
       }
@@ -1279,16 +1308,17 @@ export class EposComponent {
                 }).subscribe();
 
                 if (paymentMethod === 'ON_ACCOUNT' || (payments && payments.some(p => p.method === 'ON_ACCOUNT'))) {
-                    msg += `\nDebt updated for ${customer?.full_name || 'Customer'}.`;
                     if (customer) {
                         // We rely on the backend/ledger to maintain balance, but update signal for immediate UI feedback
                         this.supabase.getCustomer(customer.id).subscribe(c => this.selectedCustomer.set(c));
                     }
                 }
 
-                this.dialog.alert('Payment Successful', msg);
+                // Empty cart and reset form after checkout
                 this.cart.set([]);
                 this.orderNumber.set(Math.floor(Math.random() * 1000) + 1000);
+                this.paymentViewMode.set('DEFAULT');
+                this.cashInputStr.set('');
 
                 // Refresh products to sync store stock levels immediately
                 const store = this.storeService.currentStore();
@@ -1297,6 +1327,9 @@ export class EposComponent {
                 }
 
                 this.goHome(); // Reset view to scan-forward for next customer
+
+                // POP OPEN THE EXPERT RECEIPT MODAL IMMEDIATELY FOR PRINTING
+                this.selectOrder(tx);
             },
             error: (err) => {
                 console.error('Failed to process payment:', err);
@@ -1351,7 +1384,106 @@ export class EposComponent {
     }
 
     printReceipt() {
-        window.print();
+        const printContent = document.getElementById('receipt-printable');
+        if (!printContent) return;
+
+        // Create a hidden iframe
+        const printFrame = document.createElement('iframe');
+        printFrame.style.position = 'absolute';
+        printFrame.style.top = '-1000px';
+        printFrame.style.left = '-1000px';
+        printFrame.style.width = '80mm'; // Standard thermal size
+        printFrame.style.height = '100px';
+        document.body.appendChild(printFrame);
+
+        const frameDoc = printFrame.contentWindow?.document;
+        if (!frameDoc) return;
+
+        frameDoc.write(`
+            <html>
+                <head>
+                    <title>Print Receipt</title>
+                    <style>
+                        /* Thermal Printer Optimization */
+                        @page { margin: 0; }
+                        body {
+                            font-family: 'Courier New', Courier, monospace;
+                            width: 80mm;
+                            margin: 0;
+                            padding: 8px;
+                            color: black;
+                            background: white;
+                            font-size: 12px;
+                        }
+                        
+                        /* Mimic Tailwind Utility Classes used in the template */
+                        .text-center { text-align: center; }
+                        .text-2xl { font-size: 1.5rem; }
+                        .text-sm { font-size: 0.875rem; }
+                        .text-xs { font-size: 0.75rem; }
+                        .text-lg { font-size: 1.125rem; }
+                        .text-xl { font-size: 1.25rem; }
+                        .font-bold, .font-extrabold { font-weight: bold; }
+                        .uppercase { text-transform: uppercase; }
+                        .tracking-wide { letter-spacing: 0.05em; }
+                        .opacity-60 { color: #555; }
+                        .mb-6 { margin-bottom: 1.5rem; }
+                        .mb-4 { margin-bottom: 1rem; }
+                        .mt-2 { margin-top: 0.5rem; }
+                        .mt-1 { margin-top: 0.25rem; }
+                        .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+                        .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+                        .pt-1 { padding-top: 0.25rem; }
+                        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+                        .pr-2 { padding-right: 0.5rem; }
+                        
+                        /* Thermal printers need high contrast borders */
+                        .border-t { border-top: 1px dashed black; }
+                        .border-b { border-bottom: 1px dashed black; }
+                        .border-slate-300 { border-color: black; }
+                        
+                        .border-2 { border: 2px solid black; padding: 2px; }
+                        .border-red-500, .border-blue-500 { border-color: black; }
+                        .text-red-500, .text-blue-500 { color: black; }
+                        
+                        .w-full { width: 100%; }
+                        
+                        /* Tables */
+                        table { border-collapse: collapse; width: 100%; }
+                        th { text-align: left; font-weight: bold; border-bottom: 1px solid black; padding-bottom: 4px; }
+                        th.text-right, td.text-right { text-align: right; }
+                        td { padding-top: 4px; padding-bottom: 4px; vertical-align: top; }
+                        
+                        /* Flexbox Shims for generic printing */
+                        .flex { display: flex; }
+                        .justify-between { justify-content: space-between; }
+                        .space-y-1 > * + * { margin-top: 0.25rem; }
+                        
+                        /* Reset rotations and radiuses for thermal print legibility */
+                        .-rotate-6 { transform: none; }
+                        .rounded { border-radius: 0; }
+                        .inline-block { display: inline-block; }
+                    </style>
+                </head>
+                <body>
+                    ${printContent.innerHTML}
+                </body>
+            </html>
+        `);
+        frameDoc.close();
+
+        // Let the browser parse and render the simple iframe layout
+        setTimeout(() => {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+
+            // Clean up iframe after print dialog is closed or cancelled
+            setTimeout(() => {
+                if (document.body.contains(printFrame)) {
+                    document.body.removeChild(printFrame);
+                }
+            }, 1000);
+        }, 200);
     }
 
     initiateReturn(tx: Transaction) {
