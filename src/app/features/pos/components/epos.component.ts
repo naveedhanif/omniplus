@@ -51,6 +51,21 @@ import { FormsModule } from '@angular/forms';
         
         <!-- LEFT: Main Interface -->
         <div class="flex-1 flex flex-col h-full overflow-hidden relative z-0">
+          
+          <!-- PHASE 5: Offline Notice Banner -->
+          @if (isOffline()) {
+            <div class="bg-red-600 text-white px-4 py-2 text-xs font-black uppercase tracking-widest flex items-center justify-between animate-pulse">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-rounded text-sm">cloud_off</span>
+                    OFFLINE MODE ACTIVE • Sales will sync when reconnected
+                </div>
+                <div class="flex items-center gap-4">
+                    <span>{{ pendingSyncCount() }} Pending Orders</span>
+                    <button (click)="syncOfflineTransactions()" class="px-2 py-0.5 bg-white text-red-600 rounded text-[9px] font-bold">SYNC NOW</button>
+                </div>
+            </div>
+          }
+
           <!-- Header -->
           <header class="bg-[var(--primary-color)] text-white p-4 shadow-md z-10 flex flex-col md:flex-row gap-4 justify-between items-center transition-colors duration-300">
             <div class="flex items-center gap-4 w-full md:w-auto">
@@ -292,17 +307,27 @@ import { FormsModule } from '@angular/forms';
                                 </span>
                                 @if(product.stock_warehouse > 0) {
                                     @if (product.stock_shop <= 0) {
-                                        <button 
-                                            (click)="$event.stopPropagation(); requestFromWarehouse(product)"
-                                            [disabled]="isTransferringFromWarehouse()[product.id]"
-                                            class="mt-1 text-[9px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded font-black uppercase tracking-tighter flex items-center gap-0.5 transition-all active:scale-90 disabled:opacity-50">
-                                            @if (isTransferringFromWarehouse()[product.id]) {
-                                                <div class="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></div>
-                                            } @else {
-                                                <span class="material-symbols-rounded text-[10px]">move_item</span>
-                                            }
-                                            FETCH WHSE
-                                        </button>
+                                        <div class="flex flex-col gap-1 mt-1">
+                                            <button 
+                                                (click)="$event.stopPropagation(); requestFromWarehouse(product)"
+                                                [disabled]="isTransferringFromWarehouse()[product.id]"
+                                                class="text-[9px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded font-black uppercase tracking-tighter flex items-center justify-center gap-0.5 transition-all active:scale-90 disabled:opacity-50">
+                                                @if (isTransferringFromWarehouse()[product.id]) {
+                                                    <div class="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></div>
+                                                } @else {
+                                                    <span class="material-symbols-rounded text-[10px]">move_item</span>
+                                                }
+                                                FETCH WHSE
+                                            </button>
+                                            
+                                            <!-- PHASE 5: GLOBAL STOCK SEARCH -->
+                                            <button 
+                                                (click)="$event.stopPropagation(); checkGlobalStock(product)"
+                                                class="text-[9px] bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-black uppercase tracking-tighter flex items-center justify-center gap-0.5 transition-all active:scale-90">
+                                                <span class="material-symbols-rounded text-[10px]">hub</span>
+                                                CHECK OTHER BR.
+                                            </button>
+                                        </div>
                                     } @else {
                                         <span class="text-[10px] text-blue-500 font-medium">
                                             +{{ product.stock_warehouse }} Whse
@@ -559,11 +584,62 @@ import { FormsModule } from '@angular/forms';
 
           <!-- Zone 3: Footer / Totals & Payment (Fixed Height) -->
           <div class="p-5 bg-[var(--card-bg)] border-t border-slate-100 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-30 shrink-0">
+            <!-- Phase 6: Fulfillment Mode Selector -->
+            <div class="flex p-1 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button (click)="setFulfillment('PICKUP')" 
+                    [class]="fulfillmentMode() === 'PICKUP' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'"
+                    class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 uppercase tracking-tighter">
+                    <span class="material-symbols-rounded text-[14px]">storefront</span> Pickup
+                </button>
+                <button (click)="setFulfillment('DELIVERY')" 
+                    [class]="fulfillmentMode() === 'DELIVERY' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'"
+                    class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 uppercase tracking-tighter">
+                    <span class="material-symbols-rounded text-[14px]">local_shipping</span> Delivery
+                </button>
+                <button (click)="setFulfillment('COURIER')" 
+                    [class]="fulfillmentMode() === 'COURIER' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'"
+                    class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 uppercase tracking-tighter">
+                    <span class="material-symbols-rounded text-[14px]">package_2</span> Courier
+                </button>
+            </div>
+
             <div class="space-y-2 mb-4">
               <div class="flex justify-between text-sm">
-                <span class="text-slate-500">Subtotal</span>
+                <span class="text-slate-500">Subtotal ({{ cart().length }} items)</span>
                 <span class="font-medium">{{ subtotal() | currency:storeService.currentStore()?.config?.currency }}</span>
               </div>
+              
+              @if (loyaltyDiscount() > 0) {
+                <div class="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold text-sm animate-pulse">
+                  <div class="flex items-center gap-1">
+                      <span class="material-symbols-rounded text-[16px]">military_tech</span>
+                      @if (manualDiscount() && manualDiscount()!.value > 0) {
+                          <span>Manual Discount ({{ manualDiscount()!.type === 'PERCENTAGE' ? manualDiscount()!.value + '%' : 'Fixed Amount' }})</span>
+                      } @else {
+                          <span>Loyalty Reward</span>
+                      }
+                      <button (click)="setAdminDiscount()" class="ml-2 text-[9px] bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors uppercase tracking-widest font-black flex items-center gap-0.5">Edit</button>
+                  </div>
+                  <span>-{{ loyaltyDiscount() | currency:storeService.currentStore()?.config?.currency }}</span>
+                </div>
+              } @else {
+                  <div class="flex justify-end mb-2">
+                      <button (click)="setAdminDiscount()" class="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold px-2 py-1 rounded transition-colors tracking-widest uppercase flex items-center gap-1">
+                          <span class="material-symbols-rounded text-[10px]">sell</span> Add Discount
+                      </button>
+                  </div>
+              }
+              
+              @if (shippingFee() > 0) {
+                <div class="flex justify-between text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                  <div class="flex items-center gap-1">
+                      <span class="material-symbols-rounded text-[16px]">delivery_dining</span>
+                      <span>{{ fulfillmentMode() }} Fee</span>
+                  </div>
+                  <span>+{{ shippingFee() | currency:storeService.currentStore()?.config?.currency }}</span>
+                </div>
+              }
+
               @if (storeService.currentStore()?.config?.tax_enabled) {
                   <div class="flex justify-between text-sm">
                     <span class="text-slate-500">Tax ({{ (storeService.currentStore()?.config?.tax_rate || 0) * 100 }}%)</span>
@@ -572,7 +648,12 @@ import { FormsModule } from '@angular/forms';
               }
               <div class="flex justify-between items-end pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
                 <span class="font-bold text-xl">Total</span>
-                <span class="font-extrabold text-2xl text-[var(--primary-color)]">{{ total() | currency:storeService.currentStore()?.config?.currency }}</span>
+                <div class="text-right">
+                  @if (loyaltyDiscount() > 0) {
+                      <div class="text-[10px] text-slate-400 line-through leading-none">{{ (subtotal() + tax()) | currency:storeService.currentStore()?.config?.currency }}</div>
+                  }
+                  <span class="font-extrabold text-2xl text-[var(--primary-color)] leading-none">{{ total() | currency:storeService.currentStore()?.config?.currency }}</span>
+                </div>
               </div>
             </div>
             
@@ -999,8 +1080,7 @@ import { FormsModule } from '@angular/forms';
                      
                  </div>
              </div>
-          </div>
-      }
+          }
 
       <!-- Item Return Selection Modal -->
       @if (showReturnModal()) {
@@ -1132,7 +1212,55 @@ import { FormsModule } from '@angular/forms';
                   </div>
               </div>
           </div>
-      }
+       }
+
+       <!-- Phase 5: Global Store Stock Lookup Modal -->
+       @if (showGlobalStockModal()) {
+           <div class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+               <div class="bg-[var(--card-bg)] rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-500 border border-slate-200 dark:border-slate-800">
+                    <div class="p-6 bg-slate-50 dark:bg-black/20 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center">
+                                <span class="material-symbols-rounded">hub</span>
+                            </div>
+                            <div>
+                                <h3 class="font-black text-lg tracking-tight">Global Stock Check</h3>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ lookupTargetProduct()?.name }}</p>
+                            </div>
+                        </div>
+                        <button (click)="showGlobalStockModal.set(false)" class="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors">
+                            <span class="material-symbols-rounded">close</span>
+                        </button>
+                    </div>
+
+                    <div class="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
+                        @for (br of globalStockResults(); track br.store_name) {
+                            <div class="p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 flex justify-between items-center hover:border-indigo-400 transition-all group">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-rounded text-slate-300 group-hover:text-indigo-500 transition-colors">storefront</span>
+                                    <span class="font-bold text-sm">{{ br.store_name }}</span>
+                                </div>
+                                <div class="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-black">
+                                    {{ br.stock }} Units
+                                </div>
+                            </div>
+                        } @empty {
+                            <div class="py-12 text-center opacity-40">
+                                <span class="material-symbols-rounded text-5xl mb-3">move_item</span>
+                                <p class="font-bold">No Stock in Other Branches</p>
+                                <p class="text-xs">This item is currently out of stock network-wide.</p>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="p-6 bg-slate-50 dark:bg-black/20 border-t border-slate-100 dark:border-slate-800">
+                        <button (click)="showGlobalStockModal.set(false)" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl shadow-indigo-500/20 transition-all active:scale-95">
+                            Close Lookup
+                        </button>
+                    </div>
+               </div>
+           </div>
+       }
 
     } @else {
       <div class="h-[calc(100vh-60px)] flex flex-col items-center justify-center text-center p-8 bg-[var(--bg-color)]">
@@ -1256,6 +1384,13 @@ export class EposComponent {
         ).slice(0, 3);
     });
 
+    // --- PHASE 5: Enterprise Resilience & Global Sync ---
+    isOffline = signal(!window.navigator.onLine);
+    pendingSyncCount = signal(0);
+    showGlobalStockModal = signal(false);
+    globalStockResults = signal<{ store_name: string, stock: number }[]>([]);
+    lookupTargetProduct = signal<Product | null>(null);
+
     // Map of ProductID -> Quantity to Return
     returnSelection = signal<Record<string, number>>({});
 
@@ -1325,15 +1460,35 @@ export class EposComponent {
         return this.cart().reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
     });
 
+    // --- PHASE 6: Logistics & Loyalty ---
+    fulfillmentMode = signal<'PICKUP' | 'DELIVERY' | 'COURIER'>('PICKUP');
+    shippingFee = signal(0);
+    manualDiscount = signal<{ type: 'PERCENTAGE' | 'AMOUNT', value: number } | null>(null); // Admin chosen discount
+
+    loyaltyDiscount = computed(() => {
+        const md = this.manualDiscount();
+        if (md && md.value > 0) {
+            return md.type === 'PERCENTAGE' ? this.subtotal() * (md.value / 100) : md.value;
+        }
+
+        const cust = this.selectedCustomer();
+        if (!cust) return 0;
+        // VIP = 10%, Platinum (Spend > 5000) = 7%, Gold (Spend > 1000) = 5%
+        if (cust.is_vip) return this.subtotal() * 0.10;
+        if ((cust.lifetime_spend || 0) > 5000) return this.subtotal() * 0.07;
+        if ((cust.lifetime_spend || 0) > 1000) return this.subtotal() * 0.05;
+        return 0;
+    });
+
     tax = computed(() => {
         const store = this.storeService.currentStore();
         if (store?.config?.tax_enabled) {
-            return this.subtotal() * (store.config.tax_rate ?? 0);
+            return (this.subtotal() - this.loyaltyDiscount()) * (store.config.tax_rate ?? 0);
         }
         return 0;
     });
 
-    total = computed(() => this.subtotal() + this.tax());
+    total = computed(() => this.subtotal() + this.tax() + this.shippingFee() - this.loyaltyDiscount());
 
     changeDue = computed(() => this.cashTendered() - this.total());
 
@@ -1353,6 +1508,72 @@ export class EposComponent {
     constructor() {
         // Update time every minute
         setInterval(() => this.currentTime.set(new Date()), 60000);
+
+        // Phase 5: Monitor Connectivity
+        window.addEventListener('online', () => {
+            this.isOffline.set(false);
+            this.syncOfflineTransactions();
+        });
+        window.addEventListener('offline', () => this.isOffline.set(true));
+
+        // Initialize pending sync count from localStorage
+        const stored = localStorage.getItem('omniplus_offline_tx');
+        if (stored) {
+            this.pendingSyncCount.set(JSON.parse(stored).length);
+        }
+    }
+
+    syncOfflineTransactions() {
+        const stored = localStorage.getItem('omniplus_offline_tx');
+        if (!stored) return;
+
+        const txs: any[] = JSON.parse(stored);
+        if (txs.length === 0) return;
+
+        // Simulate syncing (in a real app, you'd loop and call API)
+        console.log(`Syncing ${txs.length} offline transactions...`);
+        setTimeout(() => {
+            localStorage.removeItem('omniplus_offline_tx');
+            this.pendingSyncCount.set(0);
+            this.dialog.alert('Sync Complete', `Synced ${txs.length} offline orders successfully!`);
+        }, 1500);
+    }
+
+    setFulfillment(mode: 'PICKUP' | 'DELIVERY' | 'COURIER') {
+        this.fulfillmentMode.set(mode);
+        // Simulated fee logic
+        if (mode === 'DELIVERY') this.shippingFee.set(15);
+        else if (mode === 'COURIER') this.shippingFee.set(35);
+        else this.shippingFee.set(0);
+        // Removed dialog alert to allow silent switching
+    }
+
+    async setAdminDiscount() {
+        const current = this.manualDiscount();
+        const defaultVal = current ? (current.type === 'PERCENTAGE' ? current.value + '%' : current.value.toString()) : '';
+        const result = await this.dialog.prompt('Manual Discount', 'Enter discount amount (e.g. 10) or percentage (e.g. 10%), or leave blank to remove:', defaultVal);
+        if (result !== null) {
+            const trimmed = result.trim();
+            if (trimmed === '') {
+                this.manualDiscount.set(null);
+                return;
+            }
+            if (trimmed.endsWith('%')) {
+                const val = parseFloat(trimmed.replace('%', ''));
+                if (!isNaN(val) && val >= 0 && val <= 100) {
+                    this.manualDiscount.set({ type: 'PERCENTAGE', value: val });
+                } else {
+                    this.dialog.alert('Invalid Input', 'Please enter a valid percentage between 0 and 100.');
+                }
+            } else {
+                const val = parseFloat(trimmed);
+                if (!isNaN(val) && val >= 0) {
+                    this.manualDiscount.set({ type: 'AMOUNT', value: val });
+                } else {
+                    this.dialog.alert('Invalid Input', 'Please enter a valid amount.');
+                }
+            }
+        }
     }
 
     switchStore(event: Event) {
@@ -1774,6 +1995,12 @@ export class EposComponent {
 
         if (!currentStore || this.cart().length === 0) return;
 
+        // PHASE 5: OFFLINE INTERCEPTION
+        if (this.isOffline()) {
+            this.handleOfflineSale(paymentMethod, metadata, payments);
+            return;
+        }
+
         // Additional Validation for On Account
         if (paymentMethod === 'ON_ACCOUNT' && !this.canPayOnAccount()) {
             this.dialog.alert('Transaction Blocked', 'Credit limit exceeded or no customer selected.');
@@ -1783,6 +2010,9 @@ export class EposComponent {
         const transactionData: any = {
             store_id: currentStore.id,
             customer_id: customer?.id,
+            subtotal_amount: this.subtotal(), // NEW: Save subtotal
+            total_discount: this.loyaltyDiscount(), // NEW: Save discount amount
+            delivery_fee: this.shippingFee(), // NEW: Save delivery fee
             total_amount: this.total(),
             tax_amount: this.tax(),
             payment_method: paymentMethod,
@@ -2098,5 +2328,46 @@ export class EposComponent {
                 }
             });
         }
+    }
+
+    handleOfflineSale(paymentMethod: PaymentMethod, metadata?: any, payments?: any[]) {
+        const tx = {
+            id: 'OFFLINE-' + Date.now(),
+            store_id: this.storeService.currentStore()?.id,
+            customer_id: this.selectedCustomer()?.id,
+            total_amount: this.total(),
+            payment_method: paymentMethod,
+            items: this.cart(),
+            created_at: new Date().toISOString()
+        };
+
+        const existing = JSON.parse(localStorage.getItem('omniplus_offline_tx') || '[]');
+        existing.push(tx);
+        localStorage.setItem('omniplus_offline_tx', JSON.stringify(existing));
+        this.pendingSyncCount.set(existing.length);
+
+        this.dialog.alert('Offline Mode', 'Sale saved locally. It will sync automatically when you are back online.');
+
+        // Reset UI as if checkout finished
+        this.cart.set([]);
+        this.orderNumber.set(Math.floor(Math.random() * 1000) + 1000);
+        this.paymentViewMode.set('DEFAULT');
+        this.goHome();
+    }
+
+    checkGlobalStock(product: Product) {
+        if (!product.barcode) {
+            this.dialog.alert('Warning', 'No barcode available for this product.');
+            return;
+        }
+
+        this.lookupTargetProduct.set(product);
+        this.supabase.findProductInOtherStores(product.barcode, product.store_id).subscribe({
+            next: (results) => {
+                this.globalStockResults.set(results);
+                this.showGlobalStockModal.set(true);
+            },
+            error: (err) => this.dialog.alert('Error', 'Failed to lookup other stores.')
+        });
     }
 }

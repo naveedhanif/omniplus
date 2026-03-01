@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { from, Observable, BehaviorSubject, Subject, of, forkJoin, delay } from 'rxjs';
-import { map, switchMap, tap, debounceTime } from 'rxjs/operators';
+import { map, switchMap, tap, debounceTime, take } from 'rxjs/operators';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 
@@ -277,6 +277,8 @@ export interface Customer {
     is_vip: boolean;
     credit_limit: number;
     current_balance: number; // Cached value
+    lifetime_spend?: number; // Phase 6: Reward Tiers
+    metadata?: any; // Phase 6: Extensible customer data
     created_at: string;
 }
 
@@ -301,7 +303,10 @@ export interface Transaction {
     store_id: string;
     customer_id?: string; // Link to customer
     customer?: Customer; // Joined Data
-    total_amount: number;
+    subtotal_amount: number; // NEW: Amount before discounts
+    total_discount: number; // NEW: Total amount of discount applied
+    delivery_fee?: number; // NEW: Shipping / Delivery fees collected
+    total_amount: number; // Final amount paid
     tax_amount: number;
     payment_method: PaymentMethod; // Primary method (legacy support)
     payments?: PaymentRecord[]; // Phase 2: Split payments
@@ -322,7 +327,10 @@ export interface TransactionItem {
     product_id: string;
     serial_number_id?: string; // New Field
     quantity: number;
-    price_at_sale: number;
+    original_price: number; // NEW: The catalog price of the item
+    discount_amount: number; // NEW: The discount applied to this line
+    discount_reason?: string; // NEW: 'Manual Admin 10%' or 'Loyalty VIP'
+    price_at_sale: number; // Final settled price
     cost_at_sale?: number; // Capture margin at moment of sale
     product?: Product; // Joined data
     serial_number?: SerialNumber; // Joined data
@@ -333,6 +341,8 @@ export interface CartItem {
     product: Product;
     quantity: number;
     serials?: SerialNumber[]; // Store full serial objects
+    line_discount_amount?: number; // NEW UI tracking
+    line_discount_reason?: string; // NEW UI tracking
 }
 
 
@@ -839,6 +849,24 @@ export class MockSupabaseService {
     getProducts(storeId: string): Observable<Product[]> {
         return this.products$.pipe(
             map(products => products.filter(p => p.store_id === storeId))
+        );
+    }
+
+    findProductInOtherStores(barcode: string, currentStoreId: string): Observable<{ store_name: string, stock: number }[]> {
+        return forkJoin([
+            (this.products$ as BehaviorSubject<Product[]>).pipe(take(1)),
+            (this.stores$ as BehaviorSubject<Store[]>).pipe(take(1))
+        ]).pipe(
+            map(([allProducts, allStores]) => {
+                const matches = (allProducts as Product[]).filter(p => p.barcode === barcode && p.store_id !== currentStoreId);
+                return matches.map(p => {
+                    const store = (allStores as Store[]).find(s => s.id === p.store_id);
+                    return {
+                        store_name: store ? store.name : 'Unknown Store',
+                        stock: p.stock_shop + p.stock_warehouse
+                    };
+                }).filter(m => m.stock > 0);
+            })
         );
     }
 
@@ -1698,7 +1726,10 @@ export class MockSupabaseService {
                                 transaction_id: tx.id,
                                 product_id: item.product.id,
                                 quantity: 1,
-                                price_at_sale: item.product.price,
+                                original_price: item.product.price,
+                                discount_amount: item.line_discount_amount || 0,
+                                discount_reason: item.line_discount_reason || '',
+                                price_at_sale: item.product.price - (item.line_discount_amount || 0),
                                 cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0,
                                 serial_number_id: serial.id,
                             });
@@ -1736,7 +1767,10 @@ export class MockSupabaseService {
                             transaction_id: tx.id,
                             product_id: item.product.id,
                             quantity: item.quantity,
-                            price_at_sale: item.product.price,
+                            original_price: item.product.price,
+                            discount_amount: item.line_discount_amount || 0,
+                            discount_reason: item.line_discount_reason || '',
+                            price_at_sale: (item.product.price * item.quantity) - (item.line_discount_amount || 0),
                             cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0
                         });
 
