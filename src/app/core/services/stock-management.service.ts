@@ -336,8 +336,12 @@ export class StockManagementService {
         return from(new Promise<StockMovement>(async (resolve, reject) => {
             try {
                 // 1. Get Product and Location info
+                // Defensive select to avoid missing column errors like updated_at
                 const { data: product, error: productErr } = await this.supabase
-                    .from('products').select('*').eq('id', request.product_id).single();
+                    .from('products')
+                    .select('stock_warehouse, stock_shop, stock_quantity')
+                    .eq('id', request.product_id)
+                    .single();
                 if (productErr) throw productErr;
 
                 const { data: loc, error: locErr } = await this.supabase
@@ -541,15 +545,16 @@ export class StockManagementService {
 
             if (transferError) throw transferError;
 
-            // 2. Create TRANSFER_OUT movements
-            const { data: loc } = await this.supabase.from('stock_locations').select('store_id').eq('id', transfer.from_location_id).single();
+            // 2. Create TRANSFER_OUT movements and Update Product Stock
+            const { data: loc } = await this.supabase.from('stock_locations').select('store_id, location_type').eq('id', transfer.from_location_id).single();
             const storeId = loc?.store_id || this.activeStoreId() || '00000000-0000-0000-0000-000000000000'; // fallback
+
             const movements = (transfer as any).items.map((item: any) => ({
                 store_id: storeId,
                 product_id: item.product_id,
                 location_id: transfer.from_location_id,
                 quantity_change: -item.quantity_requested,
-                balance_after: 0, // This should normally be calculated or handled by trigger
+                balance_after: 0,
                 reason: `TRANSFER_OUT to ${transfer.to_location_id}`,
                 reference_id: transferId,
                 created_by: shippedBy,
@@ -561,6 +566,31 @@ export class StockManagementService {
                 .insert(movements);
 
             if (movementError) throw movementError;
+
+            // --- CRITICAL: Sync with products table for real-time app update ---
+            for (const item of (transfer as any).items) {
+                // Defensive select to avoid missing column errors like updated_at
+                const { data: prod } = await this.supabase
+                    .from('products')
+                    .select('stock_warehouse, stock_shop, stock_quantity')
+                    .eq('id', item.product_id)
+                    .single();
+
+                if (prod) {
+                    const isWarehouse = loc?.location_type === 'WAREHOUSE';
+                    const up: any = {};
+                    if (isWarehouse) {
+                        up.stock_warehouse = Math.max(0, (Number(prod.stock_warehouse) || 0) - item.quantity_requested);
+                    } else {
+                        up.stock_shop = Math.max(0, (Number(prod.stock_shop) || 0) - item.quantity_requested);
+                    }
+                    // Subtract from total too since it is leaving the location
+                    up.stock_quantity = Math.max(0, (Number(prod.stock_quantity) || 0) - item.quantity_requested);
+
+                    // Simple update payload to avoid triggering missing column errors
+                    await this.supabase.from('products').update(up).eq('id', item.product_id);
+                }
+            }
 
             // 3. Update transfer status
             const { data: updated, error: updateError } = await this.supabase
@@ -579,7 +609,6 @@ export class StockManagementService {
             if (!updatedRow) throw new Error("Could not find the shipped transfer.");
 
             // 4. Update transfer items - set shipped = requested
-            // Note: In production, use a database trigger or RPC function
             const { data: items } = await this.supabase
                 .from('stock_transfer_items')
                 .select('id, quantity_requested')
@@ -613,15 +642,16 @@ export class StockManagementService {
 
             if (transferError) throw transferError;
 
-            // 2. Create TRANSFER_IN movements
-            const { data: loc } = await this.supabase.from('stock_locations').select('store_id').eq('id', transfer.to_location_id).single();
+            // 2. Create TRANSFER_IN movements and Update Product Stock
+            const { data: loc } = await this.supabase.from('stock_locations').select('store_id, location_type').eq('id', transfer.to_location_id).single();
             const storeId = loc?.store_id || this.activeStoreId() || '00000000-0000-0000-0000-000000000000'; // fallback
+
             const movements = (transfer as any).items.map((item: any) => ({
                 store_id: storeId,
                 product_id: item.product_id,
                 location_id: transfer.to_location_id,
                 quantity_change: item.quantity_shipped,
-                balance_after: 0, // This should normally be calculated or handled by trigger
+                balance_after: 0,
                 reason: `TRANSFER_IN from ${transfer.from_location_id}`,
                 reference_id: transferId,
                 created_by: receivedBy,
@@ -633,6 +663,29 @@ export class StockManagementService {
                 .insert(movements);
 
             if (movementError) throw movementError;
+
+            // --- CRITICAL: Sync with products table for real-time app update ---
+            for (const item of (transfer as any).items) {
+                const { data: prod } = await this.supabase
+                    .from('products')
+                    .select('stock_warehouse, stock_shop, stock_quantity')
+                    .eq('id', item.product_id)
+                    .single();
+
+                if (prod) {
+                    const isWarehouse = loc?.location_type === 'WAREHOUSE';
+                    const up: any = {};
+                    if (isWarehouse) {
+                        up.stock_warehouse = (Number(prod.stock_warehouse) || 0) + item.quantity_shipped;
+                    } else {
+                        up.stock_shop = (Number(prod.stock_shop) || 0) + item.quantity_shipped;
+                    }
+                    // Add back to total as it is now in a countable location
+                    up.stock_quantity = (Number(prod.stock_quantity) || 0) + item.quantity_shipped;
+
+                    await this.supabase.from('products').update(up).eq('id', item.product_id);
+                }
+            }
 
             // 3. Update transfer status
             const { data: updated, error: updateError } = await this.supabase
@@ -651,7 +704,6 @@ export class StockManagementService {
             if (!updatedRow) throw new Error("Could not find the received transfer.");
 
             // 4. Update transfer items - set received = shipped
-            // Note: In production, use a database trigger or RPC function
             const { data: items } = await this.supabase
                 .from('stock_transfer_items')
                 .select('id, quantity_shipped')

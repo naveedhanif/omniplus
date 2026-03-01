@@ -194,12 +194,20 @@ import { FormsModule } from '@angular/forms';
                         @for (product of filteredProducts(); track product.id) {
                         <div 
                             (click)="addToCart(product)"
+                            [class.opacity-40]="product.stock_shop <= 0"
+                            [class.grayscale]="product.stock_shop <= 0"
                             class="bg-[var(--card-bg)] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between h-44 relative group select-none">
                             
                             <!-- Hover Add Icon -->
-                            <div class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[var(--primary-color)] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg scale-75 group-hover:scale-100">
-                            <span class="material-symbols-rounded text-lg">add</span>
-                            </div>
+                            @if (product.stock_shop > 0) {
+                                <div class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[var(--primary-color)] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg scale-75 group-hover:scale-100">
+                                    <span class="material-symbols-rounded text-lg">add</span>
+                                </div>
+                            } @else if (product.stock_warehouse > 0) {
+                                <div title="Available in Warehouse" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity shadow-lg">
+                                    <span class="material-symbols-rounded text-lg">warehouse</span>
+                                </div>
+                            }
     
                             <div class="flex-1">
                             <h3 class="font-bold text-base line-clamp-2 leading-tight mb-2">{{ product.name }}</h3>
@@ -219,9 +227,25 @@ import { FormsModule } from '@angular/forms';
                                 
                                 <!-- NEW VARIANTS BADGE -->
                                 @if (!product.is_variant && hasVariantsMap()[product.id]) {
-                                   <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center gap-0.5">
+                                   <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center gap-0.5">
                                       <span class="material-symbols-rounded text-[10px]">alt_route</span> Alternates
                                    </span>
+                                }
+
+                                <!-- STOCK STATUS BADGES -->
+                                @if (product.stock_shop <= 0) {
+                                    <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 flex items-center gap-0.5">
+                                        <span class="material-symbols-rounded text-[10px]">inventory_2</span> FINISHED
+                                    </span>
+                                    @if (product.stock_warehouse > 0) {
+                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
+                                            {{ product.stock_warehouse }} IN WHSE
+                                        </span>
+                                    }
+                                } @else if (product.stock_shop <= 2) {
+                                    <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 flex items-center gap-0.5 animate-pulse">
+                                        <span class="material-symbols-rounded text-[10px]">warning</span> LOW STOCK
+                                    </span>
                                 }
                             </div>
                             </div>
@@ -1133,11 +1157,11 @@ export class EposComponent {
         this.showVariantsModal.set(false); // Close it if it was open
 
         const itemInCart = this.cart().find(i => i.product.id === product.id);
-        const currentStock = product.stock_quantity;
+        const currentStock = product.stock_shop; // Use Floor Stock as the gatekeeper for POS
         const cartQty = itemInCart?.quantity ?? 0;
 
         if (currentStock - cartQty <= 0) {
-            this.dialog.alert('Stock Warning', 'No more stock available!');
+            this.dialog.alert('Stock Warning', 'No more stock available on the shop floor!');
             return;
         }
 

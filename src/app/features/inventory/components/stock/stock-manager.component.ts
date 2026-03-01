@@ -23,6 +23,7 @@ import { StoreConfigService } from '../../../../core/services/store-config.servi
 import { DialogService } from '../../../../core/services/dialog.service';
 
 type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' | 'LOCATIONS' | 'CONSIGNMENTS';
+type DateFilter = 'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
 
 @Component({
     selector: 'app-stock-manager',
@@ -97,7 +98,43 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                         title="Refresh Intelligence">
                         <span class="material-symbols-rounded">refresh</span>
                     </button>
-                    <div class="h-10 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+                    <div class="h-10 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                    
+                    <!-- Premium Date Filter Selector -->
+                    <div class="flex items-center gap-1.5 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm transition-all">
+                        <div class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-all">
+                            <span class="material-symbols-rounded text-slate-400 text-[18px]">calendar_today</span>
+                            <select 
+                                [ngModel]="dateFilter()" 
+                                (ngModelChange)="dateFilter.set($event)"
+                                class="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer outline-none">
+                                <option value="ALL">All Time</option>
+                                <option value="DAILY">Today</option>
+                                <option value="WEEKLY">This Week</option>
+                                <option value="MONTHLY">This Month</option>
+                                <option value="YEARLY">This Year</option>
+                                <option value="CUSTOM">Custom Range</option>
+                            </select>
+                        </div>
+
+                        <!-- Custom Date Range Inputs (Only if CUSTOM selected) -->
+                        @if (dateFilter() === 'CUSTOM') {
+                            <div class="flex items-center gap-1 animate-in fade-in zoom-in-95 duration-200 ml-1 border-l border-slate-200 dark:border-slate-700 pl-2">
+                                <input type="date" 
+                                    [ngModel]="customStartDate()" 
+                                    (ngModelChange)="customStartDate.set($event)"
+                                    class="bg-transparent border-none text-[10px] font-bold text-[var(--primary-color)] focus:ring-0 p-0 outline-none w-24">
+                                <span class="text-slate-300 text-[10px] font-bold">to</span>
+                                <input type="date" 
+                                    [ngModel]="customEndDate()" 
+                                    (ngModelChange)="customEndDate.set($event)"
+                                    class="bg-transparent border-none text-[10px] font-bold text-[var(--primary-color)] focus:ring-0 p-0 outline-none w-24">
+                            </div>
+                        }
+                    </div>
+
+                    <div class="h-10 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
                     <button 
                         (click)="openCommand('ADJUST')"
                         class="premium-gradient-btn pl-4 pr-6 py-3 text-white rounded-2xl font-black text-sm transition-all flex items-center gap-2">
@@ -327,6 +364,11 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                             <h3 class="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
                                 <span class="material-symbols-rounded text-[var(--primary-color)]">inventory_2</span> 
                                 Live Inventory Status
+                                @if (dateFilter() !== 'ALL') {
+                                    <span class="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded text-[9px] font-bold uppercase tracking-widest animate-in fade-in slide-in-from-left-2">
+                                        Active in {{ dateFilter() === 'CUSTOM' ? 'Range' : dateFilter() }}
+                                    </span>
+                                }
                             </h3>
                             <!-- Loading Skeleton Fake Effect -->
                             <div class="flex items-center gap-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold">
@@ -337,7 +379,7 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                         <div class="flex-1 ag-theme-quartz" [class.dark]="isDarkMode()">
                             <ag-grid-angular
                                 style="width: 100%; height: 100%;"
-                                [rowData]="stockLevels()"
+                                [rowData]="filteredStockLevels()"
                                 [columnDefs]="columnDefs"
                                 [defaultColDef]="defaultColDef"
                                 [pagination]="true"
@@ -404,9 +446,9 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                                 }
 
                                 <!-- Transfers loop intermixed -->
-                                @if (transfers().length > 0) {
+                                @if (filteredTransfers().length > 0) {
                                     <div class="my-4 border-t border-slate-100 dark:border-slate-800"></div>
-                                    @for (t of transfers().slice(0, 3); track t.id) {
+                                    @for (t of filteredTransfers().slice(0, 3); track t.id) {
                                         <div class="flex items-start gap-3 cursor-pointer group hover:bg-slate-50 dark:hover:bg-slate-800/50 p-2 rounded-lg -mx-2 transition-colors"
                                              (click)="viewMode.set('TRANSFERS')">
                                             <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center shrink-0">
@@ -511,7 +553,7 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
-                                @for (movement of movements(); track movement.id) {
+                                @for (movement of filteredMovements(); track movement.id) {
                                     <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group">
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <div class="font-medium text-slate-900 dark:text-slate-100">{{ movement.created_at | date:'MMM d, yyyy' }}</div>
@@ -567,7 +609,7 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
             <!-- Transfers View -->
             @if (viewMode() === 'TRANSFERS') {
                 <div class="grid gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
-                    @for (transfer of transfers(); track transfer.id) {
+                    @for (transfer of filteredTransfers(); track transfer.id) {
                         <div class="relative overflow-hidden bg-[var(--card-bg)] rounded-2xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 transition-all duration-300">
                              <!-- Subtle gradient background purely for styling -->
                              <div class="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl pointer-events-none -mr-32 -mt-32"></div>
@@ -1002,20 +1044,40 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                                 <!-- Visualization Map -->
                                 <div class="relative p-6 bg-slate-100/50 dark:bg-slate-800/40 rounded-3xl border border-slate-200 dark:border-slate-700 mb-8 overflow-hidden">
                                     <div class="flex items-center justify-between gap-4 relative z-10">
+                                        <!-- Source Identity -->
                                         <div class="flex-1 text-center">
-                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Source</div>
-                                            <div class="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[44px] flex items-center justify-center">
-                                                <span class="text-xs font-bold leading-tight">{{ transferSource()?.name || '---' }}</span>
+                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Source Node</div>
+                                            <div class="p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[80px] flex flex-col items-center justify-center gap-1 transition-all">
+                                                @if (transferSource()) {
+                                                    <span class="material-symbols-rounded text-slate-400">
+                                                        {{ transferSource()?.location_type === 'WAREHOUSE' ? 'warehouse' : 'storefront' }}
+                                                    </span>
+                                                    <span class="text-xs font-black leading-tight">{{ transferSource()?.name }}</span>
+                                                    <span class="text-[9px] font-bold uppercase tracking-widest opacity-50">{{ transferSource()?.location_type }}</span>
+                                                } @else {
+                                                    <span class="text-xs font-bold text-slate-300">Set Origin</span>
+                                                }
                                             </div>
                                         </div>
+
                                         <div class="pt-4 flex flex-col items-center gap-1">
                                             <span class="material-symbols-rounded text-blue-500 animate-pulse">forward</span>
                                             <div class="w-12 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
                                         </div>
+
+                                        <!-- Destination Identity -->
                                         <div class="flex-1 text-center">
-                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Destination</div>
-                                            <div class="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[44px] flex items-center justify-center tracking-tighter">
-                                                <span class="text-xs font-bold leading-tight">{{ transferDest()?.name || '---' }}</span>
+                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-2">Destination Node</div>
+                                            <div class="p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[80px] flex flex-col items-center justify-center gap-1 transition-all">
+                                                @if (transferDest()) {
+                                                    <span class="material-symbols-rounded text-blue-500">
+                                                        {{ transferDest()?.location_type === 'WAREHOUSE' ? 'warehouse' : 'storefront' }}
+                                                    </span>
+                                                    <span class="text-xs font-black leading-tight">{{ transferDest()?.name }}</span>
+                                                    <span class="text-[9px] font-bold uppercase tracking-widest opacity-50">{{ transferDest()?.location_type }}</span>
+                                                } @else {
+                                                    <span class="text-xs font-bold text-slate-300">Set Target</span>
+                                                }
                                             </div>
                                         </div>
                                     </div>
@@ -1057,12 +1119,34 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                                         @for (item of transferItems.controls; track item; let i = $index) {
                                             <div [formGroupName]="i" class="group flex gap-2 items-center p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 transition-all hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm">
                                                 <div class="flex-1">
-                                                    <select formControlName="product_id" class="w-full bg-transparent border-none p-0 text-sm font-bold focus:ring-0">
+                                                    <select formControlName="product_id" 
+                                                            class="w-full bg-transparent border-none p-0 text-sm font-bold focus:ring-0 appearance-none cursor-pointer">
                                                         <option value="">Select Item...</option>
                                                         @for (product of products(); track product.id) {
-                                                            <option [value]="product.id">{{ product.name }}</option>
+                                                            <option [value]="product.id">
+                                                                {{ product.name }} 
+                                                                ({{ getItemStock(product.id, transferForm.get('from_location_id')?.value) }} Avail)
+                                                            </option>
                                                         }
                                                     </select>
+                                                    
+                                                    <!-- REAL-TIME STOCK GLANCE -->
+                                                    @if (item.get('product_id')?.value) {
+                                                        <div class="flex gap-3 mt-1 px-0.5">
+                                                            <div class="flex items-center gap-1">
+                                                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Selected Source:</span>
+                                                                <span class="text-[10px] font-black" [class.text-red-500]="getItemStock(item.get('product_id')?.value, transferForm.get('from_location_id')?.value) <= 0">
+                                                                    {{ getItemStock(item.get('product_id')?.value, transferForm.get('from_location_id')?.value) }}
+                                                                </span>
+                                                            </div>
+                                                            <div class="flex items-center gap-1">
+                                                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Current Dest:</span>
+                                                                <span class="text-[10px] font-black text-blue-500">
+                                                                    {{ getItemStock(item.get('product_id')?.value, transferForm.get('to_location_id')?.value) }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    }
                                                 </div>
                                                 <div class="w-20">
                                                     <input type="number" formControlName="quantity" class="w-full bg-slate-200/50 dark:bg-slate-700/50 border-none rounded-lg px-2 py-1 text-center text-sm font-black focus:ring-1 focus:ring-blue-500">
@@ -1077,9 +1161,27 @@ type ViewMode = 'DASHBOARD' | 'LEVELS' | 'MOVEMENTS' | 'TRANSFERS' | 'REORDER' |
                                     </div>
                                 </div>
 
-                                <div class="pt-6">
-                                    <button type="submit" [disabled]="!transferForm.valid" class="w-full py-4 premium-gradient-btn text-white rounded-2xl font-black shadow-lg disabled:opacity-30 transition-all active:scale-[0.98]">
-                                        Execute Transfer Protocol
+                                <div class="pt-2 px-1">
+                                    <label class="flex items-center gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-800/30 cursor-pointer transition-all hover:bg-blue-100/50 dark:hover:bg-blue-900/20 active:scale-[0.99] group">
+                                        <div class="relative w-10 h-6 bg-slate-200 dark:bg-slate-700 rounded-full transition-colors group-has-[:checked]:bg-blue-600">
+                                            <input type="checkbox" formControlName="direct_execution" class="sr-only peer">
+                                            <div class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4"></div>
+                                        </div>
+                                        <div>
+                                            <span class="block text-xs font-black text-slate-700 dark:text-white leading-tight">Instant Execution</span>
+                                            <span class="block text-[10px] text-slate-400 font-bold uppercase tracking-tight">Auto-approve, Ship, and Receive Assets</span>
+                                        </div>
+                                        <span class="material-symbols-rounded text-blue-500 ml-auto opacity-40 group-has-[:checked]:opacity-100 group-has-[:checked]:animate-bounce">bolt</span>
+                                    </label>
+                                </div>
+
+                                <div class="pt-4">
+                                    <button type="submit" [disabled]="!transferForm.valid" class="w-full h-16 premium-gradient-btn text-white rounded-3xl font-black shadow-[0_10px_30px_rgba(59,130,246,0.2)] dark:shadow-[0_10px_30px_rgba(30,58,138,0.4)] disabled:opacity-30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative">
+                                        <span class="relative z-10 flex items-center gap-2">
+                                            <span class="material-symbols-rounded transition-transform group-hover:translate-x-1">rocket_launch</span>
+                                            {{ transferForm.get('direct_execution')?.value ? 'Execute Instant Transfer' : 'Initialize Transfer Protocol' }}
+                                        </span>
+                                        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                                     </button>
                                 </div>
                             </form>
@@ -1422,11 +1524,58 @@ export class StockManagerComponent implements OnInit {
     );
     movements = toSignal(this.movements$, { initialValue: [] as StockMovement[] });
 
+    // Global Date Filtering Signals
+    dateFilter = signal<DateFilter>('ALL');
+    customStartDate = signal<string>(new Date().toISOString().split('T')[0]);
+    customEndDate = signal<string>(new Date().toISOString().split('T')[0]);
+
+    // Computed Date Objects for filtering
+    dateRange = computed(() => {
+        const filter = this.dateFilter();
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        switch (filter) {
+            case 'DAILY':
+                return { from: start, to: end };
+            case 'WEEKLY':
+                start.setDate(start.getDate() - 7);
+                return { from: start, to: end };
+            case 'MONTHLY':
+                start.setMonth(start.getMonth() - 1);
+                return { from: start, to: end };
+            case 'YEARLY':
+                start.setFullYear(start.getFullYear() - 1);
+                return { from: start, to: end };
+            case 'CUSTOM':
+                const s = new Date(this.customStartDate());
+                const e = new Date(this.customEndDate());
+                e.setHours(23, 59, 59, 999);
+                return { from: s, to: e };
+            default:
+                return null;
+        }
+    });
+
+    isWithinRange(dateStr: string | Date | undefined): boolean {
+        if (!dateStr) return false;
+        const range = this.dateRange();
+        if (!range) return true;
+
+        const date = new Date(dateStr);
+        return date >= range.from && date <= range.to;
+    }
+
+    filteredMovements = computed(() => {
+        return this.movements().filter(m => this.isWithinRange(m.created_at));
+    });
+
     // Drawer Computed
     drawerMovements = computed(() => {
         const selection = this.selectedDrawerProduct();
         if (!selection) return [];
-        return this.movements()
+        return this.filteredMovements()
             .filter(m => m.product_id === selection.productId && m.location_id === selection.locationId)
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); // newest first
     });
@@ -1438,6 +1587,10 @@ export class StockManagerComponent implements OnInit {
         ))
     );
     transfers = toSignal(this.transfers$, { initialValue: [] as StockTransfer[] });
+
+    filteredTransfers = computed(() => {
+        return this.transfers().filter(t => this.isWithinRange(t.created_at));
+    });
 
     private lowStockAlerts$ = this.refreshTrigger.pipe(
         switchMap(() => this.stockService.getLowStockItems().pipe(
@@ -1478,8 +1631,32 @@ export class StockManagerComponent implements OnInit {
     products = toSignal(this.products$, { initialValue: [] as Product[] });
 
     // Computed Dashboard Metrics
+    filteredStockLevels = computed(() => {
+        const levels = this.stockLevels();
+        const range = this.dateRange();
+        if (!range) return levels;
+
+        // Find products that had movements in this range
+        const activeProductIds = new Set(
+            this.movements()
+                .filter(m => this.isWithinRange(m.created_at))
+                .map(m => m.product_id)
+        );
+
+        // Also check transfers for activity
+        this.transfers()
+            .filter(t => this.isWithinRange(t.created_at))
+            .forEach(t => activeProductIds.add(t.id)); // Transfers themselves are entities, but we care about items in them
+
+        // Filter levels to only show products that were active or had a last_movement_at in range
+        return levels.filter(lvl =>
+            activeProductIds.has(lvl.product_id) ||
+            (lvl.last_movement_at && this.isWithinRange(lvl.last_movement_at))
+        );
+    });
+
     totalInventoryValue = computed(() => {
-        const levels = this.stockLevels() as any[];
+        const levels = this.filteredStockLevels() as any[];
         const prods = this.products();
         return levels.reduce((acc: number, level: any) => {
             const product = prods.find(p => p.id === level.product_id);
@@ -1490,7 +1667,7 @@ export class StockManagerComponent implements OnInit {
     });
 
     activeTransfersCount = computed(() => {
-        return this.transfers().filter(t => t.status === 'PENDING' || t.status === 'APPROVED' || t.status === 'IN_TRANSIT').length;
+        return this.filteredTransfers().filter(t => t.status === 'PENDING' || t.status === 'APPROVED' || t.status === 'IN_TRANSIT').length;
     });
 
     pendingConsignmentsCount = computed(() => {
@@ -1586,6 +1763,7 @@ export class StockManagerComponent implements OnInit {
         from_location_id: ['', Validators.required],
         to_location_id: ['', Validators.required],
         notes: [''],
+        direct_execution: [true], // Default to instant for manual command center moves
         items: this.fb.array([
             this.createTransferItem()
         ], Validators.required)
@@ -1662,15 +1840,26 @@ export class StockManagerComponent implements OnInit {
     }
 
     // Visualization helpers for Transfer
-    transferSource = computed(() => {
-        const id = this.transferForm.get('from_location_id')?.value;
-        return this.locations().find(l => l.id === id);
-    });
+    // Reactively watch form value changes to update visualization cards immediately
+    transferSource = toSignal(
+        this.transferForm.get('from_location_id')!.valueChanges.pipe(
+            map(id => this.locations().find(l => l.id === id))
+        ),
+        { initialValue: undefined }
+    );
 
-    transferDest = computed(() => {
-        const id = this.transferForm.get('to_location_id')?.value;
-        return this.locations().find(l => l.id === id);
-    });
+    transferDest = toSignal(
+        this.transferForm.get('to_location_id')!.valueChanges.pipe(
+            map(id => this.locations().find(l => l.id === id))
+        ),
+        { initialValue: undefined }
+    );
+
+    getItemStock(productId: string | null | undefined, locationId: string | null | undefined): number {
+        if (!productId || !locationId) return 0;
+        const level = this.stockLevels().find(l => l.product_id === productId && l.location_id === locationId);
+        return level?.available_quantity ?? 0;
+    }
 
     loadLocations() {
         this.stockService.getLocations().pipe(
@@ -1826,6 +2015,7 @@ export class StockManagerComponent implements OnInit {
     submitTransfer() {
         if (!this.transferForm.valid) return;
         const formValue = this.transferForm.value;
+        const isInstant = formValue.direct_execution;
 
         // Ensure from and to locations are different
         if (formValue.from_location_id === formValue.to_location_id) {
@@ -1851,15 +2041,27 @@ export class StockManagerComponent implements OnInit {
             requested_by: '00000000-0000-0000-0000-000000000000',
             items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
             notes: formValue.notes || undefined
-        }).subscribe({
+        }).pipe(
+            switchMap(transfer => {
+                if (isInstant) {
+                    // Chain the workflow for immediate effect
+                    return this.stockService.approveTransfer(transfer.id, '00000000-0000-0000-0000-000000000000').pipe(
+                        switchMap(() => this.stockService.shipTransfer(transfer.id, '00000000-0000-0000-0000-000000000000')),
+                        switchMap(() => this.stockService.receiveTransfer(transfer.id, '00000000-0000-0000-0000-000000000000'))
+                    );
+                }
+                return of(transfer);
+            })
+        ).subscribe({
             next: () => {
-                this.dialog.alert('Success', 'Transfer created successfully');
+                this.dialog.alert('Success', isInstant ? 'Transfer executed & physical stock updated' : 'Transfer request initialized successfully');
                 this.closeCommandCenter();
                 this.transferForm.reset();
+                this.transferForm.get('direct_execution')?.setValue(true);
                 this.transferForm.setControl('items', this.fb.array([this.createTransferItem()]));
                 this.refreshAll();
             },
-            error: (err) => this.dialog.alert('Error', err.message || 'Failed to create transfer')
+            error: (err) => this.dialog.alert('Error', err.message || 'Failed to process transfer')
         });
     }
 
