@@ -1550,17 +1550,23 @@ export class MockSupabaseService {
 
     // NEW METHOD: Get Recent Transactions (Optimized for EPOS Lookup)
     getRecentTransactions(storeId: string): Observable<Transaction[]> {
-        const promise = this.supabase
-            .from('transactions')
-            .select('*, customer:customers(full_name)') // Include Customer Name in Search
-            .eq('store_id', storeId)
-            .order('created_at', { ascending: false })
-            .limit(50) // Fetch last 50 transactions to allow client-side filtering
-            .then(({ data, error }) => {
-                if (error) throw error;
-                return data as Transaction[];
-            });
-        return from(promise);
+        return from(
+            this.supabase.from('transactions')
+                .select('*, customer:customers(*)')
+                .eq('store_id', storeId)
+                .order('created_at', { ascending: false })
+                .limit(50)
+        ).pipe(map(r => r.data as Transaction[]));
+    }
+
+    getRecentTransactionsByCustomer(customerId: string): Observable<Transaction[]> {
+        return from(
+            this.supabase.from('transactions')
+                .select('*, customer:customers(*)')
+                .eq('customer_id', customerId)
+                .order('created_at', { ascending: false })
+                .limit(5)
+        ).pipe(map(r => r.data as Transaction[]));
     }
 
     // NEW METHOD: Process a Return (Level 2: Specific Items)

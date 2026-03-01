@@ -104,30 +104,44 @@ import { FormsModule } from '@angular/forms';
             </div>
           </header>
 
-          <!-- Navigation / Breadcrumbs -->
-          <div class="px-6 py-3 bg-[var(--card-bg)] border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 shadow-sm z-0">
-             <button 
-                (click)="goHome()"
-                [class.opacity-50]="!selectedCategory() && !searchQuery()"
-                [disabled]="!selectedCategory() && !searchQuery()"
-                class="flex items-center gap-1 text-sm font-bold hover:text-[var(--primary-color)] transition-colors disabled:cursor-default">
-                <span class="material-symbols-rounded text-lg">home</span>
-                Home
-             </button>
+          <!-- Navigation / Breadcrumbs & Quick Items -->
+          <div class="px-6 py-3 bg-[var(--card-bg)] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-sm z-0">
+             <div class="flex items-center gap-2">
+                 <button 
+                    (click)="goHome()"
+                    [class.opacity-50]="!selectedCategory() && !searchQuery()"
+                    [disabled]="!selectedCategory() && !searchQuery()"
+                    class="flex items-center gap-1 text-sm font-bold hover:text-[var(--primary-color)] transition-colors disabled:cursor-default">
+                    <span class="material-symbols-rounded text-lg">home</span>
+                    Home
+                 </button>
 
-             @if (selectedCategory() || searchQuery()) {
-                <span class="material-symbols-rounded text-slate-400 text-sm">chevron_right</span>
-             }
+                 @if (selectedCategory() || searchQuery()) {
+                    <span class="material-symbols-rounded text-slate-400 text-sm">chevron_right</span>
+                 }
 
-             @if (searchQuery()) {
-                <span class="text-sm font-bold text-[var(--primary-color)] truncate">
-                    Search Results: "{{ searchQuery() }}"
-                </span>
-             } @else if (selectedCategory()) {
-                <span class="text-sm font-bold text-[var(--primary-color)] truncate">
-                    {{ selectedCategoryName() }}
-                </span>
-             }
+                 @if (searchQuery()) {
+                    <span class="text-sm font-bold text-[var(--primary-color)] truncate max-w-[150px]">
+                        Results: "{{ searchQuery() }}"
+                    </span>
+                 } @else if (selectedCategory()) {
+                    <span class="text-sm font-bold text-[var(--primary-color)] truncate max-w-[150px]">
+                        {{ selectedCategoryName() }}
+                    </span>
+                 }
+             </div>
+
+             <!-- Quick Items Fast-Track (Dynamic Pills) -->
+             <div class="hidden lg:flex items-center gap-2 overflow-x-auto no-scrollbar max-w-md">
+                <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Fast Track:</span>
+                @for (item of topItems(); track item.id) {
+                    <button 
+                        (click)="addToCart(item, $event)"
+                        class="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-[11px] font-bold whitespace-nowrap hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] transition-all active:scale-95 shadow-sm">
+                        {{ item.name | slice:0:15 }}{{ item.name.length > 15 ? '...' : '' }}
+                    </button>
+                }
+             </div>
           </div>
 
           <!-- Main Content Grid -->
@@ -193,10 +207,13 @@ import { FormsModule } from '@angular/forms';
                     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 content-start animate-in fade-in slide-in-from-bottom-4 duration-300">
                         @for (product of filteredProducts(); track product.id) {
                         <div 
-                            (click)="addToCart(product)"
+                            (click)="addToCart(product, $event)"
                             [class.opacity-40]="product.stock_shop <= 0"
                             [class.grayscale]="product.stock_shop <= 0"
-                            class="bg-[var(--card-bg)] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between h-44 relative group select-none">
+                            class="bg-[var(--card-bg)] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between h-44 relative group select-none overflow-hidden">
+                            
+                            <!-- Static Overlay for "Flying" animation source -->
+                            <div class="product-anim-source absolute inset-0 pointer-events-none opacity-0 bg-[var(--primary-color)] overflow-hidden"></div>
                             
                             <!-- Hover Add Icon -->
                             @if (product.stock_shop > 0) {
@@ -263,20 +280,34 @@ import { FormsModule } from '@angular/forms';
                                 @if (tenantService.currentTenant().industry === 'grocery' && product.metadata?.isWeighed) {
                                     <span class="text-[9px] font-bold text-green-600 flex items-center gap-0.5 mt-1"><span class="material-symbols-rounded text-[10px]">scale</span> Weighable</span>
                                 }
-                                @if (tenantService.currentTenant().industry === 'hardware' && product.metadata?.requiresSerial) {
-                                    <span class="text-[9px] font-bold text-blue-600 flex items-center gap-0.5 mt-1"><span class="material-symbols-rounded text-[10px]">qr_code</span> Serial Tracking</span>
+                                @if (product.is_serialized) {
+                                    <span class="text-[9px] font-bold text-blue-600 flex items-center gap-0.5 mt-1 border border-blue-200 bg-blue-50 rounded px-1 py-0.5"><span class="material-symbols-rounded text-[10px]">qr_code</span> Serial Tracking</span>
                                 }
                             </div>
                             
-                            <!-- Dual Stock Display -->
+                            <!-- Dual Stock Display & Quick Transfer -->
                             <div class="text-right flex flex-col items-end">
                                 <span class="text-xs font-bold" [class.text-red-500]="product.stock_shop < 3" [class.text-slate-400]="product.stock_shop >= 3">
                                     {{ product.stock_shop }} Floor
                                 </span>
                                 @if(product.stock_warehouse > 0) {
-                                    <span class="text-[10px] text-blue-500 font-medium">
-                                        +{{ product.stock_warehouse }} Whse
-                                    </span>
+                                    @if (product.stock_shop <= 0) {
+                                        <button 
+                                            (click)="$event.stopPropagation(); requestFromWarehouse(product)"
+                                            [disabled]="isTransferringFromWarehouse()[product.id]"
+                                            class="mt-1 text-[9px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded font-black uppercase tracking-tighter flex items-center gap-0.5 transition-all active:scale-90 disabled:opacity-50">
+                                            @if (isTransferringFromWarehouse()[product.id]) {
+                                                <div class="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></div>
+                                            } @else {
+                                                <span class="material-symbols-rounded text-[10px]">move_item</span>
+                                            }
+                                            FETCH WHSE
+                                        </button>
+                                    } @else {
+                                        <span class="text-[10px] text-blue-500 font-medium">
+                                            +{{ product.stock_warehouse }} Whse
+                                        </span>
+                                    }
                                 }
                             </div>
                             </div>
@@ -299,9 +330,32 @@ import { FormsModule } from '@angular/forms';
         <!-- RIGHT: Cart / Sidebar -->
         <div class="w-full md:w-96 bg-[var(--card-bg)] shadow-2xl flex flex-col z-20 md:border-l border-slate-200 dark:border-slate-800 relative">
           
-          <!-- Zone 1: Header Wrapper (Fixed Height) -->
-          <div class="shrink-0">
-             <!-- Customer Context -->
+                 <!-- Zone 1: Header Wrapper (Fixed Height) -->
+                 <div class="shrink-0">
+                    <!-- Sidebar Selection Tabs (Phase 4) -->
+                    <div class="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-black/20">
+                        <button 
+                            (click)="showCustomerInsights.set(false)"
+                            [class.border-b-2]="!showCustomerInsights()"
+                            [class.border-[var(--primary-color)]]="!showCustomerInsights()"
+                            [class.text-[var(--primary-color)]]="!showCustomerInsights()"
+                            class="flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all">
+                            Active Cart
+                        </button>
+                        <button 
+                            (click)="toggleInsights()"
+                            [class.border-b-2]="showCustomerInsights()"
+                            [class.border-[var(--primary-color)]]="showCustomerInsights()"
+                            [class.text-[var(--primary-color)]]="showCustomerInsights()"
+                            class="flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all relative">
+                            Insights
+                            @if (customerHistory().length > 0) {
+                                <span class="absolute top-2 right-4 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                            }
+                        </button>
+                    </div>
+
+                    <!-- Customer Context -->
              <div class="p-3 bg-[var(--bg-color)]/50 border-b border-slate-200 dark:border-slate-800">
                   @if (selectedCustomer()) {
                       <div class="bg-[var(--card-bg)] rounded-xl p-3 shadow-sm border border-slate-200 dark:border-slate-700 relative group transition-all" (click)="openCustomerModal()">
@@ -335,9 +389,11 @@ import { FormsModule } from '@angular/forms';
 
             <!-- Cart Header -->
             <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-[var(--card-bg)]">
-              <div>
+              <div id="cart-header-anchor">
                 <h2 class="font-bold text-lg flex items-center gap-2 opacity-80">
-                  <span class="material-symbols-rounded text-[var(--primary-color)]">shopping_bag</span>
+                  <span class="material-symbols-rounded text-[var(--primary-color)] transition-transform duration-300" 
+                        [class.scale-125]="isCartPinging()"
+                        [class.text-emerald-500]="isCartPinging()">shopping_bag</span>
                   Order #{{ orderNumber() }}
                 </h2>
                 <div class="text-[10px] text-slate-500 font-medium">
@@ -346,52 +402,160 @@ import { FormsModule } from '@angular/forms';
               </div>
               
               @if (cart().length > 0) {
-                <button (click)="clearCart()" class="text-slate-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800" title="Clear Cart">
-                  <span class="material-symbols-rounded text-xl">delete_sweep</span>
-                </button>
+                <div class="flex items-center gap-1">
+                    <button (click)="parkOrder()" class="text-slate-400 hover:text-orange-500 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800" title="Park Current Order">
+                      <span class="material-symbols-rounded text-xl">pause_presentation</span>
+                    </button>
+                    <button (click)="clearCart()" class="text-slate-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800" title="Clear Cart">
+                      <span class="material-symbols-rounded text-xl">delete_sweep</span>
+                    </button>
+                </div>
+              } @else if (parkedOrders().length > 0) {
+                  <button (click)="showParkedOrdersList.set(true)" class="relative p-2 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:scale-110 transition-all">
+                      <span class="material-symbols-rounded text-xl">pause_presentation</span>
+                      <span class="absolute -top-1 -right-1 w-5 h-5 bg-orange-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-[var(--card-bg)]">
+                          {{ parkedOrders().length }}
+                      </span>
+                  </button>
               }
             </div>
           </div>
 
-          <!-- Zone 2: Cart Items List (Scrollable) -->
-          <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--bg-color)]/30 min-h-0">
-            @for (item of cart(); track item.product.id) {
-              <div class="flex gap-3 bg-[var(--card-bg)] p-3 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800/50 animate-in fade-in slide-in-from-right-8 duration-300">
-                 <!-- Quantity Controls (Vertical) -->
-                <div class="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-lg w-8 h-full shrink-0">
-                  <button (click)="updateQuantity(item.product.id, 1)" class="w-full h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-[var(--primary-color)] active:scale-90 transition-all">
-                    <span class="material-symbols-rounded text-base">add</span>
-                  </button>
-                  <span class="text-sm font-bold my-1">{{ item.quantity }}</span>
-                  <button (click)="updateQuantity(item.product.id, -1)" class="w-full h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-red-500 active:scale-90 transition-all">
-                    <span class="material-symbols-rounded text-base">remove</span>
-                  </button>
-                </div>
-
-                <div class="flex-1 min-w-0 flex flex-col justify-center">
-                  <div class="flex justify-between items-start">
-                    <span class="font-semibold text-sm leading-tight pr-2">{{ item.product.name }}</span>
-                    <span class="font-bold text-sm whitespace-nowrap">{{ (item.product.price * item.quantity) | currency:storeService.currentStore()?.config?.currency }}</span>
-                  </div>
-                   <div class="text-xs text-slate-400 mt-1">{{ item.product.price | currency:storeService.currentStore()?.config?.currency }} / unit</div>
-
-                   @if (item.product.metadata?.prescriptionRequired) {
-                    <div class="mt-2 text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
-                        <span class="material-symbols-rounded text-[12px]">medical_services</span> Rx Required
+           <!-- Zone 2: Cart Items List OR Insights (Scrollable) -->
+           <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--bg-color)]/30 min-h-0">
+             @if (!showCustomerInsights()) {
+                @for (item of cart(); track item.product.id) {
+                  <div class="flex gap-3 bg-[var(--card-bg)] p-3 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800/50 animate-in fade-in slide-in-from-right-8 duration-300">
+                     <!-- Quantity Controls (Vertical) -->
+                    <div class="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-lg w-8 h-full shrink-0">
+                      <button (click)="updateQuantity(item.product.id, 1)" class="w-full h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-[var(--primary-color)] active:scale-90 transition-all">
+                        <span class="material-symbols-rounded text-base">add</span>
+                      </button>
+                      <span class="text-sm font-bold my-1">{{ item.quantity }}</span>
+                      <button (click)="updateQuantity(item.product.id, -1)" class="w-full h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-red-500 active:scale-90 transition-all">
+                        <span class="material-symbols-rounded text-base">remove</span>
+                      </button>
                     </div>
-                  }
-                </div>
-              </div>
-            } @empty {
-              <div class="flex flex-col items-center justify-center h-full opacity-40 select-none">
-                  <div class="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                    <span class="material-symbols-rounded text-4xl text-slate-400">shopping_cart</span>
+
+                    <div class="flex-1 min-w-0 flex flex-col justify-center">
+                      <div class="flex justify-between items-start">
+                        <span class="font-semibold text-sm leading-tight pr-2">{{ item.product.name }}</span>
+                        <span class="font-bold text-sm whitespace-nowrap">{{ (item.product.price * item.quantity) | currency:storeService.currentStore()?.config?.currency }}</span>
+                      </div>
+                       <div class="text-xs text-slate-400 mt-1">{{ item.product.price | currency:storeService.currentStore()?.config?.currency }} / unit</div>
+
+                       @if (item.product.metadata?.prescriptionRequired) {
+                        <div class="mt-2 text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                            <span class="material-symbols-rounded text-[12px]">medical_services</span> Rx Required
+                        </div>
+                      }
+
+                      @if (item.product.is_serialized) {
+                        <div class="mt-2 text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit border border-blue-200 dark:border-blue-800">
+                            <span class="material-symbols-rounded text-[12px]">barcode_reader</span> Serial Needed
+                        </div>
+                      }
+                    </div>
                   </div>
-                  <p class="font-medium text-lg">Cart is empty</p>
-                  <p class="text-sm">Scan items to start order</p>
-              </div>
-            }
-          </div>
+                } @empty {
+                  <div class="flex flex-col items-center justify-center h-full opacity-40 select-none">
+                      <div class="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                        <span class="material-symbols-rounded text-4xl text-slate-400">shopping_cart</span>
+                      </div>
+                      <p class="font-medium text-lg">Cart is empty</p>
+                      <p class="text-sm">Scan items to start order</p>
+                  </div>
+                }
+
+                <!-- PHASE 4: AI Recommendations at bottom of cart -->
+                @if (cart().length > 0 && upsellProducts().length > 0) {
+                    <div class="pt-4 mt-4 border-t border-dashed border-slate-200 dark:border-slate-800">
+                        <h4 class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1">
+                            <span class="material-symbols-rounded text-[14px] text-orange-500 animate-pulse">auto_awesome</span>
+                            Smart Additions
+                        </h4>
+                        <div class="space-y-2">
+                            @for (upsell of upsellProducts(); track upsell.id) {
+                                <button (click)="addToCart(upsell, $event)" class="w-full p-2 bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-lg flex items-center justify-between hover:border-orange-400 transition-all group">
+                                    <div class="text-left">
+                                        <div class="text-[11px] font-bold truncate max-w-[140px]">{{ upsell.name }}</div>
+                                        <div class="text-[9px] text-[var(--primary-color)] font-mono">{{ upsell.price | currency:storeService.currentStore()?.config?.currency }}</div>
+                                    </div>
+                                    <span class="material-symbols-rounded text-slate-300 group-hover:text-orange-500 group-hover:scale-110 transition-all">add_circle</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+             } @else {
+                 <!-- CUSTOMER INSIGHTS VIEW -->
+                 <div class="animate-in fade-in slide-in-from-right-4 duration-300">
+                    @if (selectedCustomer()) {
+                        <div class="space-y-6">
+                            <!-- High Level Stats -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800">
+                                    <div class="text-[8px] font-black uppercase tracking-tighter opacity-50">Total Spend</div>
+                                    <div class="text-lg font-black text-blue-700 dark:text-blue-400">£2,450</div>
+                                </div>
+                                <div class="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800">
+                                    <div class="text-[8px] font-black uppercase tracking-tighter opacity-50">Loyalty Score</div>
+                                    <div class="text-lg font-black text-orange-700 dark:text-orange-400">Elite 4.8</div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h4 class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Recent Purchases</h4>
+                                @if (isFetchingHistory()) {
+                                    <div class="flex justify-center p-4">
+                                        <div class="w-6 h-6 border-2 border-[var(--primary-color)] border-t-transparent rounded-full animate-spin"></div>
+                                    </div>
+                                } @else {
+                                    <div class="space-y-2">
+                                        @for (tx of customerHistory(); track tx.id) {
+                                            <div class="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm">
+                                                <div class="flex justify-between items-start mb-1">
+                                                    <span class="text-[10px] font-mono font-medium text-slate-500">{{ tx.created_at | date:'dd MMM yy' }}</span>
+                                                    <span class="text-[10px] font-bold text-[var(--primary-color)]">{{ tx.total_amount | currency:storeService.currentStore()?.config?.currency }}</span>
+                                                </div>
+                                                <div class="text-xs font-bold truncate text-slate-800 dark:text-slate-200">
+                                                    Order #{{ tx.id.substring(0,8) }}
+                                                </div>
+                                            </div>
+                                        } @empty {
+                                            <div class="text-center p-8 opacity-40">
+                                                <span class="material-symbols-rounded text-4xl block mb-2">history</span>
+                                                <p class="text-xs">No recent history found</p>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- Behavior Prediction -->
+                            <div class="p-4 bg-[var(--primary-color)]/10 rounded-2xl border border-[var(--primary-color)]/20 relative overflow-hidden">
+                                <div class="absolute -top-2 -right-2 opacity-10">
+                                    <span class="material-symbols-rounded text-6xl">psychology</span>
+                                </div>
+                                <h5 class="text-xs font-black text-[var(--primary-color)] mb-2 flex items-center gap-1">
+                                    <span class="material-symbols-rounded text-sm">rocket_launch</span>
+                                    AI Propensity
+                                </h5>
+                                <p class="text-[11px] leading-relaxed italic opacity-80">
+                                    "Customer often returns for filters within 30 days. Suggest a bulk discount for the 3-pack today."
+                                </p>
+                            </div>
+                        </div>
+                    } @else {
+                         <div class="flex flex-col items-center justify-center p-12 text-center opacity-40">
+                            <span class="material-symbols-rounded text-5xl mb-4">search_insights</span>
+                            <p class="font-bold">No Intelligence Data</p>
+                            <p class="text-sm mt-1">Assign a customer to see history and AI predictions.</p>
+                        </div>
+                    }
+                 </div>
+             }
+           </div>
 
           <!-- Zone 3: Footer / Totals & Payment (Fixed Height) -->
           <div class="p-5 bg-[var(--card-bg)] border-t border-slate-100 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-30 shrink-0">
@@ -518,8 +682,89 @@ import { FormsModule } from '@angular/forms';
             }
           </div>
         </div>
-
       </div>
+
+      <!-- Parked Orders Modal -->
+      @if (showParkedOrdersList()) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-[var(--bg-color)] flex justify-between items-center">
+                      <h3 class="text-lg font-bold flex items-center gap-2 text-orange-600">
+                          <span class="material-symbols-rounded">pause_presentation</span>
+                          Parked Sales
+                      </h3>
+                      <button (click)="showParkedOrdersList.set(false)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full">
+                          <span class="material-symbols-rounded">close</span>
+                      </button>
+                  </div>
+                  <div class="p-2 space-y-2 max-h-[60vh] overflow-y-auto">
+                      @for (order of parkedOrders(); track order.id) {
+                          <div class="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm flex items-center justify-between group hover:border-orange-400 transition-all">
+                              <div class="flex-1">
+                                  <div class="font-bold text-sm">Sale Reference #{{ order.id }}</div>
+                                  <div class="text-[10px] text-slate-500 uppercase font-medium">{{ order.cart.length }} Items • {{ order.timestamp | date:'shortTime' }}</div>
+                                  <div class="text-xs font-bold text-orange-600 mt-1">{{ order.total | currency:storeService.currentStore()?.config?.currency }}</div>
+                              </div>
+                              <button (click)="resumeParkedOrder(order)" class="px-4 py-2 bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 rounded-lg font-bold text-xs hover:bg-orange-600 hover:text-white transition-all">
+                                  RESUME
+                              </button>
+                          </div>
+                      }
+                  </div>
+              </div>
+          </div>
+      }
+
+      <!-- Serial Number Force-Select Modal -->
+      @if (showSerialModal()) {
+          <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <div class="bg-[var(--card-bg)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-300 border border-slate-200 dark:border-slate-700">
+                  <div class="p-6 border-b border-slate-200 dark:border-slate-700 bg-blue-50 dark:bg-blue-900/20">
+                      <h3 class="text-2xl font-black text-blue-800 dark:text-blue-400 flex items-center gap-3">
+                          <span class="material-symbols-rounded text-3xl">barcode_reader</span>
+                          Serial Assignment
+                      </h3>
+                      <p class="text-sm opacity-70 mt-1">Assignment is required for high-value hardware tracking.</p>
+                  </div>
+
+                  <div class="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                      @for (item of serializedItemsToConfigure(); track item.product.id) {
+                          <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                              <div class="flex justify-between items-start mb-4">
+                                  <div>
+                                      <h4 class="font-bold text-lg leading-tight">{{ item.product.name }}</h4>
+                                      <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Assignment Required: {{ item.quantity }} Units</span>
+                                  </div>
+                              </div>
+
+                              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  @for (idx of [].constructor(item.quantity); track idx; let i = $index) {
+                                      <div class="flex flex-col gap-1">
+                                          <label class="text-[10px] font-bold uppercase text-slate-500">Unit #{{ i + 1 }} Serial</label>
+                                          <select 
+                                              [(ngModel)]="item.selectedSerials[i]"
+                                              class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2.5 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none">
+                                              <option value="">Select a specific box...</option>
+                                              @for (sn of availableSerialsMap()[item.product.id]; track sn) {
+                                                  <option [value]="sn" [disabled]="isSerialAlreadySelected(item, sn, i)">{{ sn }}</option>
+                                              }
+                                          </select>
+                                      </div>
+                                  }
+                              </div>
+                          </div>
+                      }
+                  </div>
+
+                  <div class="p-6 bg-slate-50 dark:bg-zinc-900 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row gap-3">
+                      <button (click)="showSerialModal.set(false)" class="flex-1 py-4 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">Cancel Sale</button>
+                      <button (click)="finalCheckoutAfterSerials()" [disabled]="!areAllSerialsAssigned()" class="flex-[2] py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-xl shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95">
+                          Confirm & Continue to Payment
+                      </button>
+                  </div>
+              </div>
+          </div>
+      }
 
       <!-- Customer Selection Modal -->
       @if (showCustomerModal()) {
@@ -730,17 +975,20 @@ import { FormsModule } from '@angular/forms';
                              </div>
                          </div>
                      </div>
-                     
-                     <!-- Actions (Outside printable area) -->
-                     <div class="bg-slate-50 p-5 border-t border-slate-200 flex flex-col gap-3 shrink-0 rounded-b-2xl z-10 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
-                         <button (click)="printReceipt()" class="w-full py-3.5 bg-slate-800 text-white rounded-xl font-bold shadow-lg shadow-slate-800/20 hover:bg-slate-700 hover:-translate-y-0.5 active:scale-95 transition-all outline-none flex items-center justify-center gap-2">
-                             <span class="material-symbols-rounded">print</span> Print Receipt Option
-                         </button>
-                         
-                         <div class="flex gap-2">
-                             <button (click)="selectedOrder.set(null)" class="flex-[2] py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-100 shadow-sm transition-colors cursor-pointer">
-                                 Done / New Sale
-                             </button>
+                                          <!-- Actions (Outside printable area) -->
+                      <div class="bg-slate-50 p-5 border-t border-slate-200 flex flex-col gap-3 shrink-0 rounded-b-2xl z-10 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
+                          <div class="flex gap-2">
+                              <button (click)="printReceipt()" class="flex-1 py-3.5 bg-slate-800 text-white rounded-xl font-bold shadow-lg shadow-slate-800/20 hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                  <span class="material-symbols-rounded">print</span> Print
+                              </button>
+                              <button (click)="shareToWhatsApp()" class="flex-1 py-3.5 bg-[#25D366] text-white rounded-xl font-bold shadow-lg shadow-[#25D366]/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                  <span class="material-symbols-rounded">chat</span> WhatsApp
+                              </button>
+                          </div>
+                          
+                          <button (click)="selectedOrder.set(null)" class="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-100 shadow-sm transition-colors cursor-pointer">
+                              Done / New Sale
+                          </button>
                              @if (tx.metadata?.status !== 'VOID' && tx.total_amount > 0) {
                                   <button (click)="initiateReturn(tx)" class="flex-1 py-3 border border-red-200 text-red-500 bg-red-50 rounded-xl font-bold hover:bg-red-100 transition-colors flex justify-center items-center gap-1 shadow-sm">
                                       <span class="material-symbols-rounded text-base">undo</span> Refund
@@ -978,9 +1226,36 @@ export class EposComponent {
         return map;
     });
 
+    // --- PHASE 3: Parked Orders & Serials ---
+    parkedOrders = signal<{ id: number, cart: { product: Product, quantity: number }[], customer: Customer | null, total: number, timestamp: Date }[]>([]);
+    showParkedOrdersList = signal(false);
+
+    showSerialModal = signal(false);
+    serializedItemsToConfigure = signal<{ product: Product, quantity: number, selectedSerials: string[] }[]>([]);
+    availableSerialsMap = signal<Record<string, string[]>>({}); // ProductID -> Array of Serial Numbers
+
+    isTransferringFromWarehouse = signal<Record<string, boolean>>({});
+
     // This holds the transaction we are actively returning from
     transactionToReturn = signal<Transaction | null>(null);
     showReturnModal = signal(false);
+    // --- PHASE 4: AI & Insights ---
+    showCustomerInsights = signal(false);
+    customerHistory = signal<Transaction[]>([]);
+    isFetchingHistory = signal(false);
+
+    upsellProducts = computed(() => {
+        const cartItems = this.cart();
+        if (cartItems.length === 0) return this.products().slice(0, 3); // Default best sellers
+
+        const lastItem = cartItems[cartItems.length - 1];
+        return this.products().filter(p =>
+            p.category_id === lastItem.product.category_id &&
+            !cartItems.some(ci => ci.product.id === p.id) &&
+            p.stock_shop > 0
+        ).slice(0, 3);
+    });
+
     // Map of ProductID -> Quantity to Return
     returnSelection = signal<Record<string, number>>({});
 
@@ -1021,13 +1296,15 @@ export class EposComponent {
         return cat ? cat.name : 'Unknown';
     });
 
+    topItems = computed(() => {
+        return this.products().slice(0, 8); // Fast Access top 8 products
+    });
+
     filteredProducts = computed(() => {
         const all = this.products();
         const catId = this.selectedCategory();
         const query = this.searchQuery().toLowerCase().trim();
 
-        // Priority 1: Search Query (Global Search)
-        // If search is active, we ignore the selected category and search EVERYTHING.
         if (query) {
             return all.filter(p =>
                 p.name.toLowerCase().includes(query) ||
@@ -1036,12 +1313,10 @@ export class EposComponent {
             );
         }
 
-        // Priority 2: Selected Category
         if (catId) {
             return all.filter(p => p.category_id === catId);
         }
 
-        // Fallback (Should typically not be reached if UI logic handles hiding/showing correctly)
         return [];
     });
 
@@ -1109,8 +1384,14 @@ export class EposComponent {
         }
     }
 
+    // Animation Helper
+    isCartPinging = signal(false);
+
     playBeep() {
         try {
+            this.isCartPinging.set(true);
+            setTimeout(() => this.isCartPinging.set(false), 300);
+
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
@@ -1133,8 +1414,49 @@ export class EposComponent {
         }
     }
 
+    animateFlyToCart(event: MouseEvent) {
+        const cartIcon = document.getElementById('cart-header-anchor');
+        const target = event.currentTarget as HTMLElement;
+        if (!cartIcon || !target) return;
 
-    addToCart(product: Product) {
+        const startRect = target.getBoundingClientRect();
+        const endRect = cartIcon.getBoundingClientRect();
+
+        // Create a ghost element for the animation
+        const ghost = document.createElement('div');
+        ghost.style.position = 'fixed';
+        ghost.style.left = `${startRect.left}px`;
+        ghost.style.top = `${startRect.top}px`;
+        ghost.style.width = `${startRect.width}px`;
+        ghost.style.height = `${startRect.height}px`;
+        ghost.style.backgroundColor = 'var(--primary-color)';
+        ghost.style.borderRadius = '20px';
+        ghost.style.opacity = '0.5';
+        ghost.style.zIndex = '9999';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+
+        document.body.appendChild(ghost);
+
+        // Animate frame
+        requestAnimationFrame(() => {
+            ghost.style.left = `${endRect.left}px`;
+            ghost.style.top = `${endRect.top}px`;
+            ghost.style.width = '20px';
+            ghost.style.height = '20px';
+            ghost.style.borderRadius = '50%';
+            ghost.style.opacity = '0';
+        });
+
+        setTimeout(() => {
+            document.body.removeChild(ghost);
+        }, 600);
+    }
+
+
+    addToCart(product: Product, event?: MouseEvent) {
+        if (event) this.animateFlyToCart(event);
+
         // Phase 4: Intercept add payload if there are alternatives
         if (!product.is_variant && this.hasVariantsMap()[product.id]) {
             const variants = this.products().filter(p => p.parent_product_id === product.id);
@@ -1227,13 +1549,154 @@ export class EposComponent {
         });
     }
 
+    toggleInsights() {
+        this.showCustomerInsights.set(true);
+        const cust = this.selectedCustomer();
+        if (cust && this.customerHistory().length === 0) {
+            this.fetchCustomerHistory(cust.id);
+        }
+    }
+
+    fetchCustomerHistory(customerId: string) {
+        this.isFetchingHistory.set(true);
+        this.supabase.getRecentTransactionsByCustomer(customerId).subscribe({
+            next: (txs) => {
+                this.customerHistory.set(txs);
+                this.isFetchingHistory.set(false);
+            },
+            error: () => this.isFetchingHistory.set(false)
+        });
+    }
+
     selectCustomer(customer: Customer) {
         this.selectedCustomer.set(customer);
         this.showCustomerModal.set(false);
+        this.customerHistory.set([]); // Reset history for new customer
+        if (this.showCustomerInsights()) {
+            this.fetchCustomerHistory(customer.id);
+        }
     }
 
     clearCustomer() {
         this.selectedCustomer.set(null);
+        this.customerHistory.set([]);
+    }
+
+    // --- PHASE 3: Parked Orders & Serials Logic ---
+
+    parkOrder() {
+        if (this.cart().length === 0) return;
+
+        const newParked = {
+            id: Math.floor(Math.random() * 900) + 100,
+            cart: this.cart(),
+            customer: this.selectedCustomer(),
+            total: this.total(),
+            timestamp: new Date()
+        };
+
+        this.parkedOrders.update(p => [...p, newParked]);
+        this.clearCart();
+        this.selectedCustomer.set(null);
+        this.goHome();
+
+        this.dialog.alert('Order Parked', `Reference #${newParked.id} is now on hold.`);
+    }
+
+    resumeParkedOrder(order: any) {
+        if (this.cart().length > 0) {
+            this.dialog.alert('Action Required', 'Please clear the current cart before resuming a parked order.');
+            return;
+        }
+
+        this.cart.set(order.cart);
+        this.selectedCustomer.set(order.customer);
+        this.parkedOrders.update(p => p.filter(o => o.id !== order.id));
+        this.showParkedOrdersList.set(false);
+    }
+
+    requestFromWarehouse(product: Product) {
+        const storeId = this.storeService.currentStore()?.id;
+        if (!storeId) return;
+
+        this.isTransferringFromWarehouse.update(m => ({ ...m, [product.id]: true }));
+
+        // Simulating a quick-transfer background request
+        // In reality, this would call stockManagementService.createQuickTransfer
+        setTimeout(() => {
+            this.supabase.getProducts(storeId).subscribe(() => {
+                this.isTransferringFromWarehouse.update(m => ({ ...m, [product.id]: false }));
+                this.dialog.alert('Warehouse Request', `A unit of ${product.name} has been requested from Warehouse to Floor.`);
+            });
+        }, 1500);
+    }
+
+    checkSerialsAndProceed(paymentMethod: PaymentMethod, metadata?: any, payments?: any[]) {
+        const serializedItems = this.cart().filter(i => i.product.is_serialized);
+
+        if (serializedItems.length === 0) {
+            this.processPayment(paymentMethod, metadata, payments);
+            return;
+        }
+
+        // Setup serial requirements
+        const config = serializedItems.map(i => ({
+            product: i.product,
+            quantity: i.quantity,
+            selectedSerials: new Array(i.quantity).fill('')
+        }));
+
+        this.serializedItemsToConfigure.set(config);
+
+        // Fetch available serials for each product
+        const storeId = this.storeService.currentStore()?.id;
+        if (!storeId) return;
+
+        // In a real app we'd use forkJoin to get all available serials
+        const map: Record<string, string[]> = {};
+        serializedItems.forEach(item => {
+            // Mocking serials for demo: In reality call supabase.getAvailableSerials(storeId, productId)
+            map[item.product.id] = [
+                `SN-${item.product.id.substring(0, 4)}-991`,
+                `SN-${item.product.id.substring(0, 4)}-992`,
+                `SN-${item.product.id.substring(0, 4)}-993`,
+                `SN-${item.product.id.substring(0, 4)}-994`
+            ];
+        });
+        this.availableSerialsMap.set(map);
+
+        // Store payment context for after serial selection
+        this.pendingPaymentContext = { method: paymentMethod, metadata, payments };
+        this.showSerialModal.set(true);
+    }
+
+    pendingPaymentContext: any = null;
+
+    isSerialAlreadySelected(item: any, sn: string, currentIdx: number): boolean {
+        return item.selectedSerials.some((val: string, i: number) => i !== currentIdx && val === sn);
+    }
+
+    areAllSerialsAssigned(): boolean {
+        return this.serializedItemsToConfigure().every(item =>
+            item.selectedSerials.length === item.quantity &&
+            item.selectedSerials.every(sn => sn !== '')
+        );
+    }
+
+    finalCheckoutAfterSerials() {
+        const { method, metadata, payments } = this.pendingPaymentContext;
+
+        // Attach serials to metadata
+        const serialsMetadata = {
+            ...metadata,
+            assignedSerials: this.serializedItemsToConfigure().map(i => ({
+                productId: i.product.id,
+                serials: i.selectedSerials
+            }))
+        };
+
+        this.showSerialModal.set(false);
+        this.processPayment(method, serialsMetadata, payments);
     }
 
     // --- Payment Handling & Numpad Logic ---
@@ -1300,6 +1763,12 @@ export class EposComponent {
     }
 
     processPayment(paymentMethod: PaymentMethod, metadata?: any, payments?: any[]) {
+        // Intercept for Serial check if not already coming from Serial Modal
+        if (this.showSerialModal() === false && !metadata?.assignedSerials && this.cart().some(i => i.product.is_serialized)) {
+            this.checkSerialsAndProceed(paymentMethod, metadata, payments);
+            return;
+        }
+
         const currentStore = this.storeService.currentStore();
         const customer = this.selectedCustomer();
 
@@ -1415,6 +1884,29 @@ export class EposComponent {
             next: (items) => this.selectedOrderItems.set(items),
             error: (err) => console.error(err)
         });
+    }
+
+    shareToWhatsApp() {
+        const tx = this.selectedOrder();
+        const items = this.selectedOrderItems();
+        if (!tx) return;
+
+        let message = `*Receipt from ${this.storeService.currentStore()?.name}*\n`;
+        message += `Order: #${tx.id.substring(0, 8)}\n`;
+        message += `Date: ${new Date(tx.created_at).toLocaleString()}\n\n`;
+
+        items.forEach(i => {
+            message += `- ${i.product?.name}: ${i.quantity} x ${i.price_at_sale}\n`;
+        });
+
+        message += `\n*Total: ${tx.total_amount}*`;
+        if (tx.customer?.full_name) {
+            message += `\nCustomer: ${tx.customer.full_name}`;
+        }
+
+        const encoded = encodeURIComponent(message);
+        const url = `https://wa.me/${tx.customer?.phone || ''}?text=${encoded}`;
+        window.open(url, '_blank');
     }
 
     printReceipt() {
