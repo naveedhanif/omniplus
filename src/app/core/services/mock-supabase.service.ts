@@ -17,6 +17,8 @@ export interface StoreConfig {
     currency: string;
     tax_enabled?: boolean;
     tax_rate?: number;
+    delivery_fee?: number;
+    courier_fee?: number;
     logoUrl?: string;
     features: {
         trackExpiry?: boolean;

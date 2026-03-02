@@ -64,6 +64,17 @@ import { DialogService } from '../../../../core/services/dialog.service';
                     <input formControlName="tax_rate" type="number" step="0.01" min="0" max="100" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50" [attr.disabled]="!configForm.get('tax_enabled')?.value ? '' : null">
                  </div>
                  
+                 <div class="grid grid-cols-2 gap-4 mt-2">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Delivery Fee</label>
+                        <input formControlName="delivery_fee" type="number" step="0.01" min="0" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Courier Fee</label>
+                        <input formControlName="courier_fee" type="number" step="0.01" min="0" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/50">
+                    </div>
+                 </div>
+                 
                  <div class="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 mt-4">
                     <input formControlName="enable_low_stock_alerts" type="checkbox" id="alerts" class="w-5 h-5 rounded text-[var(--primary-color)] cursor-pointer">
                     <label for="alerts" class="text-sm font-medium cursor-pointer">Enable Low Stock Notifications</label>
@@ -122,6 +133,8 @@ export class ConfigurationManagerComponent {
       primary_color: ['#3b82f6', Validators.required],
       tax_enabled: [false],
       tax_rate: [0, [Validators.required, Validators.min(0)]],
+      delivery_fee: [0, [Validators.min(0)]],
+      courier_fee: [0, [Validators.min(0)]],
       enable_low_stock_alerts: [true],
       address: [''],
       business_hours: this.fb.group({
@@ -147,6 +160,8 @@ export class ConfigurationManagerComponent {
                primary_color: store.config?.primaryColor || '#3b82f6',
                tax_enabled: store.config?.tax_enabled || false,
                tax_rate: (store.config?.tax_rate || 0) * 100, // Display as %
+               delivery_fee: store.config?.delivery_fee || 0,
+               courier_fee: store.config?.courier_fee || 0,
                enable_low_stock_alerts: store.config?.features?.lowStockAlerts !== false
             });
 
@@ -172,7 +187,7 @@ export class ConfigurationManagerComponent {
       const store = this.storeService.currentStore();
       if (this.configForm.invalid || !store) return;
 
-      const { name, currency, primary_color, tax_enabled, tax_rate, enable_low_stock_alerts, address, business_hours } = this.configForm.value;
+      const { name, currency, primary_color, tax_enabled, tax_rate, delivery_fee, courier_fee, enable_low_stock_alerts, address, business_hours } = this.configForm.value;
 
       const updates: Partial<Store> = {
          name,
@@ -182,6 +197,8 @@ export class ConfigurationManagerComponent {
             primaryColor: primary_color,
             tax_enabled,
             tax_rate: tax_rate / 100, // Convert % back to decimal
+            delivery_fee,
+            courier_fee,
             features: {
                ...(store.config?.features || {}),
                lowStockAlerts: enable_low_stock_alerts

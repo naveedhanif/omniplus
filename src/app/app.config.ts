@@ -14,6 +14,7 @@ export const appConfig: ApplicationConfig = {
     provideCharts(withDefaultRegisterables()),
     provideRouter([
       { path: '', component: EposComponent, title: 'OmniPOS | EPOS' },
+      { path: 'customer-display', loadComponent: () => import('./features/pos/components/customer-display.component').then(m => m.CustomerDisplayComponent), title: 'OmniPOS | Customer View' },
       { path: 'admin', component: AdminDashboardComponent, title: 'OmniPOS | Admin' }
     ], withHashLocation())
   ]
