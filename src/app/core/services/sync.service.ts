@@ -1,4 +1,5 @@
 import { Injectable, inject, signal, effect } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineStorageService, SyncQueueItem } from './offline-storage.service';
 import { MockSupabaseService } from './mock-supabase.service';
@@ -138,6 +139,10 @@ export class SyncService {
     /**
      * Drains the pending sync queue by replaying each operation against Supabase.
      * Called automatically when the internet reconnects.
+     *
+     * IMPORTANT: For 'transactions' table items, we call the full addTransaction()
+     * pipeline which handles line items, stock updates and customer updates —
+     * NOT a simple raw insert.
      */
     async drainSyncQueue(): Promise<void> {
         if (this.isSyncing()) return; // prevent double runs
@@ -151,20 +156,12 @@ export class SyncService {
         let successCount = 0;
         for (const item of pending) {
             try {
-                if (item.operation === 'INSERT') {
-                    const { error } = await this.supabase.client.from(item.table).insert(item.payload);
-                    if (error) throw error;
-                } else if (item.operation === 'UPDATE') {
-                    const { error } = await this.supabase.client.from(item.table).update(item.payload).eq('id', item.payload.id);
-                    if (error) throw error;
-                } else if (item.operation === 'DELETE') {
-                    const { error } = await this.supabase.client.from(item.table).delete().eq('id', item.payload.id);
-                    if (error) throw error;
-                }
+                await this.replayQueueItem(item);
 
-                // ✅ Successfully synced - remove from queue
+                // ✅ Successfully synced — remove from queue
                 await this.offlineStorage.removeFromSyncQueue(item.id!);
                 successCount++;
+                console.log(`[SyncService] ✅ Synced item ${item.id} (${item.table})`);
             } catch (err: any) {
                 console.error(`[SyncService] ❌ Failed to sync item ${item.id}:`, err.message);
                 await this.offlineStorage.markSyncItemFailed(item);
@@ -174,6 +171,38 @@ export class SyncService {
         await this.refreshPendingCount();
         this.isSyncing.set(false);
         console.log(`[SyncService] ✅ Sync complete: ${successCount}/${pending.length} items uploaded.`);
+    }
+
+    /**
+     * Replays a single queued item against Supabase.
+     * Uses the correct service method for each table type.
+     */
+    private async replayQueueItem(item: SyncQueueItem): Promise<void> {
+        // ─── Special handler: full sale transaction ────────────────────────────
+        if (item.table === 'transactions' && item.operation === 'INSERT') {
+            const { items_snapshot, queued_at, ...txData } = item.payload;
+
+            if (!items_snapshot || !Array.isArray(items_snapshot)) {
+                throw new Error('Transaction queue item is missing items_snapshot')
+            }
+
+            // Replay via the FULL addTransaction pipeline:
+            // This creates the transaction, all its line items, and updates stock
+            await firstValueFrom(this.supabase.addTransaction(txData, items_snapshot));
+            return;
+        }
+
+        // ─── Generic handler for all other tables ─────────────────────────────
+        if (item.operation === 'INSERT') {
+            const { error } = await this.supabase.client.from(item.table).insert(item.payload);
+            if (error) throw error;
+        } else if (item.operation === 'UPDATE') {
+            const { error } = await this.supabase.client.from(item.table).update(item.payload).eq('id', item.payload.id);
+            if (error) throw error;
+        } else if (item.operation === 'DELETE') {
+            const { error } = await this.supabase.client.from(item.table).delete().eq('id', item.payload.id);
+            if (error) throw error;
+        }
     }
 
     /** Refreshes the pending count signal for the UI badge */
