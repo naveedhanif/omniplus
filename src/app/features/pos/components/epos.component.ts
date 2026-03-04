@@ -8,6 +8,8 @@ import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { switchMap, of, tap, debounceTime, firstValueFrom } from 'rxjs';
 import { POSSharedStateService } from '../../../core/services/pos-shared-state.service';
 import { FormsModule } from '@angular/forms';
+import { SyncService } from '../../../core/services/sync.service';
+import { ConnectivityService } from '../../../core/services/connectivity.service';
 
 @Component({
   selector: 'app-epos',
@@ -721,6 +723,8 @@ export class EposComponent {
   mockSupabase = inject(MockSupabaseService);
   dialogService = inject(DialogService);
   sharedState = inject(POSSharedStateService);
+  syncService = inject(SyncService);
+  connectivity = inject(ConnectivityService);
 
   // State Signals
   viewMode = signal<'GRID' | 'LIST'>('GRID');
@@ -1006,15 +1010,36 @@ export class EposComponent {
         metadata: { type: 'SALE' }
       } as any;
 
-      const newTx = await firstValueFrom(this.mockSupabase.addTransaction(txData, items));
+      // ─────────────────────────────────────────────────────────────────────
+      // OFFLINE-FIRST: Route through SyncService instead of direct Supabase
+      // ─────────────────────────────────────────────────────────────────────
+      if (this.connectivity.isOnline()) {
+        // ONLINE: Complete the full transaction with inventory update
+        const newTx = await firstValueFrom(this.mockSupabase.addTransaction(txData, items));
 
-      // 1. Clear State
-      this.sharedState.clearCart();
+        const promo = this.sharedState.appliedPromotion();
+        if (promo) {
+          this.mockSupabase.markPromotionUsed(promo.id, newTx.id).subscribe();
+        }
 
-      const promo = this.sharedState.appliedPromotion();
-      if (promo) {
-        this.mockSupabase.markPromotionUsed(promo.id, newTx.id).subscribe();
+        this.dialogService.alert('Payment Successful', 'The transaction has been completed and inventory has been updated.', 'Finish');
+      } else {
+        // OFFLINE: Save the full basket snapshot to the sync queue
+        await this.syncService.queueOperation('transactions', 'INSERT', {
+          ...txData,
+          items_snapshot: items,    // keep the basket items for replay
+          queued_at: new Date().toISOString()
+        });
+
+        this.dialogService.alert(
+          '✅ Sale Saved Offline',
+          `kd${this.total().toFixed(2)} transaction saved to your device. It will automatically upload to the cloud when your internet reconnects.`,
+          'Got it'
+        );
       }
+
+      // ── Common cleanup regardless of online/offline ──
+      this.sharedState.clearCart();
       this.showCheckoutModal.set(false);
       this.selectedPaymentMethods.set([]);
       this.activePaymentMethod.set('cash');
@@ -1022,11 +1047,6 @@ export class EposComponent {
       this.sharedState.selectedCustomer.set(null);
       this.sharedState.shippingFee.set(0);
 
-      // 2. Refresh Products to show new stock
-      // (Refresh is handled internally by mockSupabase.addTransaction)
-
-      // 3. Show Success
-      this.dialogService.alert('Payment Successful', 'The transaction has been completed successfully and inventory has been updated.', 'Finish');
     } catch (error) {
       console.error('Sale failed', error);
       this.dialogService.alert('Transaction Failed', 'There was an error processing the payment. Please try again.', 'Dismiss');
