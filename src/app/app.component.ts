@@ -3,12 +3,30 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StoreConfigService } from './core/services/store-config.service';
 import { MockSupabaseService } from './core/services/mock-supabase.service';
 import { DialogModalComponent } from './shared/components/dialog-modal.component';
+import { SyncService } from './core/services/sync.service';
+import { ConnectivityService } from './core/services/connectivity.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, DialogModalComponent],
   template: `
+    <!-- ── Global Offline / Sync Status Banner ── -->
+    @if (!connectivity.isOnline()) {
+      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-amber-500 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg animate-in slide-in-from-top-2">
+        <span class="material-symbols-rounded text-[16px] animate-pulse">wifi_off</span>
+        Offline Mode — Working from local cache
+        @if (syncService.pendingCount() > 0) {
+          <span class="bg-white text-amber-600 rounded-full px-2.5 py-0.5 font-black">{{ syncService.pendingCount() }} queued</span>
+        }
+      </div>
+    }
+    @if (connectivity.isOnline() && syncService.isSyncing()) {
+      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg animate-in slide-in-from-top-2">
+        <span class="material-symbols-rounded text-[16px] animate-spin">sync</span>
+        Syncing {{ syncService.pendingCount() }} pending transactions...
+      </div>
+    }
     @if (supabase.isConfigured()) {
       <nav class="bg-gray-800 text-white shadow-md sticky top-0 z-50">
         <div class="container mx-auto px-6 py-3 flex justify-between items-center">
@@ -64,4 +82,13 @@ import { DialogModalComponent } from './shared/components/dialog-modal.component
 export class AppComponent {
   storeService = inject(StoreConfigService);
   supabase = inject(MockSupabaseService);
+  syncService = inject(SyncService);
+  connectivity = inject(ConnectivityService);
+
+  constructor() {
+    // Bootstrap the offline engine on every app startup
+    this.syncService.initialise().catch(err =>
+      console.error('[AppComponent] Failed to initialise SyncService:', err)
+    );
+  }
 }
