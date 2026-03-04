@@ -11,6 +11,17 @@ export type StoreType = 'HARDWARE' | 'MEDICAL' | 'RESTAURANT';
 export type PaymentMethod = 'CASH' | 'CARD' | 'SPLIT' | 'ON_ACCOUNT';
 export type SerialStatus = 'IN_STOCK' | 'SOLD' | 'RETURNED' | 'DAMAGED' | 'LOST';
 
+export interface AppUser {
+    id: string;
+    store_id: string;
+    name: string;
+    email?: string;
+    password_hash?: string;
+    pin_code?: string;
+    role: 'ADMIN' | 'MANAGER' | 'CASHIER';
+    created_at?: string;
+}
+
 export interface MarketingRule {
     id: string;
     store_id: string;
@@ -462,6 +473,7 @@ export interface StockLog {
 })
 export class MockSupabaseService {
     private supabase: SupabaseClient;
+    public get client() { return this.supabase; }
 
     private readonly _activeStoreId = signal<string | null>(null);
     public readonly activeStoreId = this._activeStoreId.asReadonly();

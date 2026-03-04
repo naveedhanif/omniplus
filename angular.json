@@ -18,11 +18,29 @@
             },
             "browser": "src/main.ts",
             "index": "index.html",
-            "tsConfig": "tsconfig.json"
+            "tsConfig": "tsconfig.json",
+            "assets": [
+              {
+                "glob": "manifest.webmanifest",
+                "input": "src/",
+                "output": "/"
+              },
+              {
+                "glob": "favicon.ico",
+                "input": "./",
+                "output": "/"
+              },
+              {
+                "glob": "**/*",
+                "input": "src/assets/icons",
+                "output": "/assets/icons"
+              }
+            ]
           },
           "configurations": {
             "production": {
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "serviceWorker": "ngsw-config.json"
             },
             "development": {
               "optimization": false,

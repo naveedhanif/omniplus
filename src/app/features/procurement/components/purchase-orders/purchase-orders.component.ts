@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect } from "@angular/core";
+import { Component, inject, signal, computed, effect, DestroyRef } from "@angular/core";
 import { CommonModule, CurrencyPipe, DatePipe } from "@angular/common";
 import {
   FormBuilder,
@@ -8,8 +8,8 @@ import {
   FormArray,
   FormsModule,
 } from "@angular/forms";
-import { toSignal } from "@angular/core/rxjs-interop";
-import { switchMap, of } from "rxjs";
+import { toSignal, takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { switchMap, of, tap } from "rxjs";
 import {
   MockSupabaseService,
   PurchaseOrder,
@@ -553,8 +553,8 @@ import { SupplierInvoicePrintComponent } from "../../../../shared/components/sup
 
       <app-purchase-order-print
         *ngIf="showPrintPreview()"
-        [po]="selectedPO()!"
-        [items]="selectedPOItems()"
+        [po]="poForPrint()!"
+        [items]="poItemsForPrint()"
         [store]="storeService.currentStore()"
         [currency]="storeService.currency()"
         (close)="showPrintPreview.set(false)"
@@ -636,13 +636,27 @@ import { SupplierInvoicePrintComponent } from "../../../../shared/components/sup
             <button
               type="button"
               (click)="viewPODetail(po)"
-              class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group border-l-4"
+              class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group border-l-4 relative overflow-hidden"
               [ngClass]="{
                 'bg-blue-50 dark:bg-blue-900/10 border-l-[var(--primary-color)]':
                   selectedPO()?.id === po.id,
                 'border-l-transparent': selectedPO()?.id !== po.id,
               }"
             >
+              <!-- Hover Quick Actions -->
+              <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all translate-x-4 group-hover:translate-x-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md px-1.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-10">
+                <button (click)="$event.stopPropagation(); quickPrint(po)" title="View Document"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-[var(--primary-color)] hover:bg-[var(--primary-color)]/10 transition-colors flex items-center justify-center">
+                  <span class="material-symbols-rounded text-[18px]">visibility</span>
+                </button>
+                @if (po.status === 'DRAFT') {
+                  <div class="w-px h-5 bg-slate-200 dark:bg-slate-700"></div>
+                  <button (click)="$event.stopPropagation(); startEditPO(po)" title="Quick Edit"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center">
+                    <span class="material-symbols-rounded text-[18px]">edit</span>
+                  </button>
+                }
+              </div>
               <div class="flex justify-between items-start mb-1">
                 <span class="text-xs font-mono font-bold text-slate-400"
                   >#{{ po.id.substring(0, 8) }}</span
@@ -1418,8 +1432,24 @@ import { SupplierInvoicePrintComponent } from "../../../../shared/components/sup
                           </button>
                         </div>
                       }
-
-                      <!-- Dynamic Grid -->
+                      
+                      @if (!hasSupplierProducts()) {
+                        <div class="py-16 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-800/30 border border-dashed border-slate-300 dark:border-slate-700/50 rounded-3xl">
+                          <div class="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+                            <span class="material-symbols-rounded text-3xl text-slate-400">inventory_2</span>
+                          </div>
+                          <span class="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">No Associated Products</span>
+                          <p class="text-[10px] text-slate-400 font-medium text-center max-w-[250px] leading-relaxed">
+                            This supplier has no catalogue items currently assigned to them. You must map products to this supplier in the Inventory management system before you can create a localized purchase order for them.
+                          </p>
+                        </div>
+                      } @else if (catalogueProducts().length === 0) {
+                        <div class="py-16 flex flex-col items-center justify-center">
+                          <span class="material-symbols-rounded text-4xl text-slate-300 mb-2">search_off</span>
+                          <p class="text-sm text-slate-500 font-bold">No products match your search/filter criteria.</p>
+                        </div>
+                      } @else {
+                        <!-- Dynamic Grid -->
                       <div
                         class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3"
                       >
@@ -1535,25 +1565,10 @@ import { SupplierInvoicePrintComponent } from "../../../../shared/components/sup
                               </div>
                             </div>
                           </div>
-                        } @empty {
-                          <div
-                            class="col-span-full py-16 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-800/30 rounded-3xl opacity-60"
-                          >
-                            <span
-                              class="material-symbols-rounded text-4xl mb-3 text-slate-400"
-                              >search_off</span
-                            >
-                            <span
-                              class="text-xs font-black uppercase tracking-widest text-slate-500 mb-1"
-                              >No matches found</span
-                            >
-                            <p class="text-[10px] text-slate-400 font-medium">
-                              Try adjusting your search or category filter.
-                            </p>
-                          </div>
                         }
                       </div>
                     }
+                  }
                   </div>
                 </div>
                 <!-- End Left Pane -->
@@ -1845,6 +1860,7 @@ export class PurchaseOrderComponent {
   supabase = inject(MockSupabaseService);
   storeService = inject(StoreConfigService);
   fb = inject(FormBuilder);
+  destroyRef = inject(DestroyRef);
 
   /** Static gradient palettes for the KPI tiles */
   readonly kpiStyles = {
@@ -1893,6 +1909,8 @@ export class PurchaseOrderComponent {
 
   // ── Print Preview State ──────────────────────────────────────────────────
   showPrintPreview = signal(false);
+  poForPrint = signal<PurchaseOrder | null>(null);
+  poItemsForPrint = signal<any[]>([]);
   isPrinting = signal(false);
 
   // ── Top-level Tab ────────────────────────────────────────────────────────
@@ -2058,7 +2076,14 @@ export class PurchaseOrderComponent {
 
   // ── Reactive supplier_id signal (must come AFTER poForm is initialised) ────
   private _selectedSupplierId = toSignal(
-    this.poForm.get("supplier_id")!.valueChanges,
+    this.poForm.get("supplier_id")!.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef),
+      tap(() => {
+        // UX fixes: Reset catalogue search and category filter whenever the supplier changes.
+        this.catalogSearchQuery.set('');
+        this.selectedCatalogCategory.set(null);
+      })
+    ),
     { initialValue: null as string | null },
   );
 
@@ -2075,7 +2100,9 @@ export class PurchaseOrderComponent {
     const supplierProducts = this.products().filter(
       (p) => p.supplier_id === supplierId,
     );
-    return supplierProducts.length > 0 ? supplierProducts : this.products();
+    // No longer fail open! Return ONLY the products mapped to this supplier.
+    // If empty array, the UI will handle showing the empty state.
+    return supplierProducts;
   });
 
   /** True when the selected supplier has at least one product tagged to them */
@@ -2830,13 +2857,17 @@ export class PurchaseOrderComponent {
   }
 
   printPO(po: PurchaseOrder) {
-    this.selectedPO.set(po);
+    this.quickPrint(po);
+  }
+
+  quickPrint(po: PurchaseOrder) {
+    this.poForPrint.set(po);
     this.isLoadingItems.set(true);
     this.showPrintPreview.set(true);
 
     this.supabase.getPurchaseOrderItems(po.id).subscribe({
       next: (items) => {
-        this.selectedPOItems.set(items);
+        this.poItemsForPrint.set(items);
         this.isLoadingItems.set(false);
       },
       error: (err) => {
