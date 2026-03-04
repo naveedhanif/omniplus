@@ -11,6 +11,33 @@ export type StoreType = 'HARDWARE' | 'MEDICAL' | 'RESTAURANT';
 export type PaymentMethod = 'CASH' | 'CARD' | 'SPLIT' | 'ON_ACCOUNT';
 export type SerialStatus = 'IN_STOCK' | 'SOLD' | 'RETURNED' | 'DAMAGED' | 'LOST';
 
+export interface MarketingRule {
+    id: string;
+    store_id: string;
+    name: string;
+    trigger_days: number;
+    discount_percentage: number;
+    message_template: string;
+    is_active: boolean;
+    validity_days: number;
+    created_at?: string;
+}
+
+export interface Promotion {
+    id: string;
+    store_id: string;
+    customer_id?: string;
+    code: string;
+    discount_percentage: number;
+    validity_start: string;
+    validity_end: string;
+    is_used: boolean;
+    campaign_id?: string;
+    created_at: string;
+    used_at?: string;
+    transaction_id?: string;
+}
+
 export interface StoreConfig {
     primaryColor: string;
     darkMode: boolean;
@@ -170,7 +197,12 @@ export interface StockMovement {
     created_at: string;
 }
 
-export type POStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'ORDERED' | 'RECEIVED' | 'CANCELLED';
+export type POStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'ORDERED' | 'RECEIVED' | 'INVOICED' | 'CANCELLED';
+export type InvoiceStatus = 'DRAFT' | 'FINALISED' | 'PAID' | 'DISPUTED';
+export type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
+export type ClaimType = 'DAMAGED' | 'SHORT_DELIVERED' | 'WRONG_ITEM' | 'DEFECTIVE' | 'OVERCHARGED';
+export type ClaimStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | 'REJECTED';
+export type ClaimResolution = 'CREDIT_NOTE' | 'REPLACEMENT' | 'REFUND' | 'NONE';
 
 export interface PurchaseOrder {
     id: string;
@@ -178,12 +210,21 @@ export interface PurchaseOrder {
     supplier_id: string;
     supplier?: Supplier;
     status: POStatus;
+    order_number?: string;
+    subtotal?: number;
+    tax_amount?: number;
+    tax_enabled?: boolean;
     total_amount: number;
     expected_arrival?: string;
     notes?: string;
     created_at: string;
+    updated_at?: string;
     items?: PurchaseOrderItem[];
     total_quantity?: number;
+    invoice_number?: string;
+    invoice_date?: string;
+    payment_status?: PaymentStatus;
+    payment_due_date?: string;
 }
 
 export interface PurchaseOrderItem {
@@ -195,6 +236,60 @@ export interface PurchaseOrderItem {
     quantity_received?: number;
     unit_cost: number;
 }
+
+export interface SupplierInvoice {
+    id: string;
+    store_id: string;
+    po_id: string;
+    po?: PurchaseOrder;
+    supplier_id: string;
+    supplier?: Supplier;
+    invoice_number: string;
+    status: InvoiceStatus;
+    subtotal: number;
+    tax_amount: number;
+    total_amount: number;
+    payment_status: PaymentStatus;
+    issued_date: string;
+    due_date?: string;
+    notes?: string;
+    items?: SupplierInvoiceItem[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface SupplierInvoiceItem {
+    id: string;
+    invoice_id: string;
+    product_id?: string;
+    product?: Product;
+    description: string;
+    quantity: number;
+    unit_cost: number;
+    line_total: number;
+}
+
+export interface SupplierClaim {
+    id: string;
+    store_id: string;
+    po_id?: string;
+    po?: PurchaseOrder;
+    supplier_id: string;
+    supplier?: Supplier;
+    claim_number: string;
+    claim_type: ClaimType;
+    product_id?: string;
+    product?: Product;
+    quantity_affected: number;
+    description: string;
+    status: ClaimStatus;
+    resolution_type?: ClaimResolution;
+    resolution_amount?: number;
+    resolution_notes?: string;
+    created_at: string;
+    resolved_at?: string;
+}
+
 
 export interface Product {
     id: string;
@@ -280,7 +375,9 @@ export interface Customer {
     credit_limit: number;
     current_balance: number; // Cached value
     lifetime_spend?: number; // Phase 6: Reward Tiers
-    metadata?: any; // Phase 6: Extensible customer data
+    // Phase 6: Marketing Automation / Retention
+    last_purchase_date?: string;
+    engaged_date?: string;
     created_at: string;
 }
 
@@ -1827,6 +1924,19 @@ export class MockSupabaseService {
                         }).toPromise();
                     }
                 }
+
+                // Update customer lifetime_spend and last_purchase_date
+                if (txData.customer_id) {
+                    const { data: customer } = await this.supabase.from('customers').select('lifetime_spend').eq('id', txData.customer_id).single();
+                    if (customer) {
+                        await this.supabase.from('customers').update({
+                            lifetime_spend: (customer.lifetime_spend || 0) + txData.total_amount,
+                            last_purchase_date: new Date().toISOString(),
+                            engaged_date: new Date().toISOString() // Engaging with a purchase counts as engagement
+                        }).eq('id', txData.customer_id);
+                    }
+                }
+
                 // --- ACCOUNT HANDLING END ---
 
                 // Force materialized view refresh so Command Center reflects the sale immediately
@@ -2570,11 +2680,296 @@ export class MockSupabaseService {
             }
         }));
     }
+    // Marketing Automation - Live Supabase
+    getMarketingRules(storeId: string): Observable<MarketingRule[]> {
+        const promise = this.supabase
+            .from('marketing_rules')
+            .select('*')
+            .eq('store_id', storeId)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as MarketingRule[];
+            });
+        return from(promise);
+    }
+
+    createMarketingRule(rule: Omit<MarketingRule, 'id' | 'created_at'>): Observable<MarketingRule> {
+        const promise = this.supabase
+            .from('marketing_rules')
+            .insert({ ...rule })
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as MarketingRule;
+            });
+        return from(promise);
+    }
+
+    updateMarketingRule(id: string, updates: Partial<MarketingRule>): Observable<MarketingRule> {
+        const promise = this.supabase
+            .from('marketing_rules')
+            .update({ ...updates })
+            .eq('id', id)
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as MarketingRule;
+            });
+        return from(promise);
+    }
+
+    deleteMarketingRule(id: string): Observable<void> {
+        const promise = this.supabase
+            .from('marketing_rules')
+            .delete()
+            .eq('id', id)
+            .then(({ error }) => {
+                if (error) throw error;
+            });
+        return from(promise);
+    }
+
+    // --- Promotions Tracking (Live Supabase) ---
+    getPromotions(storeId: string): Observable<Promotion[]> {
+        const promise = this.supabase
+            .from('promotions')
+            .select('*')
+            .eq('store_id', storeId)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as Promotion[];
+            });
+        return from(promise);
+    }
+
+    createPromotion(promo: Omit<Promotion, 'id' | 'created_at'>): Observable<Promotion> {
+        const promise = this.supabase
+            .from('promotions')
+            .insert({ ...promo })
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as Promotion;
+            });
+        return from(promise);
+    }
+
+    validatePromotion(code: string, storeId: string): Observable<Promotion | null> {
+        const promise = this.supabase
+            .from('promotions')
+            .select('*')
+            .eq('code', code.toUpperCase())
+            .eq('store_id', storeId)
+            .eq('is_used', false)
+            .single()
+            .then(({ data, error }) => {
+                if (error || !data) return null;
+                const promo = data as Promotion;
+                // Check expiry
+                if (new Date(promo.validity_end) < new Date()) return null;
+                return promo;
+            });
+        return from(promise);
+    }
+
+    markPromotionUsed(promoId: string, transactionId: string): Observable<void> {
+        const promise = this.supabase
+            .from('promotions')
+            .update({ is_used: true, used_at: new Date().toISOString(), transaction_id: transactionId })
+            .eq('id', promoId)
+            .then(({ error }) => {
+                if (error) throw error;
+            });
+        return from(promise);
+    }
+
+    // ─── Supplier Invoices ────────────────────────────────────────────────────
+
+    getSupplierInvoices(storeId: string): Observable<SupplierInvoice[]> {
+        const promise = this.supabase
+            .from('supplier_invoices')
+            .select('*, supplier:supplier_id ( id, name, contact_person, phone, email ), po:po_id ( id, order_number, status )')
+            .eq('store_id', storeId)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as SupplierInvoice[];
+            });
+        return from(promise);
+    }
+
+    getSupplierInvoiceWithItems(invoiceId: string): Observable<SupplierInvoice | null> {
+        const promise = this.supabase
+            .from('supplier_invoices')
+            .select(`
+                *,
+                supplier:supplier_id ( id, name, contact_person, phone, email, address ),
+                po:po_id ( id, order_number ),
+                items:supplier_invoice_items (
+                    id, description, quantity, unit_cost, line_total
+                )
+            `)
+            .eq('id', invoiceId)
+            .single()
+            .then(({ data, error }) => {
+                if (error) {
+                    console.warn('getSupplierInvoiceWithItems join failed, fetching base record:', error.message);
+                    // Fallback: return just the base invoice without joins
+                    return this.supabase
+                        .from('supplier_invoices')
+                        .select('*')
+                        .eq('id', invoiceId)
+                        .single()
+                        .then(({ data: d }) => d as SupplierInvoice);
+                }
+                return data as SupplierInvoice;
+            });
+        return from(promise);
+    }
+
+    createSupplierInvoice(
+        invoice: Omit<SupplierInvoice, 'id' | 'created_at' | 'updated_at'>,
+        items: Omit<SupplierInvoiceItem, 'id'>[]
+    ): Observable<SupplierInvoice> {
+        const promise = (async () => {
+            // Derive invoice number from the linked PO's order_number
+            // PO-2026-0003  →  INV-2026-0003  (same sequence, different prefix)
+            let invoiceNumber: string;
+            if (invoice.po_id) {
+                const { data: po } = await this.supabase
+                    .from('purchase_orders')
+                    .select('order_number')
+                    .eq('id', invoice.po_id)
+                    .single();
+                if (po?.order_number) {
+                    invoiceNumber = po.order_number.replace(/^PO-/, 'INV-');
+                } else {
+                    // fallback: count-based if PO has no order_number yet
+                    const year = new Date().getFullYear();
+                    const { count } = await this.supabase
+                        .from('supplier_invoices')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('store_id', invoice.store_id);
+                    invoiceNumber = `INV-${year}-${String((count ?? 0) + 1).padStart(4, '0')}`;
+                }
+            } else {
+                const year = new Date().getFullYear();
+                const { count } = await this.supabase
+                    .from('supplier_invoices')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('store_id', invoice.store_id);
+                invoiceNumber = `INV-${year}-${String((count ?? 0) + 1).padStart(4, '0')}`;
+            }
+
+            const { data: inv, error: invErr } = await this.supabase
+                .from('supplier_invoices')
+                .insert({ ...invoice, invoice_number: invoiceNumber })
+                .select()
+                .single();
+            if (invErr) throw invErr;
+
+            // Insert line items
+            if (items.length > 0) {
+                const { error: itemErr } = await this.supabase
+                    .from('supplier_invoice_items')
+                    .insert(items.map(i => ({ ...i, invoice_id: inv.id })));
+                if (itemErr) throw itemErr;
+            }
+
+            // Mark the PO as INVOICED
+            await this.supabase
+                .from('purchase_orders')
+                .update({ status: 'INVOICED', invoice_number: invoiceNumber, invoice_date: new Date().toISOString().split('T')[0] })
+                .eq('id', invoice.po_id);
+
+            return inv as SupplierInvoice;
+        })();
+        return from(promise);
+    }
+
+    updateSupplierInvoice(id: string, updates: Partial<SupplierInvoice>): Observable<SupplierInvoice> {
+        const promise = this.supabase
+            .from('supplier_invoices')
+            .update({ ...updates, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as SupplierInvoice;
+            });
+        return from(promise);
+    }
+
+    // ─── Supplier Claims ──────────────────────────────────────────────────────
+
+    getSupplierClaims(storeId: string): Observable<SupplierClaim[]> {
+        const promise = this.supabase
+            .from('supplier_claims')
+            .select('*, supplier:suppliers(*), po:purchase_orders(id,order_number), product:products(name,sku)')
+            .eq('store_id', storeId)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data || []) as SupplierClaim[];
+            });
+        return from(promise);
+    }
+
+    createSupplierClaim(claim: Omit<SupplierClaim, 'id' | 'created_at'>): Observable<SupplierClaim> {
+        const promise = (async () => {
+            const year = new Date().getFullYear();
+            const { count } = await this.supabase
+                .from('supplier_claims')
+                .select('*', { count: 'exact', head: true })
+                .eq('store_id', claim.store_id);
+            const seq = String((count ?? 0) + 1).padStart(4, '0');
+            const claimNumber = `CLM-${year}-${seq}`;
+
+            const { data, error } = await this.supabase
+                .from('supplier_claims')
+                .insert({ ...claim, claim_number: claimNumber })
+                .select('*, supplier:suppliers(*), po:purchase_orders(id,order_number), product:products(name,sku)')
+                .single();
+            if (error) throw error;
+            return data as SupplierClaim;
+        })();
+        return from(promise);
+    }
+
+    updateSupplierClaim(id: string, updates: Partial<SupplierClaim>): Observable<SupplierClaim> {
+        const promise = this.supabase
+            .from('supplier_claims')
+            .update({ ...updates })
+            .eq('id', id)
+            .select('*, supplier:suppliers(*), product:products(name,sku)')
+            .single()
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return data as SupplierClaim;
+            });
+        return from(promise);
+    }
+
+    // ─── PO Order Number Generator ────────────────────────────────────────────
+
+    async generatePONumber(storeId: string): Promise<string> {
+        const year = new Date().getFullYear();
+        const { count } = await this.supabase
+            .from('purchase_orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('store_id', storeId);
+        const seq = String((count ?? 0) + 1).padStart(4, '0');
+        return `PO-${year}-${seq}`;
+    }
 }
 
 export interface InventoryTransfer {
-    id: string;
-    store_id: string;
     from_location_id: string;
     to_location_id: string;
     status: 'PENDING' | 'COMPLETED' | 'CANCELLED';

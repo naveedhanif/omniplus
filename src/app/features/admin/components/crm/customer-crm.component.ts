@@ -170,7 +170,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
                 </div>
 
                 <!-- FINANCIAL METRICS CARDS -->
-                <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="grid grid-cols-4 gap-4 mb-8">
                     <!-- Balance Card -->
                     <div class="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/20 p-5 rounded-2xl shadow-lg shadow-blue-500/20 border border-blue-100 dark:border-blue-800/50 flex flex-col justify-between relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/30">
                         <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
@@ -237,6 +237,32 @@ import { DialogService } from '../../../../core/services/dialog.service';
                         </div>
                         <div class="text-xs mt-2 font-medium text-slate-400 flex items-center gap-1 relative z-10">
                              Total spend across {{ customerTransactions().length }} orders
+                        </div>
+                    </div>
+
+                    <!-- Last Engagement -->
+                    <div class="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/40 dark:to-amber-900/20 p-5 rounded-2xl shadow-lg shadow-orange-500/20 border border-orange-100 dark:border-orange-800/50 flex flex-col justify-between relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-500/30">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-500/10 rounded-full blur-xl group-hover:bg-orange-500/20 transition-colors duration-500"></div>
+                        <div class="flex justify-between items-start mb-2 relative z-10">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Last Engagement</span>
+                            <span class="w-8 h-8 rounded-full flex items-center justify-center bg-orange-50 dark:bg-orange-900/20">
+                                <span class="material-symbols-rounded text-orange-500 text-sm">history</span>
+                            </span>
+                        </div>
+                        <div class="text-sm font-bold tracking-tight text-slate-700 dark:text-slate-200 relative z-10 pt-2 pb-1">
+                            @if(customer.last_purchase_date) {
+                                {{ customer.last_purchase_date | date:'mediumDate' }}
+                            } @else {
+                                No Purchases Yet
+                            }
+                        </div>
+                        <div class="text-[10px] mt-1 font-medium text-slate-400 relative z-10 flex flex-col">
+                             @if(customer.last_purchase_date) {
+                                 <span>{{ getDaysSince(customer.last_purchase_date) }} days inactive</span>
+                             }
+                             @if(customer.engaged_date) {
+                                 <span class="mt-1 flex items-center gap-1"><span class="material-symbols-rounded text-[12px] text-green-500">check_circle</span> Reachable</span>
+                             }
                         </div>
                     </div>
                 </div>
@@ -1127,6 +1153,13 @@ export class CustomerCRMComponent {
         if (activity.type === 'SALE_TX') return 'text-slate-600 dark:text-slate-300'; // Neutral for purchases
         if (activity.amount > 0) return 'text-green-600';
         return 'text-orange-500';
+    }
+
+    getDaysSince(dateString: string): number {
+        const pastDate = new Date(dateString);
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - pastDate.getTime());
+        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
     }
 }
 

@@ -1,5 +1,5 @@
 import { Injectable, signal, computed, effect, inject } from '@angular/core';
-import { Product, Customer, CartItem } from './mock-supabase.service';
+import { Product, Customer, CartItem, Promotion } from './mock-supabase.service';
 import { StoreConfigService } from './store-config.service';
 
 @Injectable({
@@ -14,6 +14,7 @@ export class POSSharedStateService {
     fulfillmentMode = signal<'PICKUP' | 'DELIVERY' | 'COURIER'>('PICKUP');
     shippingFee = signal(0);
     manualDiscount = signal<{ type: 'PERCENTAGE' | 'AMOUNT', value: number } | null>(null);
+    appliedPromotion = signal<Promotion | null>(null);
 
     // Computations
     subtotal = computed(() => {
@@ -24,6 +25,11 @@ export class POSSharedStateService {
         const md = this.manualDiscount();
         if (md && md.value > 0) {
             return md.type === 'PERCENTAGE' ? this.subtotal() * (md.value / 100) : md.value;
+        }
+
+        const promo = this.appliedPromotion();
+        if (promo) {
+            return this.subtotal() * (promo.discount_percentage / 100);
         }
 
         const cust = this.selectedCustomer();
@@ -57,6 +63,7 @@ export class POSSharedStateService {
             if (data.mode) this.fulfillmentMode.set(data.mode);
             if (data.fee !== undefined) this.shippingFee.set(data.fee);
             if (data.discount !== undefined) this.manualDiscount.set(data.discount);
+            if (data.promo !== undefined) this.appliedPromotion.set(data.promo);
             // taxAmount is computed, so we don't set it directly here
             this.isSyncing = false;
         };
@@ -68,7 +75,8 @@ export class POSSharedStateService {
                 customer: this.selectedCustomer(),
                 mode: this.fulfillmentMode(),
                 fee: this.shippingFee(),
-                discount: this.manualDiscount()
+                discount: this.manualDiscount(),
+                promo: this.appliedPromotion()
             };
 
             if (!this.isSyncing) {
@@ -100,6 +108,7 @@ export class POSSharedStateService {
         this.cart.set([]);
         this.selectedCustomer.set(null);
         this.manualDiscount.set(null);
+        this.appliedPromotion.set(null);
         this.shippingFee.set(0);
     }
 }

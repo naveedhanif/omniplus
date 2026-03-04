@@ -3,10 +3,10 @@ import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabase.service';
 
 @Component({
-    selector: 'app-purchase-order-print',
-    standalone: true,
-    imports: [CommonModule, CurrencyPipe, DatePipe],
-    template: `
+   selector: 'app-purchase-order-print',
+   standalone: true,
+   imports: [CommonModule, CurrencyPipe, DatePipe],
+   template: `
     <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 no-print">
       <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[95vh] border border-slate-200 overflow-hidden">
         
@@ -39,8 +39,10 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
           <div id="po-document" class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-slate-800 font-sans leading-relaxed">
             
             <!-- WATERMARK -->
-            <div class="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none">
-                <div class="text-[150px] font-black -rotate-45 uppercase border-[20px] border-slate-900 px-10 py-5">OFFICIAL</div>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none" [class.opacity-[0.03]]="po().status !== 'DRAFT'" [class.opacity-[0.05]]="po().status === 'DRAFT'" [class.text-red-900]="po().status === 'DRAFT'" [class.text-slate-900]="po().status !== 'DRAFT'">
+                <div class="text-[150px] font-black -rotate-45 uppercase border-[20px] px-10 py-5" [class.border-red-900]="po().status === 'DRAFT'" [class.border-slate-900]="po().status !== 'DRAFT'">
+                  {{ po().status === 'DRAFT' ? 'DRAFT' : 'OFFICIAL' }}
+                </div>
             </div>
 
             <!-- DOCUMENT HEADER -->
@@ -127,12 +129,14 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
                <div class="w-64 space-y-3">
                   <div class="flex justify-between text-xs font-bold text-slate-400 uppercase">
                      <span>Subtotal</span>
-                     <span>{{ po().total_amount | currency:currency() }}</span>
+                     <span>{{ (po().subtotal ?? po().total_amount) | currency:currency() }}</span>
                   </div>
-                  <div class="flex justify-between text-xs font-bold text-slate-400 uppercase pb-2 border-b border-slate-100">
-                     <span>Tax (0%)</span>
-                     <span>{{ 0 | currency:currency() }}</span>
-                  </div>
+                  @if (po().tax_amount && po().tax_amount! > 0) {
+                     <div class="flex justify-between text-xs font-bold text-slate-400 uppercase pb-2 border-b border-slate-100">
+                        <span>Tax</span>
+                        <span>{{ po().tax_amount | currency:currency() }}</span>
+                     </div>
+                  }
                   <div class="flex justify-between items-center pt-2">
                      <span class="text-xs font-black uppercase tracking-widest text-slate-900">Grand Total</span>
                      <span class="text-2xl font-black text-slate-900 tabular-nums">{{ po().total_amount | currency:currency() }}</span>
@@ -202,13 +206,13 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
   `
 })
 export class PurchaseOrderPrintComponent {
-    po = input.required<PurchaseOrder>();
-    items = input.required<any[]>();
-    store = input.required<Store | null>();
-    currency = input.required<string>();
-    close = output<void>();
+   po = input.required<PurchaseOrder>();
+   items = input.required<any[]>();
+   store = input.required<Store | null>();
+   currency = input.required<string>();
+   close = output<void>();
 
-    onPrint() {
-        window.print();
-    }
+   onPrint() {
+      window.print();
+   }
 }

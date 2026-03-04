@@ -17,10 +17,15 @@ import {
   Supplier,
   Store,
   Product,
+  SupplierInvoice,
+  SupplierInvoiceItem,
+  SupplierClaim,
+  ClaimType,
 } from "../../../../core/services/mock-supabase.service";
 import { StoreConfigService } from "../../../../core/services/store-config.service";
 
 import { PurchaseOrderPrintComponent } from "../../../../shared/components/purchase-order-print.component";
+import { SupplierInvoicePrintComponent } from "../../../../shared/components/supplier-invoice-print.component";
 
 @Component({
   selector: "app-purchase-orders",
@@ -32,11 +37,300 @@ import { PurchaseOrderPrintComponent } from "../../../../shared/components/purch
     CurrencyPipe,
     DatePipe,
     PurchaseOrderPrintComponent,
+    SupplierInvoicePrintComponent,
   ],
   template: `
-    <div
-      class="flex gap-0 h-[calc(100vh-120px)] bg-[var(--card-bg)] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden relative"
-    >
+    <div style="display:contents">
+    <div class="flex flex-col h-[calc(100vh-120px)] bg-[var(--card-bg)] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden relative">
+
+      <!-- ── Top Tab Navigation ─────────────────────────────────────────── -->
+      <div class="flex items-center gap-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 flex-shrink-0">
+        <button (click)="activeTab.set('orders'); loadInvoices(); loadClaims()"
+          class="flex items-center gap-2 px-5 py-4 text-[12px] font-black uppercase tracking-widest border-b-2 transition-all duration-200"
+          [class.border-[var(--primary-color)]]="activeTab() === 'orders'"
+          [class.text-[var(--primary-color)]]="activeTab() === 'orders'"
+          [class.border-transparent]="activeTab() !== 'orders'"
+          [class.text-slate-500]="activeTab() !== 'orders'">
+          <span class="material-symbols-rounded text-[18px]">shopping_cart</span>
+          Purchase Orders
+        </button>
+        <button (click)="activeTab.set('invoices'); loadInvoices()"
+          class="flex items-center gap-2 px-5 py-4 text-[12px] font-black uppercase tracking-widest border-b-2 transition-all duration-200"
+          [class.border-[var(--primary-color)]]="activeTab() === 'invoices'"
+          [class.text-[var(--primary-color)]]="activeTab() === 'invoices'"
+          [class.border-transparent]="activeTab() !== 'invoices'"
+          [class.text-slate-500]="activeTab() !== 'invoices'">
+          <span class="material-symbols-rounded text-[18px]">receipt_long</span>
+          Invoices
+          @if (invoices().length > 0) {
+            <span class="bg-teal-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{{ invoices().length }}</span>
+          }
+        </button>
+        <button (click)="activeTab.set('claims'); loadClaims()"
+          class="flex items-center gap-2 px-5 py-4 text-[12px] font-black uppercase tracking-widest border-b-2 transition-all duration-200"
+          [class.border-[var(--primary-color)]]="activeTab() === 'claims'"
+          [class.text-[var(--primary-color)]]="activeTab() === 'claims'"
+          [class.border-transparent]="activeTab() !== 'claims'"
+          [class.text-slate-500]="activeTab() !== 'claims'">
+          <span class="material-symbols-rounded text-[18px]">warning</span>
+          Claims & Disputes
+          @if (claims().length > 0) {
+            <span class="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{{ claims().length }}</span>
+          }
+        </button>
+
+        <div class="flex-1"></div>
+        @if (activeTab() === 'claims') {
+          <button (click)="openClaimModal(undefined)"
+            class="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-xl shadow hover:brightness-110 transition-all my-2">
+            <span class="material-symbols-rounded text-sm">add</span>
+            New Claim
+          </button>
+        }
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- INVOICES TAB                                           -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      @if (activeTab() === 'invoices') {
+        <div class="flex-1 overflow-auto p-6">
+          @if (invoices().length === 0) {
+            <div class="flex flex-col items-center justify-center h-full text-center max-w-sm mx-auto opacity-60">
+              <span class="material-symbols-rounded text-6xl text-slate-300 mb-4">receipt_long</span>
+              <h3 class="text-xl font-bold text-slate-700 dark:text-slate-200">No Invoices Yet</h3>
+              <p class="text-sm text-slate-500 mt-2">Invoices are generated from <strong>RECEIVED</strong> purchase orders. Open a received PO and click "Generate Invoice".</p>
+            </div>
+          } @else {
+            <!-- Filters -->
+            <div class="flex flex-col gap-4 mb-6">
+              <div class="flex flex-wrap gap-2">
+                @for (status of ['ALL', 'UNPAID', 'OVERDUE', 'PAID']; track status) {
+                  <button (click)="invoiceStatusFilter.set($any(status))"
+                    class="px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase transition-all shadow-sm border border-transparent"
+                    [ngClass]="invoiceStatusFilter() === status ? 
+                      'bg-[var(--primary-color)] text-white shadow-[0_8px_15px_rgba(var(--primary-color-rgb),0.3)]' : 
+                      'bg-white dark:bg-slate-800 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500'">
+                    {{ status }}
+                  </button>
+                }
+              </div>
+              <div class="relative max-w-md">
+                <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+                <input type="text" placeholder="Search invoice no, PO reference, or supplier..." [ngModel]="invoiceSearchTerm()" (ngModelChange)="invoiceSearchTerm.set($event)"
+                  class="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[var(--primary-color)] outline-none shadow-sm dark:text-white transition-all">
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <!-- Column Headers -->
+              <div class="grid grid-cols-8 gap-3 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span>Invoice #</span>
+                <span>PO Ref</span>
+                <span>Supplier</span>
+                <span>Issued</span>
+                <span>Due Date</span>
+                <span>Amount</span>
+                <span>Status</span>
+                <span>Actions</span>
+              </div>
+              @for (inv of filteredInvoices(); track inv.id) {
+                <div class="grid grid-cols-8 gap-3 items-center bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all">
+                  <!-- Invoice # -->
+                  <span class="font-black text-teal-600 dark:text-teal-400 font-mono text-sm">{{ inv.invoice_number }}</span>
+                  <!-- PO Ref -->
+                  <span class="font-medium text-slate-500 dark:text-slate-400 text-xs font-mono">{{ inv.po?.order_number || inv.po_id?.substring(0,8) }}</span>
+                  <!-- Supplier -->
+                  <span class="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">{{ inv.supplier?.name || '—' }}</span>
+                  <!-- Issued -->
+                  <span class="text-sm text-slate-500">{{ inv.issued_date | date:'d MMM y' }}</span>
+                  <!-- Due Date -->
+                  <span class="text-sm" [class.text-rose-600]="isDueOverdue(inv)" [class.font-black]="isDueOverdue(inv)">
+                    {{ inv.due_date ? (inv.due_date | date:'d MMM y') : '—' }}
+                    @if (isDueOverdue(inv)) { <span class="text-[9px] ml-1">⚠</span> }
+                  </span>
+                  <!-- Amount -->
+                  <span class="font-black text-emerald-700 dark:text-emerald-400 text-sm">{{ inv.total_amount | currency: storeService.currency() }}</span>
+                  <!-- Payment Status -->
+                  <span class="text-[11px] font-black px-2 py-1 rounded-full w-fit" [ngClass]="getPaymentStatusClass(inv.payment_status)">
+                    {{ inv.payment_status }}
+                  </span>
+                  <!-- Actions -->
+                  <div class="flex items-center gap-1.5">
+                    <!-- VIEW button (opens invoice preview modal instantly) -->
+                    <button (click)="openInvoicePrint(inv)"
+                      class="flex items-center gap-1 px-3 py-1.5 bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-700 rounded-lg text-[11px] font-black uppercase tracking-widest transition-colors"
+                      title="View & Print Invoice">
+                      <span class="material-symbols-rounded text-[14px]">visibility</span>
+                      View
+                    </button>
+                    <!-- Mark Paid -->
+                    @if (inv.payment_status !== 'PAID') {
+                      <button (click)="markInvoicePaid(inv)"
+                        class="text-[10px] font-black px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors whitespace-nowrap">
+                        Mark Paid
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- CLAIMS TAB                                             -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      @if (activeTab() === 'claims') {
+        <div class="flex-1 overflow-auto p-6">
+          @if (claims().length === 0) {
+            <div class="flex flex-col items-center justify-center h-full text-center max-w-sm mx-auto opacity-60">
+              <span class="material-symbols-rounded text-6xl text-slate-300 mb-4">verified_user</span>
+              <h3 class="text-xl font-bold text-slate-700 dark:text-slate-200">No Claims Filed</h3>
+              <p class="text-sm text-slate-500 mt-2">Use the <strong>"New Claim"</strong> button above to file a claim for damaged, missing, or incorrect goods from a supplier.</p>
+            </div>
+          } @else {
+            <div class="space-y-4">
+              @for (claim of claims(); track claim.id) {
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border shadow-sm overflow-hidden"
+                     [class.border-rose-200]="claim.status === 'OPEN'"
+                     [class.border-amber-200]="claim.status === 'ACKNOWLEDGED'"
+                     [class.border-green-200]="claim.status === 'RESOLVED'"
+                     [class.border-slate-200]="claim.status === 'REJECTED'">
+                  <div class="flex items-center justify-between p-5">
+                    <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-2xl flex items-center justify-center"
+                           [class.bg-rose-100]="claim.status === 'OPEN'"
+                           [class.text-rose-600]="claim.status === 'OPEN'"
+                           [class.bg-green-100]="claim.status === 'RESOLVED'"
+                           [class.text-green-600]="claim.status === 'RESOLVED'"
+                           [class.bg-amber-100]="claim.status === 'ACKNOWLEDGED'"
+                           [class.text-amber-600]="claim.status === 'ACKNOWLEDGED'"
+                           [class.bg-slate-100]="claim.status === 'REJECTED'"
+                           [class.text-slate-500]="claim.status === 'REJECTED'">
+                        <span class="material-symbols-rounded">
+                          {{ claim.status === 'RESOLVED' ? 'check_circle' : 'warning' }}
+                        </span>
+                      </div>
+                      <div>
+                        <div class="flex items-center gap-3">
+                          <span class="font-black text-slate-800 dark:text-slate-100 font-mono">{{ claim.claim_number }}</span>
+                          <span class="text-[11px] font-black px-2 py-0.5 rounded-full" [ngClass]="getClaimStatusClass(claim.status)">{{ claim.status }}</span>
+                          <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{{ claim.claim_type.replace('_', ' ') }}</span>
+                        </div>
+                        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">{{ claim.description }}</p>
+                        <p class="text-[11px] text-slate-400 mt-1">
+                          Supplier: {{ claim.supplier?.name || '—' }}
+                          @if (claim.po) { &nbsp;·&nbsp; PO: {{ claim.po.order_number || claim.po_id?.substring(0,8) }} }
+                          @if (claim.product) { &nbsp;·&nbsp; Item: {{ claim.product['name'] }} (Qty: {{ claim.quantity_affected }})}
+                        </p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                      @if (claim.status === 'OPEN' || claim.status === 'ACKNOWLEDGED') {
+                        <div class="flex flex-col gap-1">
+                          <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">Resolve As</p>
+                          <div class="flex gap-1">
+                            <button (click)="resolveClaim(claim, 'CREDIT_NOTE')" class="text-[10px] font-bold px-2 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">Credit Note</button>
+                            <button (click)="resolveClaim(claim, 'REPLACEMENT')" class="text-[10px] font-bold px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors">Replace</button>
+                            <button (click)="resolveClaim(claim, 'REFUND')" class="text-[10px] font-bold px-2 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors">Refund</button>
+                          </div>
+                        </div>
+                        <button (click)="notifySupplierWhatsApp(claim)"
+                          class="flex items-center gap-1 px-3 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-colors shadow-sm">
+                          <span class="material-symbols-rounded text-sm">chat</span>
+                          WhatsApp
+                        </button>
+                      }
+                      @if (claim.status === 'RESOLVED') {
+                        <span class="text-sm text-green-600 font-bold">✅ {{ claim.resolution_type?.replace('_', ' ') }}</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- New Claim Modal -->
+        @if (showClaimModal()) {
+          <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-700">
+              <div class="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span class="material-symbols-rounded text-rose-500">warning</span>
+                  File a Supplier Claim
+                </h3>
+                <button (click)="showClaimModal.set(false)" class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+              <div class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Supplier *</label>
+                    <select [(ngModel)]="claimForm.supplier_id" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-white">
+                      <option value="">Select supplier...</option>
+                      @for (s of suppliers(); track s.id) {
+                        <option [value]="s.id">{{ s.name }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Linked PO</label>
+                    <select [(ngModel)]="claimForm.po_id" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-white">
+                      <option value="">No PO link</option>
+                      @for (po of purchaseOrders(); track po.id) {
+                        <option [value]="po.id">{{ po.order_number || po.id.substring(0,8) }} – {{ po.supplier?.name }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Claim Type *</label>
+                    <select [(ngModel)]="claimForm.claim_type" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-white">
+                      <option value="DAMAGED">Damaged</option>
+                      <option value="SHORT_DELIVERED">Short Delivered</option>
+                      <option value="WRONG_ITEM">Wrong Item</option>
+                      <option value="DEFECTIVE">Defective</option>
+                      <option value="OVERCHARGED">Overcharged</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Qty Affected</label>
+                    <input type="number" [(ngModel)]="claimForm.quantity_affected" min="1" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-white">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Item Affected</label>
+                  <select [(ngModel)]="claimForm.product_id" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-white">
+                    <option value="">General claim (no specific item)</option>
+                    @for (p of products(); track p.id) {
+                      <option [value]="p.id">{{ p.name }}</option>
+                    }
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description *</label>
+                  <textarea [(ngModel)]="claimForm.description" rows="3" placeholder="Describe the issue in detail..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-rose-500 outline-none dark:text-white"></textarea>
+                </div>
+              </div>
+              <div class="p-6 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+                <button (click)="showClaimModal.set(false)" class="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                <button (click)="submitClaim()" [disabled]="!claimForm.supplier_id || !claimForm.description || isSubmittingClaim()"
+                  class="px-5 py-2.5 rounded-xl font-bold text-sm bg-rose-600 text-white hover:bg-rose-700 shadow-md disabled:opacity-50 transition-all">
+                  {{ isSubmittingClaim() ? 'Filing...' : 'File Claim' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+      }
+
+      <!-- PURCHASE ORDERS TAB (original content) -->
+      <div class="flex flex-1 gap-0 overflow-hidden relative" [style.display]="activeTab() === 'orders' ? 'flex' : 'none'">
       <!-- ── Receive PO Dialog Overlay (Global) ─────────────────────────── -->
       <div
         *ngIf="showReceiveDialog()"
@@ -486,22 +780,34 @@ import { PurchaseOrderPrintComponent } from "../../../../shared/components/purch
                       (click)="openReceiveDialog(po)"
                       class="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_8px_15px_rgba(16,185,129,0.2)] active:scale-95 transition-all flex items-center gap-2"
                     >
-                      <span class="material-symbols-rounded text-[15px]"
-                        >move_to_inbox</span
-                      >
+                      <span class="material-symbols-rounded text-[15px]">move_to_inbox</span>
                       Receive Goods
                     </button>
                   }
 
+                  @if (po.status === 'RECEIVED') {
+                    <button (click)="openInvoiceModal(po)"
+                      class="px-5 py-2 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_8px_15px_rgba(20,184,166,0.2)] active:scale-95 transition-all flex items-center gap-2">
+                      <span class="material-symbols-rounded text-[15px]">receipt_long</span>
+                      Generate Invoice
+                    </button>
+                  }
+
+                  @if (!(['CANCELLED', 'DRAFT'].includes(po.status))) {
+                    <button (click)="openClaimModal(po)"
+                      class="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 hover:bg-rose-100 font-bold text-xs rounded-xl transition-all flex items-center gap-2 border border-rose-100">
+                      <span class="material-symbols-rounded text-[15px]">warning</span>
+                      Raise Claim
+                    </button>
+                  }
+
                   <!-- Destructive Actions -->
-                  @if (!["RECEIVED", "CANCELLED"].includes(po.status)) {
+                  @if (!["RECEIVED", "CANCELLED", "INVOICED"].includes(po.status)) {
                     <button
                       (click)="cancelPO(po)"
                       class="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs rounded-xl transition-all flex items-center gap-2 border border-red-100 ml-2"
                     >
-                      <span class="material-symbols-rounded text-[15px]"
-                        >cancel</span
-                      >
+                      <span class="material-symbols-rounded text-[15px]">cancel</span>
                       Void
                     </button>
                   }
@@ -1459,7 +1765,80 @@ import { PurchaseOrderPrintComponent } from "../../../../shared/components/purch
           </div>
         }
       </div>
+
+      <!-- ── Invoice Generation Modal ─────────────────────────────────────── -->
+      @if (showInvoiceModal()) {
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-700">
+            <div class="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+              <div>
+                <h3 class="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span class="material-symbols-rounded text-teal-500">receipt_long</span>
+                  Generate Supplier Invoice
+                </h3>
+                <p class="text-xs text-slate-400 mt-0.5 font-mono">Linked to: {{ poForInvoice()?.order_number || poForInvoice()?.id?.substring(0,8) }}</p>
+              </div>
+              <button (click)="showInvoiceModal.set(false)" class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
+            <div class="p-6 space-y-5">
+              <div class="space-y-4">
+                <div class="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                  <div class="flex justify-between items-center mb-1">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">PO Subtotal</p>
+                    <p class="text-[11px] font-bold text-slate-600 dark:text-slate-300">{{ poForInvoice()?.subtotal || poForInvoice()?.total_amount | currency: storeService.currency() }}</p>
+                  </div>
+                  @if (poForInvoice()?.tax_amount! > 0) {
+                    <div class="flex justify-between items-center mb-3">
+                      <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">PO Tax Applied</p>
+                      <p class="text-[11px] font-bold text-slate-600 dark:text-slate-300">{{ poForInvoice()?.tax_amount | currency: storeService.currency() }}</p>
+                    </div>
+                  }
+                  <div class="border-t border-slate-200 dark:border-slate-700 pt-3">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Invoice Total Due</p>
+                    <p class="text-2xl font-black text-slate-800 dark:text-white">
+                      {{ poForInvoice()?.total_amount | currency: storeService.currency() }}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Terms (Net Days)</label>
+                  <input type="number" [ngModel]="invoiceDueDays()" (ngModelChange)="invoiceDueDays.set($event)" min="1"
+                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold focus:ring-2 focus:ring-teal-400 outline-none dark:text-white">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Invoice Notes (optional)</label>
+                <textarea [ngModel]="invoiceNotes()" (ngModelChange)="invoiceNotes.set($event)" rows="2" placeholder="Payment terms, bank details..."
+                  class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-teal-400 outline-none dark:text-white"></textarea>
+              </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+              <button (click)="showInvoiceModal.set(false)" class="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+              <button (click)="generateInvoice()" [disabled]="isGeneratingInvoice()"
+                class="px-5 py-2.5 rounded-xl font-bold text-sm bg-teal-600 text-white hover:bg-teal-700 shadow-md disabled:opacity-50 transition-all flex items-center gap-2">
+                <span class="material-symbols-rounded text-sm" *ngIf="isGeneratingInvoice()">progress_activity</span>
+                {{ isGeneratingInvoice() ? 'Generating...' : 'Generate Invoice' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ── Invoice View/Print Modal — OUTSIDE overflow-hidden container ──── -->
     </div>
+    @if (showInvoicePrintModal() && invoiceForPrint()) {
+      <app-supplier-invoice-print
+        [invoice]="invoiceForPrint()!"
+        [currency]="storeService.currency()"
+        [storeName]="storeService.currentStore()?.name || 'OmniPOS'"
+        [poNumber]="invoiceForPrint()?.po?.order_number || invoiceForPrint()?.invoice_number?.replace('INV-','PO-') || ''"
+        (close)="showInvoicePrintModal.set(false)"
+      />
+    }
+    </div><!-- /display:contents wrapper -->
   `,
 })
 export class PurchaseOrderComponent {
@@ -1515,6 +1894,66 @@ export class PurchaseOrderComponent {
   // ── Print Preview State ──────────────────────────────────────────────────
   showPrintPreview = signal(false);
   isPrinting = signal(false);
+
+  // ── Top-level Tab ────────────────────────────────────────────────────────
+  activeTab = signal<'orders' | 'invoices' | 'claims'>('orders');
+
+  // ── Invoice State ─────────────────────────────────────────────────────────
+  invoices = signal<SupplierInvoice[]>([]);
+  invoiceSearchTerm = signal('');
+  invoiceStatusFilter = signal<'ALL' | 'UNPAID' | 'PAID' | 'OVERDUE'>('ALL');
+
+  filteredInvoices = computed(() => {
+    let list = this.invoices();
+
+    // Status Filter
+    const status = this.invoiceStatusFilter();
+    if (status !== 'ALL') {
+      if (status === 'OVERDUE') {
+        list = list.filter(inv => this.isDueOverdue(inv));
+      } else if (status === 'UNPAID') {
+        list = list.filter(inv => inv.payment_status !== 'PAID' && !this.isDueOverdue(inv));
+      } else if (status === 'PAID') {
+        list = list.filter(inv => inv.payment_status === 'PAID');
+      }
+    }
+
+    // Search Filter
+    const search = this.invoiceSearchTerm().toLowerCase().trim();
+    if (search) {
+      list = list.filter(inv =>
+        (inv.invoice_number && inv.invoice_number.toLowerCase().includes(search)) ||
+        (inv.po?.order_number && inv.po.order_number.toLowerCase().includes(search)) ||
+        (inv.supplier?.name && inv.supplier.name.toLowerCase().includes(search))
+      );
+    }
+
+    return list;
+  });
+
+  selectedInvoice = signal<SupplierInvoice | null>(null);
+  isGeneratingInvoice = signal(false);
+
+  invoiceDueDays = signal(30);
+  invoiceNotes = signal('');
+  showInvoiceModal = signal(false);
+  poForInvoice = signal<PurchaseOrder | null>(null);
+  // Print modal state
+  showInvoicePrintModal = signal(false);
+  invoiceForPrint = signal<(SupplierInvoice & { items?: any[]; supplier?: any; po?: any }) | null>(null);
+
+  // ── Claim State ───────────────────────────────────────────────────────────
+  claims = signal<SupplierClaim[]>([]);
+  showClaimModal = signal(false);
+  claimForm = {
+    po_id: '' as string,
+    supplier_id: '' as string,
+    product_id: '' as string,
+    claim_type: 'DAMAGED' as ClaimType,
+    quantity_affected: 1,
+    description: ''
+  };
+  isSubmittingClaim = signal(false);
 
   // ── P3: Reorder suggestions ───────────────────────────────────────────────
   showSuggestions = signal(true); // Open by default so users notice it
@@ -1738,12 +2177,13 @@ export class PurchaseOrderComponent {
   // ── Status helper ─────────────────────────────────────────────────────────
   getStatusClass(status: POStatus | string): Record<string, boolean> {
     return {
-      "bg-slate-100 text-slate-600": status === "DRAFT",
-      "bg-blue-100 text-blue-800": status === "SENT",
-      "bg-purple-100 text-purple-800": status === "ORDERED",
-      "bg-orange-100 text-orange-800": status === "PARTIAL",
-      "bg-green-100 text-green-800": status === "RECEIVED",
-      "bg-red-100 text-red-800": status === "CANCELLED",
+      'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300': status === 'DRAFT',
+      'bg-blue-100 text-blue-800': status === 'SENT',
+      'bg-purple-100 text-purple-800': status === 'ORDERED',
+      'bg-orange-100 text-orange-800': status === 'PARTIAL',
+      'bg-green-100 text-green-800': status === 'RECEIVED',
+      'bg-teal-100 text-teal-800': status === 'INVOICED',
+      'bg-red-100 text-red-800': status === 'CANCELLED',
     };
   }
 
@@ -2091,12 +2531,20 @@ export class PurchaseOrderComponent {
       unit_cost: item.cost,
     }));
 
-    const totalAmount = this.calculateTotal();
+    const subtotal = this.calculateTotal();
+    const storeConfig = this.store()?.config;
+    const taxEnabled = storeConfig?.tax_enabled || false;
+    const taxRate = taxEnabled ? (storeConfig?.tax_rate || 0) : 0;
+    const taxAmount = subtotal * taxRate;
+    const totalAmount = subtotal + taxAmount;
 
     if (this.editMode() && this.editingPoId()) {
       // ── P1: UPDATE existing DRAFT PO ────────────────────────────────
       const updates: Partial<PurchaseOrder> = {
         supplier_id: formVal.supplier_id,
+        subtotal: subtotal,
+        tax_amount: taxAmount,
+        tax_enabled: taxEnabled,
         total_amount: totalAmount,
         expected_arrival: formVal.expected_arrival || null,
         notes: formVal.notes || null,
@@ -2121,6 +2569,9 @@ export class PurchaseOrderComponent {
         store_id: storeId,
         supplier_id: formVal.supplier_id,
         status: "DRAFT",
+        subtotal: subtotal,
+        tax_amount: taxAmount,
+        tax_enabled: taxEnabled,
         total_amount: totalAmount,
         expected_arrival:
           formVal.expected_arrival ||
@@ -2394,4 +2845,228 @@ export class PurchaseOrderComponent {
       },
     });
   }
+
+  // ── Invoice Methods ───────────────────────────────────────────────────────
+
+  loadInvoices() {
+    const storeId = this.store()?.id;
+    if (!storeId) return;
+    this.supabase.getSupplierInvoices(storeId).subscribe({
+      next: (data) => this.invoices.set(data),
+      error: (err) => console.error('Failed to load invoices', err)
+    });
+  }
+
+  openInvoiceModal(po: PurchaseOrder) {
+    this.poForInvoice.set(po);
+
+    this.invoiceDueDays.set(30);
+    this.invoiceNotes.set('');
+    this.showInvoiceModal.set(true);
+  }
+
+  async generateInvoice() {
+    const po = this.poForInvoice();
+    const storeId = this.store()?.id;
+    if (!po || !storeId) return;
+
+    this.isGeneratingInvoice.set(true);
+    try {
+      const poItems = this.selectedPOItems();
+      // Use exact amounts approved on the PO
+      const subtotal = po.subtotal ?? po.total_amount;
+      const taxAmt = po.tax_amount ?? 0;
+      const total = po.total_amount;
+
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + this.invoiceDueDays());
+
+      const invoice: Omit<SupplierInvoice, 'id' | 'created_at' | 'updated_at'> = {
+        store_id: storeId,
+        po_id: po.id,
+        supplier_id: po.supplier_id,
+        invoice_number: '', // auto-generated in service
+        status: 'DRAFT',
+        subtotal,
+        tax_amount: taxAmt,
+        total_amount: total,
+        payment_status: 'UNPAID',
+        issued_date: new Date().toISOString().split('T')[0],
+        due_date: dueDate.toISOString().split('T')[0],
+        notes: this.invoiceNotes()
+      };
+
+      const lineItems: Omit<SupplierInvoiceItem, 'id'>[] = poItems.map(item => ({
+        invoice_id: '',  // will be set in service
+        product_id: item.product_id,
+        description: this.getProductName(item.product_id),
+        quantity: item.quantity_ordered,
+        unit_cost: item.unit_cost,
+        line_total: item.quantity_ordered * item.unit_cost
+      }));
+
+      this.supabase.createSupplierInvoice(invoice, lineItems).subscribe({
+        next: () => {
+          this.showInvoiceModal.set(false);
+          this.loadInvoices();
+          // Refresh the PO to show INVOICED status
+          if (this.selectedPO()?.id === po.id) {
+            this.selectedPO.set({ ...this.selectedPO()!, status: 'INVOICED' });
+          }
+          this.isGeneratingInvoice.set(false);
+          this.activeTab.set('invoices');
+        },
+        error: (err) => {
+          console.error('Failed to generate invoice', err);
+          this.isGeneratingInvoice.set(false);
+        }
+      });
+    } catch (e) {
+      console.error(e);
+      this.isGeneratingInvoice.set(false);
+    }
+  }
+
+  markInvoicePaid(invoice: SupplierInvoice) {
+    this.supabase.updateSupplierInvoice(invoice.id, { status: 'PAID', payment_status: 'PAID' }).subscribe({
+      next: () => this.loadInvoices(),
+      error: err => console.error('Failed to mark paid', err)
+    });
+  }
+
+  getInvoiceStatusClass(status: string): string {
+    const map: Record<string, string> = {
+      'DRAFT': 'bg-slate-100 text-slate-600',
+      'FINALISED': 'bg-blue-100 text-blue-700',
+      'PAID': 'bg-green-100 text-green-700',
+      'DISPUTED': 'bg-red-100 text-red-700'
+    };
+    return map[status] ?? 'bg-slate-100 text-slate-600';
+  }
+
+  getPaymentStatusClass(status: string): string {
+    const map: Record<string, string> = {
+      'UNPAID': 'bg-rose-100 text-rose-700',
+      'PARTIAL': 'bg-amber-100 text-amber-700',
+      'PAID': 'bg-green-100 text-green-700'
+    };
+    return map[status] ?? 'bg-slate-100 text-slate-600';
+  }
+
+  // ── Claim Methods ─────────────────────────────────────────────────────────
+
+  loadClaims() {
+    const storeId = this.store()?.id;
+    if (!storeId) return;
+    this.supabase.getSupplierClaims(storeId).subscribe({
+      next: (data) => this.claims.set(data),
+      error: (err) => console.error('Failed to load claims', err)
+    });
+  }
+
+  openClaimModal(po?: PurchaseOrder) {
+    this.claimForm = {
+      po_id: po?.id ?? '',
+      supplier_id: po?.supplier_id ?? '',
+      product_id: '',
+      claim_type: 'DAMAGED',
+      quantity_affected: 1,
+      description: ''
+    };
+    this.showClaimModal.set(true);
+  }
+
+  submitClaim() {
+    const storeId = this.store()?.id;
+    if (!storeId || !this.claimForm.supplier_id || !this.claimForm.description) return;
+    this.isSubmittingClaim.set(true);
+
+    this.supabase.createSupplierClaim({
+      store_id: storeId,
+      po_id: this.claimForm.po_id || undefined,
+      supplier_id: this.claimForm.supplier_id,
+      claim_number: '', // auto-generated
+      claim_type: this.claimForm.claim_type,
+      product_id: this.claimForm.product_id || undefined,
+      quantity_affected: this.claimForm.quantity_affected,
+      description: this.claimForm.description,
+      status: 'OPEN'
+    }).subscribe({
+      next: () => {
+        this.showClaimModal.set(false);
+        this.loadClaims();
+        this.isSubmittingClaim.set(false);
+        this.activeTab.set('claims');
+      },
+      error: (err) => {
+        console.error('Failed to submit claim', err);
+        this.isSubmittingClaim.set(false);
+      }
+    });
+  }
+
+  resolveClaim(claim: SupplierClaim, resolution: 'CREDIT_NOTE' | 'REPLACEMENT' | 'REFUND' | 'NONE') {
+    this.supabase.updateSupplierClaim(claim.id, {
+      status: 'RESOLVED',
+      resolution_type: resolution,
+      resolved_at: new Date().toISOString()
+    }).subscribe({
+      next: () => this.loadClaims(),
+      error: err => console.error('Failed to resolve claim', err)
+    });
+  }
+
+  notifySupplierWhatsApp(claim: SupplierClaim) {
+    const supplier = this.suppliers().find(s => s.id === claim.supplier_id);
+    const phone = (supplier?.whatsapp || supplier?.phone || '').replace(/[\s+\-()]/g, '');
+    const poRef = claim.po ? `PO ${claim.po.order_number || claim.po.id?.substring(0, 8)}` : 'a recent order';
+    const productName = this.products().find(p => p.id === claim.product_id)?.name || 'item';
+    const message = `Dear ${supplier?.name || 'Supplier'},\n\nWe are raising a formal claim (Ref: ${claim.claim_number}) regarding ${poRef}.\n\nIssue: ${claim.claim_type.replace('_', ' ')} — ${productName} (Qty: ${claim.quantity_affected})\n\nDetails: ${claim.description}\n\nPlease acknowledge and advise on resolution.\n\nThank you.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+  }
+
+  /** Opens the invoice view/print modal instantly using already-loaded data.
+   *  Then fetches full items in the background to enrich the preview. */
+  openInvoicePrint(inv: SupplierInvoice): void {
+    // Step 1: Open modal IMMEDIATELY with the data we already have.
+    // This is synchronous — so window.print() inside the modal will work when user clicks Print.
+    this.invoiceForPrint.set(inv as any);
+    this.showInvoicePrintModal.set(true);
+
+    // Step 2: Fetch full items in background and update the modal if successful.
+    this.supabase.getSupplierInvoiceWithItems(inv.id).subscribe({
+      next: (fullInvoice) => {
+        if (fullInvoice) {
+          // Merge in line items; keep supplier/po from the already-loaded list data
+          this.invoiceForPrint.set({
+            ...fullInvoice,
+            supplier: (inv as any).supplier ?? (fullInvoice as any).supplier,
+            po: (inv as any).po ?? (fullInvoice as any).po,
+          } as any);
+        }
+      },
+      error: () => { /* silent — modal already open with base data */ }
+    });
+  }
+
+  /** True if invoice due date is in the past and not yet paid */
+  isDueOverdue(inv: SupplierInvoice): boolean {
+    if (!inv.due_date || inv.payment_status === 'PAID') return false;
+    return new Date(inv.due_date) < new Date();
+  }
+
+  getInvoiceSubtotal(): number {
+    return this.selectedPOItems().reduce((sum: number, item: any) => sum + (item.quantity_ordered * item.unit_cost), 0);
+  }
+
+  getClaimStatusClass(status: string): string {
+    const map: Record<string, string> = {
+      'OPEN': 'bg-rose-100 text-rose-700',
+      'ACKNOWLEDGED': 'bg-amber-100 text-amber-700',
+      'RESOLVED': 'bg-green-100 text-green-700',
+      'REJECTED': 'bg-slate-100 text-slate-600'
+    };
+    return map[status] ?? 'bg-slate-100 text-slate-600';
+  }
 }
+

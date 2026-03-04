@@ -2,10 +2,10 @@ import { Component, inject, computed, signal, effect, HostListener } from '@angu
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { StoreConfigService } from '../../../core/services/store-config.service';
-import { MockSupabaseService, Store, Category, Product, Customer } from '../../../core/services/mock-supabase.service';
+import { MockSupabaseService, Store, Category, Product, Customer, PaymentMethod } from '../../../core/services/mock-supabase.service';
 import { DialogService } from '../../../core/services/dialog.service';
 import { toSignal, toObservable } from '@angular/core/rxjs-interop';
-import { switchMap, of, tap, debounceTime } from 'rxjs';
+import { switchMap, of, tap, debounceTime, firstValueFrom } from 'rxjs';
 import { POSSharedStateService } from '../../../core/services/pos-shared-state.service';
 import { FormsModule } from '@angular/forms';
 
@@ -423,6 +423,39 @@ import { FormsModule } from '@angular/forms';
                       </button>
                     </div>
                   }
+
+                  <!-- ✅ FIXED: Promo Code inside the customer card -->
+                  <div class="mt-4 pt-4 border-t border-dashed border-indigo-200 dark:border-indigo-900/30">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2">Promo Code</p>
+                    <div class="flex gap-2">
+                       <input 
+                         type="text" 
+                         [value]="promoCodeInput()"
+                         (input)="updatePromoInput($event)"
+                         placeholder="Enter code e.g. WIN1234" 
+                         [disabled]="!!sharedState.appliedPromotion()"
+                         class="w-full uppercase bg-white dark:bg-slate-800 px-4 py-2 rounded-xl text-sm border-none ring-1 ring-indigo-100 dark:ring-indigo-900 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 font-bold tracking-widest text-slate-700 dark:text-slate-200">
+                       
+                       @if (!sharedState.appliedPromotion()) {
+                         <button 
+                           (click)="applyPromoCode()"
+                           [disabled]="!promoCodeInput() || validatingPromo()"
+                           class="px-4 bg-indigo-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm flex items-center justify-center min-w-[80px]">
+                           @if(validatingPromo()) {
+                              <span class="material-symbols-rounded animate-spin text-[16px]">hourglass_empty</span>
+                           } @else {
+                              Apply
+                           }
+                         </button>
+                       } @else {
+                         <button 
+                           (click)="clearPromo()"
+                           class="px-4 bg-red-100 text-red-600 rounded-xl text-sm font-bold hover:bg-red-200 transition-colors flex items-center justify-center">
+                           Clear
+                         </button>
+                       }
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Phase 6: Fulfillment Commander -->
@@ -469,10 +502,17 @@ import { FormsModule } from '@angular/forms';
                 </div>
               }
 
-              @if (sharedState.loyaltyDiscount() > 0) {
+              @if (sharedState.loyaltyDiscount() > 0 && !sharedState.appliedPromotion()) {
                 <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl flex flex-col items-center justify-center border border-emerald-100 dark:border-emerald-900/30 animate-pulse">
-                  <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600">Reward</span>
+                  <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600">VIP Reward</span>
                   <span class="text-lg font-bold text-emerald-600">-{{ sharedState.loyaltyDiscount() | currency: storeService.currentStore()?.config?.currency }}</span>
+                </div>
+              }
+
+              @if (sharedState.appliedPromotion()) {
+                <div class="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-2xl flex flex-col items-center justify-center border border-orange-100 dark:border-orange-900/30 animate-pulse">
+                  <span class="text-[10px] font-black uppercase tracking-widest text-orange-600">Promo: {{ sharedState.appliedPromotion()?.code }}</span>
+                  <span class="text-lg font-bold text-orange-600">-{{ sharedState.loyaltyDiscount() | currency: storeService.currentStore()?.config?.currency }}</span>
                 </div>
               }
 
@@ -810,6 +850,41 @@ export class EposComponent {
     this.showCustomerDropdown.set(true);
   }
 
+  // Promotions
+  promoCodeInput = signal('');
+  validatingPromo = signal(false);
+
+  updatePromoInput(event: Event) {
+    this.promoCodeInput.set((event.target as HTMLInputElement).value);
+  }
+
+  applyPromoCode() {
+    const code = this.promoCodeInput().trim().toUpperCase();
+    if (!code || !this.storeId()) return;
+
+    this.validatingPromo.set(true);
+    this.mockSupabase.validatePromotion(code, this.storeId()!).subscribe({
+      next: (promo) => {
+        this.validatingPromo.set(false);
+        if (promo) {
+          this.sharedState.appliedPromotion.set(promo);
+          this.dialogService.alert('Promo Applied', `Successfully applied ${promo.discount_percentage}% discount!`);
+        } else {
+          this.dialogService.alert('Invalid Code', 'This promo code is either invalid, expired, or already used.');
+          this.promoCodeInput.set('');
+        }
+      },
+      error: () => {
+        this.validatingPromo.set(false);
+      }
+    });
+  }
+
+  clearPromo() {
+    this.sharedState.appliedPromotion.set(null);
+    this.promoCodeInput.set('');
+  }
+
   selectCustomer(customer: Customer) {
     this.sharedState.selectedCustomer.set(customer);
     this.customerSearchQuery.set('');
@@ -893,16 +968,65 @@ export class EposComponent {
 
   async completeSale() {
     if (this.isCompletingSale()) return;
+
+    // Safety check - actually have items
+    const items = this.sharedState.cart();
+    if (items.length === 0) {
+      this.dialogService.alert('Cart Empty', 'Please add items to the cart before completing the sale.');
+      return;
+    }
+
     this.isCompletingSale.set(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const storeId = this.storeId();
+      if (!storeId) throw new Error("No active store");
 
+      let paymentMethod: PaymentMethod = 'CASH';
+      if (this.activePaymentMethod() === 'split') {
+        paymentMethod = 'SPLIT';
+      } else if (this.activePaymentMethod() === 'card') {
+        paymentMethod = 'CARD';
+      }
+
+      const payments = Object.entries(this.paymentAllocations())
+        .filter(([_, amt]) => amt > 0)
+        .map(([method, amt]) => ({ method: method.toUpperCase() as PaymentMethod, amount: amt }));
+
+      const txData = {
+        store_id: storeId,
+        customer_id: this.sharedState.selectedCustomer()?.id,
+        subtotal_amount: this.subtotal(),
+        total_discount: this.sharedState.loyaltyDiscount(),
+        delivery_fee: this.sharedState.shippingFee(),
+        total_amount: this.total(),
+        tax_amount: this.tax(),
+        payment_method: paymentMethod,
+        payments: payments,
+        metadata: { type: 'SALE' }
+      } as any;
+
+      const newTx = await firstValueFrom(this.mockSupabase.addTransaction(txData, items));
+
+      // 1. Clear State
       this.sharedState.clearCart();
+
+      const promo = this.sharedState.appliedPromotion();
+      if (promo) {
+        this.mockSupabase.markPromotionUsed(promo.id, newTx.id).subscribe();
+      }
       this.showCheckoutModal.set(false);
       this.selectedPaymentMethods.set([]);
-      this.dialogService.alert('Payment Successful', 'The transaction has been completed successfully.', 'Finish');
+      this.activePaymentMethod.set('cash');
+      this.paymentAllocations.set({ cash: 0, card: 0 });
+      this.sharedState.selectedCustomer.set(null);
+      this.sharedState.shippingFee.set(0);
+
+      // 2. Refresh Products to show new stock
+      // (Refresh is handled internally by mockSupabase.addTransaction)
+
+      // 3. Show Success
+      this.dialogService.alert('Payment Successful', 'The transaction has been completed successfully and inventory has been updated.', 'Finish');
     } catch (error) {
       console.error('Sale failed', error);
       this.dialogService.alert('Transaction Failed', 'There was an error processing the payment. Please try again.', 'Dismiss');
