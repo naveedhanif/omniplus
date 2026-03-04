@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, effect } from '@angular/core';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineStorageService, SyncQueueItem } from './offline-storage.service';
-import { MockSupabaseService, Product, Supplier } from './mock-supabase.service';
+import { MockSupabaseService } from './mock-supabase.service';
 
 @Injectable({ providedIn: 'root' })
 export class SyncService {
@@ -18,10 +18,18 @@ export class SyncService {
     /** Last error message from a sync attempt */
     syncError = signal<string | null>(null);
 
+    /**
+     * Guards the reactive effect — set to true only AFTER the IndexedDB
+     * has fully opened. This prevents the race condition where the effect
+     * fires on startup before the database is ready.
+     */
+    private isInitialised = signal<boolean>(false);
+
     constructor() {
-        // When the internet comes back, automatically start draining the queue
+        // When the internet comes back, automatically start draining the queue.
+        // The isInitialised guard ensures the DB is open before we attempt reads.
         effect(() => {
-            if (this.connectivity.isOnline()) {
+            if (this.connectivity.isOnline() && this.isInitialised()) {
                 console.log('[SyncService] Back online — draining sync queue...');
                 this.drainSyncQueue();
             }
@@ -31,15 +39,19 @@ export class SyncService {
     // ─── Initialisation ─────────────────────────────────────────────────────
 
     /**
-     * Called once on app startup.
-     * Opens the local DB and populates it with fresh data from Supabase.
+     * Called once on app startup from AppComponent.
+     * Strictly sequenced: open DB → count queue → mark ready → seed → drain.
      */
     async initialise(): Promise<void> {
-        await this.offlineStorage.init();
-        await this.refreshPendingCount();
+        await this.offlineStorage.init();    // Step 1: Open IndexedDB — MUST complete first
+        await this.refreshPendingCount();    // Step 2: Count any leftover queued items
+
+        // Step 3: Mark as ready — the effect above will now respond safely
+        this.isInitialised.set(true);
 
         if (this.connectivity.isOnline()) {
-            await this.seedLocalCache();
+            await this.seedLocalCache();     // Step 4: Populate local cache from Supabase
+            await this.drainSyncQueue();     // Step 5: Drain any queue from a previous offline session
         }
     }
 
@@ -166,8 +178,13 @@ export class SyncService {
 
     /** Refreshes the pending count signal for the UI badge */
     private async refreshPendingCount(): Promise<void> {
-        const pending = await this.offlineStorage.getPendingSyncItems();
-        this.pendingCount.set(pending.length);
+        try {
+            const pending = await this.offlineStorage.getPendingSyncItems();
+            this.pendingCount.set(pending.length);
+        } catch {
+            // DB may not be open yet — silently ignore
+            this.pendingCount.set(0);
+        }
     }
 
     /** Offline-aware PIN lookup — checks local IndexedDB first */
