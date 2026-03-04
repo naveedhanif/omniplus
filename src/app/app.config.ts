@@ -1,7 +1,6 @@
-import { ApplicationConfig, provideZoneChangeDetection, isDevMode } from '@angular/core';
+import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter, withHashLocation } from '@angular/router';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
-import { provideServiceWorker } from '@angular/service-worker';
 
 import { EposComponent } from './features/pos/components/epos.component';
 import { AdminDashboardComponent } from './features/admin/components/admin-dashboard.component';
@@ -24,10 +23,6 @@ export const appConfig: ApplicationConfig = {
       { path: 'admin', component: AdminDashboardComponent, title: 'OmniPOS | Admin', canActivate: [adminGuard] },
       // Redirect root to epos by default (which drops into the pin-pad if blocked)
       { path: '', redirectTo: 'epos', pathMatch: 'full' }
-    ], withHashLocation()),
-    provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
-      registrationStrategy: 'registerWhenStable:30000'
-    })
+    ], withHashLocation())
   ]
 };
