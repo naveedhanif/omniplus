@@ -13,8 +13,8 @@ import { ConnectivityService } from './core/services/connectivity.service';
   template: `
     <!-- ── Global Offline / Sync Status Banner ── -->
     @if (!connectivity.isOnline()) {
-      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-amber-500 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg animate-in slide-in-from-top-2">
-        <span class="material-symbols-rounded text-[16px] animate-pulse">wifi_off</span>
+      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-amber-500 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg transition-all duration-300">
+        <span class="material-symbols-rounded text-[16px]">wifi_off</span>
         Offline Mode — Working from local cache
         @if (syncService.pendingCount() > 0) {
           <span class="bg-white text-amber-600 rounded-full px-2.5 py-0.5 font-black">{{ syncService.pendingCount() }} queued</span>
@@ -22,7 +22,7 @@ import { ConnectivityService } from './core/services/connectivity.service';
       </div>
     }
     @if (connectivity.isOnline() && syncService.isSyncing()) {
-      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg animate-in slide-in-from-top-2">
+      <div class="fixed top-0 inset-x-0 z-[9999] flex items-center justify-center gap-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest py-2.5 shadow-lg transition-all duration-300">
         <span class="material-symbols-rounded text-[16px] animate-spin">sync</span>
         Syncing {{ syncService.pendingCount() }} pending transactions...
       </div>

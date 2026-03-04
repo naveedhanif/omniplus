@@ -5,11 +5,12 @@ import { StoreConfigService } from '../../../core/services/store-config.service'
 import { MockSupabaseService, Store, Category, Product, Customer, PaymentMethod } from '../../../core/services/mock-supabase.service';
 import { DialogService } from '../../../core/services/dialog.service';
 import { toSignal, toObservable } from '@angular/core/rxjs-interop';
-import { switchMap, of, tap, debounceTime, firstValueFrom } from 'rxjs';
+import { switchMap, of, tap, debounceTime, firstValueFrom, from } from 'rxjs';
 import { POSSharedStateService } from '../../../core/services/pos-shared-state.service';
 import { FormsModule } from '@angular/forms';
 import { SyncService } from '../../../core/services/sync.service';
 import { ConnectivityService } from '../../../core/services/connectivity.service';
+import { OfflineStorageService } from '../../../core/services/offline-storage.service';
 
 @Component({
   selector: 'app-epos',
@@ -725,6 +726,7 @@ export class EposComponent {
   sharedState = inject(POSSharedStateService);
   syncService = inject(SyncService);
   connectivity = inject(ConnectivityService);
+  offlineStorage = inject(OfflineStorageService);
 
   // State Signals
   viewMode = signal<'GRID' | 'LIST'>('GRID');
@@ -745,14 +747,36 @@ export class EposComponent {
 
   categories = toSignal(
     toObservable(this.storeId).pipe(
-      switchMap(id => id ? this.mockSupabase.getCategories(id) : of([]))
+      switchMap(id => {
+        if (!id) return of([]);
+        if (this.connectivity.isOnline()) {
+          // Online: fetch live from Supabase
+          return this.mockSupabase.getCategories(id);
+        } else {
+          // Offline: read from local IndexedDB cache
+          return from(this.offlineStorage.getAll<Category>('categories'));
+        }
+      })
     ),
     { initialValue: [] as Category[] }
   );
 
   products = toSignal(
     toObservable(this.storeId).pipe(
-      switchMap(id => id ? this.mockSupabase.getProducts(id) : of([]))
+      switchMap(id => {
+        if (!id) return of([]);
+        if (this.connectivity.isOnline()) {
+          // Online: fetch live from Supabase
+          return this.mockSupabase.getProducts(id);
+        } else {
+          // Offline: read from local IndexedDB cache filtered by store
+          return from(
+            this.offlineStorage.getAll<Product>('products').then(
+              all => all.filter(p => p.store_id === id)
+            )
+          );
+        }
+      })
     ),
     { initialValue: [] as Product[] }
   );
