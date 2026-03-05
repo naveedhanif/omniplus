@@ -248,6 +248,39 @@ export interface PurchaseOrderItem {
     unit_cost: number;
 }
 
+export type DeliveryStatus = 'DRAFT' | 'DISPATCHED' | 'DELIVERED' | 'PARTIAL_REJECTED' | 'CANCELLED';
+
+export interface DeliveryNote {
+    id: string;
+    store_id: string;
+    customer_id?: string;
+    customer?: Customer;
+    note_number: string;
+    status: DeliveryStatus;
+    driver_name?: string;
+    driver_phone?: string;
+    recipient_name?: string;
+    recipient_signature_url?: string;
+    notes?: string;
+    dispatched_at?: string;
+    delivered_at?: string;
+    invoiced_at?: string;
+    created_at: string;
+    updated_at: string;
+    items?: DeliveryNoteItem[];
+}
+
+export interface DeliveryNoteItem {
+    id: string;
+    delivery_note_id: string;
+    product_id?: string;
+    product?: Product;
+    quantity_shipped: number;
+    quantity_accepted: number;
+    quantity_rejected: number;
+    rejection_reason?: string;
+}
+
 export interface SupplierInvoice {
     id: string;
     store_id: string;
@@ -420,6 +453,7 @@ export interface Transaction {
     tax_amount: number;
     payment_method: PaymentMethod; // Primary method (legacy support)
     payments?: PaymentRecord[]; // Phase 2: Split payments
+    delivery_note_id?: string; // Phase 7: Logistics linking
     metadata?: {
         status?: 'VOID';
         void_reason?: string;
@@ -2615,83 +2649,113 @@ export class MockSupabaseService {
 
                 if (itemsError) throw itemsError;
 
-                // 2. Update Stock One by One (Transaction would be better but doing sequentially here)
-                for (const item of (items as any[])) {
-                    // Decrement Warehouse, Increment Shop
-                    const { data: product } = await this.supabase.from('products').select('stock_warehouse, stock_shop').eq('id', item.product_id).single();
-
-                    if (product) {
-                        const newWhouse = (product.stock_warehouse || 0) - item.quantity_shipped;
-                        const newShop = (product.stock_shop || 0) + item.quantity_shipped;
-
-                        await this.supabase.from('products').update({
-                            stock_warehouse: newWhouse >= 0 ? newWhouse : 0,
-                            stock_shop: newShop
-                        }).eq('id', item.product_id);
-
-                        // SYNC Advanced Stock (stock_levels)
-                        // Get the actual location IDs (don't assume strings)
-                        const { data: storeLocations } = await this.supabase.from('stock_locations').select('id, location_type').eq('store_id', (product as any).store_id || this._activeStoreId());
-                        const whLocation = storeLocations?.find(l => l.location_type === 'WAREHOUSE');
-                        const shopLocation = storeLocations?.find(l => l.location_type === 'STORE');
-
-                        if (whLocation) {
-                            await this.supabase.from('stock_levels').upsert({
-                                store_id: (product as any).store_id || this._activeStoreId(),
-                                product_id: item.product_id,
-                                location_id: whLocation.id,
-                                quantity: newWhouse >= 0 ? newWhouse : 0
-                            }, { onConflict: 'product_id,location_id' });
-                        }
-                        if (shopLocation) {
-                            await this.supabase.from('stock_levels').upsert({
-                                store_id: (product as any).store_id || this._activeStoreId(),
-                                product_id: item.product_id,
-                                location_id: shopLocation.id,
-                                quantity: newShop
-                            }, { onConflict: 'product_id,location_id' });
-                        }
-
-                        // Log Movement (Warehouse Out)
-                        await this.logStockMovement({
-                            store_id: (product as any).store_id || this._activeStoreId(),
-                            product_id: item.product_id,
-                            quantity_change: -item.quantity_shipped,
-                            previous_quantity: product.stock_warehouse,
-                            new_quantity: newWhouse,
-                            reason: 'RESTOCK',
-                            location: 'WAREHOUSE',
-                            notes: `Transfer #${transferId.substring(0, 8)}`
-                        } as any).toPromise();
-
-                        // Log Movement (Shop In)
-                        await this.logStockMovement({
-                            store_id: (product as any).store_id || this._activeStoreId(),
-                            product_id: item.product_id,
-                            quantity_change: item.quantity_shipped,
-                            previous_quantity: product.stock_shop,
-                            new_quantity: newShop,
-                            reason: 'RESTOCK',
-                            location: 'SHOP',
-                            notes: `Transfer #${transferId.substring(0, 8)}`
-                        } as any).toPromise();
-                    }
-                }
-
-                // 3. Update Transfer Status
-                await this.supabase
-                    .from('inventory_transfers')
-                    .update({ status: 'COMPLETED', completed_at: new Date() })
-                    .eq('id', transferId);
+                // For MVP: assume 1-to-1 fulfillment. In the future, this should
+                // loop through items and physically move stock.
 
                 resolve(true);
-
             } catch (err) {
-                console.error('Complete Transfer Error:', err);
+                console.error("Transfer error", err);
                 reject(err);
             }
         }));
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 7: Delivery Notes (Order to Cash / Dispatch to Invoice)
+    // ────────────────────────────────────────────────────────────────────────
+
+    getDeliveryNotes(storeId: string): Observable<DeliveryNote[]> {
+        const promise = this.supabase
+            .from('delivery_notes')
+            .select(`
+                *,
+                customer:customers(id, full_name, phone, email)
+            `)
+            .eq('store_id', storeId)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (error && error.code === '42P01') return [];
+                if (error) throw error;
+                return data as DeliveryNote[];
+            });
+        return from(promise);
+    }
+
+    getDeliveryNoteItems(noteId: string): Observable<DeliveryNoteItem[]> {
+        const promise = this.supabase
+            .from('delivery_note_items')
+            .select(`
+                *,
+                product:products(id, name, barcode, stock_quantity)
+            `)
+            .eq('delivery_note_id', noteId)
+            .then(({ data, error }) => {
+                if (error && error.code === '42P01') return [];
+                if (error) throw error;
+                return data as DeliveryNoteItem[];
+            });
+        return from(promise);
+    }
+
+    createDeliveryNote(
+        noteData: Omit<DeliveryNote, 'id' | 'created_at' | 'updated_at'>,
+        items: Omit<DeliveryNoteItem, 'id' | 'delivery_note_id'>[]
+    ): Observable<DeliveryNote> {
+        return from(new Promise<DeliveryNote>(async (resolve, reject) => {
+            try {
+                // 1. Create the header record
+                const { data: note, error: noteError } = await this.supabase
+                    .from('delivery_notes')
+                    .insert(noteData)
+                    .select()
+                    .single();
+
+                if (noteError) throw noteError;
+                if (!note) throw new Error("Delivery note creation failed");
+
+                // 2. Create the line items
+                const noteItems = items.map(item => ({
+                    ...item,
+                    delivery_note_id: note.id
+                }));
+
+                const { error: itemsError } = await this.supabase
+                    .from('delivery_note_items')
+                    .insert(noteItems);
+
+                if (itemsError) throw itemsError;
+
+                resolve(note as DeliveryNote);
+            } catch (err) {
+                console.error('Error creating delivery note:', err);
+                reject(err);
+            }
+        }));
+    }
+
+    updateDeliveryNoteStatus(noteId: string, status: DeliveryStatus, updates?: Partial<DeliveryNote>): Observable<void> {
+        const payload = {
+            status,
+            updated_at: new Date().toISOString(),
+            ...updates
+        };
+
+        if (status === 'DISPATCHED' && !payload.dispatched_at) {
+            payload.dispatched_at = new Date().toISOString();
+        } else if (status === 'DELIVERED' && !payload.delivered_at) {
+            payload.delivered_at = new Date().toISOString();
+        }
+
+        const promise = this.supabase
+            .from('delivery_notes')
+            .update(payload)
+            .eq('id', noteId)
+            .then(({ error }) => {
+                if (error) throw error;
+            });
+        return from(promise);
+    }
+
     // Marketing Automation - Live Supabase
     getMarketingRules(storeId: string): Observable<MarketingRule[]> {
         const promise = this.supabase

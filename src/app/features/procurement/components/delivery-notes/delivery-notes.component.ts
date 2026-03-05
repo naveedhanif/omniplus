@@ -1,0 +1,1095 @@
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
+import {
+  MockSupabaseService, DeliveryNote, DeliveryNoteItem,
+  DeliveryStatus, Product, Customer, CartItem, Transaction
+} from '../../../../core/services/mock-supabase.service';
+import { StoreConfigService } from '../../../../core/services/store-config.service';
+
+type View = 'list' | 'create' | 'detail' | 'receive';
+
+interface ReceivingLine extends DeliveryNoteItem {
+  accepted_input: number;
+  rejected_input: number;
+  rejection_reason_input: string;
+}
+
+interface CartLine {
+  product: Product;
+  quantity_shipped: number;
+}
+
+@Component({
+  selector: 'app-delivery-notes',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <div class="h-full flex flex-col gap-6 animate-in fade-in duration-300">
+
+      <!-- ── Header ── -->
+      <div class="flex items-center justify-between flex-shrink-0">
+        <div>
+          <h2 class="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+              <span class="material-symbols-rounded text-white text-[20px]">local_shipping</span>
+            </div>
+            Dispatch &amp; Delivery Notes
+          </h2>
+          <p class="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1 pl-[48px]">
+            Order-to-Cash · Dispatch-to-Invoice Workflow
+          </p>
+        </div>
+        @if (view() === 'list') {
+          <button (click)="openCreate()"
+            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/25 transition-all duration-200 hover:scale-[1.02]">
+            <span class="material-symbols-rounded text-[18px]">add</span>
+            New Delivery Note
+          </button>
+        }
+        @if (view() !== 'list') {
+          <button (click)="view.set('list')"
+            class="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-bold px-4 py-2 rounded-xl border border-slate-200 hover:border-slate-300 transition-all">
+            <span class="material-symbols-rounded text-[16px]">arrow_back</span>
+            Back to List
+          </button>
+        }
+      </div>
+
+      <!-- ── LIST VIEW ── -->
+      @if (view() === 'list') {
+        <div class="grid grid-cols-4 gap-4 flex-shrink-0">
+          @for (stat of stats(); track stat.label) {
+            <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">{{ stat.label }}</p>
+              <p class="text-2xl font-black mt-1" [class]="stat.color">{{ stat.value }}</p>
+            </div>
+          }
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] flex flex-col flex-1 overflow-hidden">
+          <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+            <p class="text-sm font-black text-slate-700">All Delivery Notes</p>
+            <input [(ngModel)]="searchTerm" placeholder="Search by note number or customer…"
+              class="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-64 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all" />
+          </div>
+          <div class="overflow-y-auto flex-1">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Note #</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Driver</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                @for (note of filteredNotes(); track note.id) {
+                  <tr class="hover:bg-slate-50/50 transition-colors group">
+                    <td class="px-5 py-3.5">
+                      <span class="font-mono font-black text-indigo-600 text-xs bg-indigo-50 px-2.5 py-1 rounded-lg">{{ note.note_number }}</span>
+                    </td>
+                    <td class="px-5 py-3.5 font-semibold text-slate-700">{{ note.customer?.full_name ?? '—' }}</td>
+                    <td class="px-5 py-3.5 text-slate-500">{{ note.driver_name ?? '—' }}</td>
+                    <td class="px-5 py-3.5">
+                      <span [class]="statusBadge(note.status)"
+                        class="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full">
+                        {{ note.status.replace('_', ' ') }}
+                      </span>
+                    </td>
+                    <td class="px-5 py-3.5 text-slate-500 text-xs">{{ note.created_at | date: 'dd MMM yyyy' }}</td>
+                    <td class="px-5 py-3.5">
+                      <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button (click)="openDetail(note)"
+                          class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                          <span class="material-symbols-rounded text-[14px]">open_in_new</span> View
+                        </button>
+                        @if (note.status === 'DRAFT') {
+                          <button (click)="dispatch(note)"
+                            class="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <span class="material-symbols-rounded text-[14px]">local_shipping</span> Dispatch
+                          </button>
+                        }
+                        @if (note.status === 'DISPATCHED') {
+                          <button (click)="openReceive(note)"
+                            class="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <span class="material-symbols-rounded text-[14px]">inventory</span> Receive Goods
+                          </button>
+                        }
+                      </div>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="py-20 text-center">
+                      <span class="material-symbols-rounded text-5xl text-slate-200 block mb-3">local_shipping</span>
+                      <p class="text-slate-400 font-semibold">No delivery notes yet.</p>
+                      <p class="text-slate-300 text-sm mt-1">Create your first one using the button above.</p>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+
+      <!-- ── CREATE VIEW ── -->
+      @if (view() === 'create') {
+        <div class="grid grid-cols-[1.2fr_1fr] gap-6 flex-1 min-h-0">
+          <div class="flex flex-col gap-4 overflow-y-auto pr-1">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-5">
+              <h3 class="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
+                <span class="material-symbols-rounded text-indigo-500 text-[18px]">info</span>
+                Delivery Information
+              </h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Customer</label>
+                  <select [(ngModel)]="newNote.customer_id"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50">
+                    <option value="">— Select Customer —</option>
+                    @for (c of customers(); track c.id) {
+                      <option [value]="c.id">{{ c.full_name }}</option>
+                    }
+                  </select>
+                </div>
+                <div>
+                  <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Recipient Name</label>
+                  <input [(ngModel)]="newNote.recipient_name" placeholder="e.g. John at Warehouse"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50" />
+                </div>
+                <div>
+                  <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Driver Name</label>
+                  <input [(ngModel)]="newNote.driver_name" placeholder="e.g. Ahmed Khan"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50" />
+                </div>
+                <div>
+                  <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Driver Phone</label>
+                  <input [(ngModel)]="newNote.driver_phone" placeholder="+44 7700 000000"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50" />
+                </div>
+                <div class="col-span-2">
+                  <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Internal Notes</label>
+                  <textarea [(ngModel)]="newNote.notes" rows="2" placeholder="Any special instructions for the driver…"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50 resize-none"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-5 flex-1">
+              <h3 class="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
+                <span class="material-symbols-rounded text-indigo-500 text-[18px]">add_box</span>
+                Add Products to Delivery
+              </h3>
+              <input [(ngModel)]="productSearch" placeholder="Search products by name or barcode…"
+                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all bg-slate-50 mb-3" />
+              <div class="max-h-64 overflow-y-auto divide-y divide-slate-50 rounded-xl border border-slate-100">
+                @for (p of filteredProducts(); track p.id) {
+                  <div class="flex items-center justify-between px-4 py-3 hover:bg-indigo-50/50 transition-colors">
+                    <div>
+                      <p class="text-sm font-bold text-slate-700">{{ p.name }}</p>
+                      <p class="text-xs text-slate-400">Stock: {{ p.stock_quantity }} · {{ p.barcode ?? 'No barcode' }}</p>
+                    </div>
+                    <button (click)="addToCart(p)"
+                      class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                      <span class="material-symbols-rounded text-[14px]">add</span> Add
+                    </button>
+                  </div>
+                } @empty {
+                  <div class="py-8 text-center text-slate-300 text-sm font-semibold">No products found</div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+            <div class="p-5 border-b border-slate-100">
+              <h3 class="text-sm font-black text-slate-700 flex items-center gap-2">
+                <span class="material-symbols-rounded text-indigo-500 text-[18px]">fact_check</span>
+                Delivery Manifest
+                @if (cart().length > 0) {
+                  <span class="ml-auto bg-indigo-100 text-indigo-700 text-xs font-black px-2.5 py-0.5 rounded-full">{{ cart().length }} lines</span>
+                }
+              </h3>
+            </div>
+            <div class="flex-1 overflow-y-auto divide-y divide-slate-50">
+              @for (line of cart(); track line.product.id) {
+                <div class="px-5 py-4 flex items-center gap-3">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">{{ line.product.name }}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Available: {{ line.product.stock_quantity }}</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty</label>
+                    <input type="number" [(ngModel)]="line.quantity_shipped" min="1" [max]="line.product.stock_quantity"
+                      class="w-20 text-center border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all" />
+                  </div>
+                  <button (click)="removeFromCart(line.product.id)" class="text-red-400 hover:text-red-600 transition-colors">
+                    <span class="material-symbols-rounded text-[18px]">delete</span>
+                  </button>
+                </div>
+              } @empty {
+                <div class="flex-1 flex flex-col items-center justify-center py-16 text-center">
+                  <span class="material-symbols-rounded text-5xl text-slate-200 mb-3">inventory_2</span>
+                  <p class="text-slate-400 font-semibold text-sm">Your manifest is empty</p>
+                  <p class="text-slate-300 text-xs mt-1">Pick products from the left panel</p>
+                </div>
+              }
+            </div>
+            <div class="p-5 border-t border-slate-100 bg-slate-50/50">
+              <div class="flex items-center justify-between mb-3 text-sm">
+                <span class="text-slate-500 font-semibold">Total Lines</span>
+                <span class="font-black text-slate-800">{{ cart().length }}</span>
+              </div>
+              <div class="flex items-center justify-between mb-4 text-sm">
+                <span class="text-slate-500 font-semibold">Total Units</span>
+                <span class="font-black text-slate-800">{{ totalUnits() }}</span>
+              </div>
+              <button (click)="saveDeliveryNote()"
+                [disabled]="cart().length === 0 || saving()"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-3 rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2">
+                @if (saving()) {
+                  <span class="material-symbols-rounded text-[18px] animate-spin">sync</span> Saving…
+                } @else {
+                  <span class="material-symbols-rounded text-[18px]">save</span> Save as Draft
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ── DETAIL VIEW ── -->
+      @if (view() === 'detail' && selectedNote()) {
+        <div class="flex-1 grid grid-cols-[1fr_380px] gap-6 min-h-0 overflow-hidden">
+          <div class="flex flex-col gap-4 overflow-y-auto pr-1">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-5 flex items-center justify-between">
+              <div>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Delivery Note</p>
+                <p class="text-2xl font-black text-indigo-600 font-mono mt-0.5">{{ selectedNote()!.note_number }}</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span [class]="statusBadge(selectedNote()!.status)"
+                  class="text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-full">
+                  {{ selectedNote()!.status.replace('_', ' ') }}
+                </span>
+                @if (selectedNote()!.status === 'DRAFT') {
+                  <button (click)="dispatch(selectedNote()!)"
+                    class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/25 transition-all">
+                    <span class="material-symbols-rounded text-[16px]">local_shipping</span> Dispatch Now
+                  </button>
+                }
+                @if (selectedNote()!.status === 'DISPATCHED') {
+                  <button (click)="openReceive(selectedNote()!)"
+                    class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-violet-600/25 transition-all">
+                    <span class="material-symbols-rounded text-[16px]">inventory</span> Receive Goods
+                  </button>
+                }
+                @if (selectedNote()!.status === 'DELIVERED' || selectedNote()!.status === 'PARTIAL_REJECTED') {
+                  @if (!selectedNote()!.invoiced_at) {
+                    <button (click)="showInvoiceModal.set(true)"
+                      class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/25 transition-all">
+                      <span class="material-symbols-rounded text-[16px]">receipt_long</span> Generate Invoice
+                    </button>
+                  } @else {
+                    <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200">
+                      <span class="material-symbols-rounded text-[16px]">task_alt</span>
+                      Invoice Generated
+                    </div>
+                  }
+                }
+                <button (click)="printNote()"
+                  class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl transition-all">
+                  <span class="material-symbols-rounded text-[16px]">print</span> Print
+                </button>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-5">
+              <h3 class="text-sm font-black text-slate-700 mb-4">Delivery Details</h3>
+              <div class="grid grid-cols-3 gap-4">
+                <div>
+                  <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Customer</p>
+                  <p class="text-sm font-bold text-slate-700">{{ selectedNote()!.customer?.full_name ?? '—' }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Recipient</p>
+                  <p class="text-sm font-bold text-slate-700">{{ selectedNote()!.recipient_name ?? '—' }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Driver</p>
+                  <p class="text-sm font-bold text-slate-700">{{ selectedNote()!.driver_name ?? '—' }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Created</p>
+                  <p class="text-sm font-bold text-slate-700">{{ selectedNote()!.created_at | date: 'dd MMM yyyy HH:mm' }}</p>
+                </div>
+                @if (selectedNote()!.dispatched_at) {
+                  <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Dispatched</p>
+                    <p class="text-sm font-bold text-emerald-600">{{ selectedNote()!.dispatched_at | date: 'dd MMM yyyy HH:mm' }}</p>
+                  </div>
+                }
+                @if (selectedNote()!.delivered_at) {
+                  <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Delivered</p>
+                    <p class="text-sm font-bold text-blue-600">{{ selectedNote()!.delivered_at | date: 'dd MMM yyyy HH:mm' }}</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div class="p-5 border-b border-slate-100">
+                <h3 class="text-sm font-black text-slate-700">Line Items (No Pricing — Physical Only)</h3>
+              </div>
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Product</th>
+                    <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipped</th>
+                    <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Accepted</th>
+                    <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Rejected</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                  @for (item of selectedNoteItems(); track item.id) {
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                      <td class="px-5 py-3.5 font-semibold text-slate-700">{{ item.product?.name ?? item.product_id }}</td>
+                      <td class="px-5 py-3.5 text-center font-bold">{{ item.quantity_shipped }}</td>
+                      <td class="px-5 py-3.5 text-center font-bold text-emerald-600">{{ item.quantity_accepted }}</td>
+                      <td class="px-5 py-3.5 text-center font-bold text-red-500">{{ item.quantity_rejected }}</td>
+                    </tr>
+                  } @empty {
+                    <tr><td colspan="4" class="py-8 text-center text-slate-300 font-semibold">No items</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Printable preview -->
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-slate-100 bg-slate-50">
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Document Preview (No Pricing)</p>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 font-mono text-xs leading-relaxed space-y-4">
+              <div class="text-center border-b-2 border-slate-200 pb-4">
+                <p class="text-lg font-black tracking-widest uppercase">DELIVERY NOTE</p>
+                <p class="text-2xl font-black text-indigo-700 mt-1">{{ selectedNote()!.note_number }}</p>
+                <p class="text-xs text-slate-400 mt-1">{{ selectedNote()!.created_at | date: 'EEEE, dd MMMM yyyy' }}</p>
+              </div>
+              <div class="grid grid-cols-2 gap-4 text-xs border-b border-dashed border-slate-200 pb-4">
+                <div>
+                  <p class="font-black uppercase text-slate-400 mb-1">Deliver To:</p>
+                  <p class="font-bold">{{ selectedNote()!.customer?.full_name ?? '—' }}</p>
+                  <p class="text-slate-500">Attn: {{ selectedNote()!.recipient_name ?? '—' }}</p>
+                </div>
+                <div>
+                  <p class="font-black uppercase text-slate-400 mb-1">Driver:</p>
+                  <p class="font-bold">{{ selectedNote()!.driver_name ?? '—' }}</p>
+                  <p class="text-slate-500">{{ selectedNote()!.driver_phone ?? '' }}</p>
+                </div>
+              </div>
+              <table class="w-full border-collapse text-xs">
+                <thead>
+                  <tr class="border-b border-slate-200">
+                    <th class="py-2 text-left font-black text-slate-600 uppercase">Item</th>
+                    <th class="py-2 text-right font-black text-slate-600 uppercase">Qty</th>
+                    <th class="py-2 text-right font-black text-slate-600 uppercase">✓ Recv'd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of selectedNoteItems(); track item.id) {
+                    <tr class="border-b border-dashed border-slate-100">
+                      <td class="py-2">{{ item.product?.name ?? '—' }}</td>
+                      <td class="py-2 text-right">{{ item.quantity_shipped }}</td>
+                      <td class="py-2 text-right w-16">[ &nbsp;&nbsp;&nbsp; ]</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              <div class="pt-8 border-t border-slate-200">
+                <div class="grid grid-cols-2 gap-8">
+                  <div>
+                    <p class="text-[10px] uppercase font-black text-slate-400 mb-6">Received By (Print Name):</p>
+                    <div class="border-b border-slate-400 h-8"></div>
+                  </div>
+                  <div>
+                    <p class="text-[10px] uppercase font-black text-slate-400 mb-6">Signature &amp; Date:</p>
+                    <div class="border-b border-slate-400 h-8"></div>
+                  </div>
+                </div>
+              </div>
+              <p class="text-center text-[9px] text-slate-300 pt-4 uppercase tracking-widest">
+                ⚠️ This document contains NO pricing information.
+              </p>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ── RECEIVE / e-POD VIEW ── -->
+      @if (view() === 'receive' && selectedNote()) {
+        <div class="flex-1 flex flex-col gap-5 min-h-0 overflow-y-auto">
+
+          <!-- Banner -->
+          <div class="bg-violet-600 text-white rounded-2xl p-5 flex items-center justify-between flex-shrink-0">
+            <div>
+              <p class="text-xs font-black uppercase tracking-widest opacity-70">Goods Receiving · e-POD</p>
+              <p class="text-2xl font-black mt-0.5 font-mono">{{ selectedNote()!.note_number }}</p>
+              <p class="text-sm opacity-80 mt-1">Confirm exactly what was physically received. This will generate the invoice basis.</p>
+            </div>
+            <span class="material-symbols-rounded text-6xl opacity-20">inventory</span>
+          </div>
+
+          <!-- Receiving Table -->
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] overflow-hidden flex-shrink-0">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="text-sm font-black text-slate-700">Confirm Quantities Received</h3>
+              <span class="text-xs font-bold text-slate-400">Tip: If all accepted, leave Rejected as 0</span>
+            </div>
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Product</th>
+                  <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipped</th>
+                  <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">✅ Accepted</th>
+                  <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">❌ Rejected</th>
+                  <th class="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Rejection Reason</th>
+                  <th class="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Match?</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                @for (line of receivingLines(); track line.id) {
+                  <tr [class]="receivingLineStatus(line)">
+                    <td class="px-5 py-3.5 font-semibold text-slate-700">{{ line.product?.name ?? line.product_id }}</td>
+                    <td class="px-5 py-3.5 text-center font-black text-slate-800">{{ line.quantity_shipped }}</td>
+                    <td class="px-5 py-3.5 text-center">
+                      <input type="number" [(ngModel)]="line.accepted_input" min="0" [max]="line.quantity_shipped"
+                        (ngModelChange)="syncRejected(line)"
+                        class="w-20 text-center border-2 border-emerald-200 focus:border-emerald-400 rounded-lg px-2 py-1.5 text-sm font-bold outline-none transition-all bg-emerald-50" />
+                    </td>
+                    <td class="px-5 py-3.5 text-center">
+                      <input type="number" [(ngModel)]="line.rejected_input" min="0" [max]="line.quantity_shipped"
+                        class="w-20 text-center border-2 border-red-200 focus:border-red-400 rounded-lg px-2 py-1.5 text-sm font-bold outline-none transition-all bg-red-50" />
+                    </td>
+                    <td class="px-5 py-3.5">
+                      <input [(ngModel)]="line.rejection_reason_input"
+                        [placeholder]="line.rejected_input > 0 ? 'e.g. Damaged, Wrong item…' : '—'"
+                        [disabled]="line.rejected_input === 0"
+                        class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all disabled:opacity-40 disabled:bg-slate-50" />
+                    </td>
+                    <td class="px-5 py-3.5 text-center">
+                      @if (line.accepted_input + line.rejected_input === line.quantity_shipped) {
+                        <span class="text-emerald-500 material-symbols-rounded text-[20px]">check_circle</span>
+                      } @else {
+                        <span class="text-amber-400 material-symbols-rounded text-[20px]">warning</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot class="border-t-2 border-slate-200 bg-slate-50">
+                <tr>
+                  <td class="px-5 py-3 text-xs font-black text-slate-500 uppercase">Totals</td>
+                  <td class="px-5 py-3 text-center font-black text-slate-700">{{ receivedTotalShipped() }}</td>
+                  <td class="px-5 py-3 text-center font-black text-emerald-600">{{ receivedTotalAccepted() }}</td>
+                  <td class="px-5 py-3 text-center font-black text-red-500">{{ receivedTotalRejected() }}</td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Summary + Confirm -->
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-5 flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-6">
+              <div class="text-center">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Shipped</p>
+                <p class="text-2xl font-black text-slate-800">{{ receivedTotalShipped() }}</p>
+              </div>
+              <div class="text-center">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Accepted</p>
+                <p class="text-2xl font-black text-emerald-600">{{ receivedTotalAccepted() }}</p>
+              </div>
+              <div class="text-center">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Rejected</p>
+                <p class="text-2xl font-black text-red-500">{{ receivedTotalRejected() }}</p>
+              </div>
+              @if (receivedTotalRejected() > 0) {
+                <div class="flex items-center gap-2 bg-amber-50 text-amber-700 text-xs font-bold px-3 py-2 rounded-xl border border-amber-200">
+                  <span class="material-symbols-rounded text-[16px]">warning</span>
+                  Partial rejection detected — status will be PARTIAL REJECTED
+                </div>
+              }
+            </div>
+            <button (click)="confirmReceiving()"
+              [disabled]="!receivingValid()"
+              class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg shadow-violet-600/25 transition-all">
+              <span class="material-symbols-rounded text-[18px]">task_alt</span>
+              Confirm Receiving &amp; Close POD
+            </button>
+          </div>
+
+        </div>
+      }
+
+      <!-- ── INVOICE MODAL ── -->
+      @if (showInvoiceModal()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-100">
+
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/25">
+                <span class="material-symbols-rounded text-white text-[20px]">receipt_long</span>
+              </div>
+              <div>
+                <h3 class="text-lg font-black text-slate-800">Generate Invoice</h3>
+                <p class="text-xs text-slate-400 font-semibold">Based on e-POD accepted quantities only</p>
+              </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="bg-slate-50 rounded-xl p-4 mb-5 space-y-2">
+              <div class="flex justify-between text-sm">
+                <span class="text-slate-500 font-semibold">Delivery Note</span>
+                <span class="font-black text-indigo-600 font-mono">{{ selectedNote()!.note_number }}</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-slate-500 font-semibold">Customer</span>
+                <span class="font-bold text-slate-700">{{ selectedNote()!.customer?.full_name ?? 'Walk-in' }}</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-slate-500 font-semibold">Lines to Invoice</span>
+                <span class="font-bold text-slate-700">{{ invoiceableLines().length }}</span>
+              </div>
+              <div class="border-t border-slate-200 pt-2 flex justify-between">
+                <span class="text-slate-500 font-bold text-sm">Invoice Total</span>
+                <span class="font-black text-xl text-emerald-600">{{ invoiceTotal() | currency:'GBP' }}</span>
+              </div>
+            </div>
+
+            <!-- Line breakdown -->
+            <div class="max-h-36 overflow-y-auto mb-5 rounded-xl border border-slate-100 divide-y divide-slate-50">
+              @for (line of invoiceableLines(); track line.id) {
+                <div class="flex items-center justify-between px-4 py-2.5 text-sm">
+                  <div>
+                    <p class="font-bold text-slate-700">{{ line.product?.name }}</p>
+                    <p class="text-xs text-slate-400">{{ line.accepted }} × {{ line.price | currency:'GBP' }}</p>
+                  </div>
+                  <span class="font-black text-slate-800">{{ line.lineTotal | currency:'GBP' }}</span>
+                </div>
+              } @empty {
+                <p class="p-4 text-center text-slate-400 text-sm">No accepted items to invoice.</p>
+              }
+            </div>
+
+            <!-- Payment method -->
+            <div class="mb-5">
+              <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Payment Terms</label>
+              <div class="grid grid-cols-3 gap-2">
+                @for (m of paymentMethods; track m.value) {
+                  <button (click)="invoicePaymentMethod = m.value"
+                    [class]="invoicePaymentMethod === m.value
+                      ? 'border-2 border-indigo-500 bg-indigo-50 text-indigo-700'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'"
+                    class="flex flex-col items-center gap-1 p-3 rounded-xl text-xs font-bold transition-all">
+                    <span class="material-symbols-rounded text-[20px]">{{ m.icon }}</span>
+                    {{ m.label }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <button (click)="showInvoiceModal.set(false)"
+                class="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all">
+                Cancel
+              </button>
+              <button (click)="generateInvoice()"
+                [disabled]="invoiceableLines().length === 0 || generatingInvoice()"
+                class="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm transition-all flex items-center justify-center gap-2">
+                @if (generatingInvoice()) {
+                  <span class="material-symbols-rounded text-[16px] animate-spin">sync</span> Generating…
+                } @else {
+                  <span class="material-symbols-rounded text-[16px]">receipt_long</span> Confirm &amp; Generate
+                }
+              </button>
+            </div>
+
+          </div>
+        </div>
+      }
+
+    </div>
+  `
+})
+export class DeliveryNotesComponent implements OnInit {
+  private supabase = inject(MockSupabaseService);
+  private storeService = inject(StoreConfigService);
+
+
+  // Keys are per-store so stores don't bleed into each other
+  private get storeKey(): string { return `dn_notes_${this.storeService.currentStore()?.id ?? 'x'}`; }
+  private get itemsKey(): string { return `dn_items_${this.storeService.currentStore()?.id ?? 'x'}`; }
+
+  view = signal<View>('list');
+  notes = signal<DeliveryNote[]>([]);
+  selectedNote = signal<DeliveryNote | null>(null);
+  selectedNoteItems = signal<DeliveryNoteItem[]>([]);
+  receivingLines = signal<ReceivingLine[]>([]);
+  saving = signal(false);
+  showInvoiceModal = signal(false);
+  generatingInvoice = signal(false);
+  invoicePaymentMethod: 'ON_ACCOUNT' | 'CASH' | 'CARD' = 'ON_ACCOUNT';
+
+  paymentMethods = [
+    { value: 'ON_ACCOUNT' as const, label: 'On Account', icon: 'account_balance_wallet' },
+    { value: 'CASH' as const, label: 'Cash', icon: 'payments' },
+    { value: 'CARD' as const, label: 'Card', icon: 'credit_card' },
+  ];
+
+  searchTerm = '';
+  productSearch = '';
+  cart = signal<CartLine[]>([]);
+  newNote = { customer_id: '', recipient_name: '', driver_name: '', driver_phone: '', notes: '' };
+
+  allProducts = toSignal(
+    this.supabase.getProducts(this.storeService.currentStore()?.id ?? ''),
+    { initialValue: [] as Product[] }
+  );
+  customers = toSignal(
+    this.supabase.getCustomers(this.storeService.currentStore()?.id ?? ''),
+    { initialValue: [] as Customer[] }
+  );
+
+  filteredNotes = computed(() => {
+    const q = this.searchTerm.toLowerCase();
+    return this.notes().filter(n =>
+      n.note_number.toLowerCase().includes(q) ||
+      (n.customer?.full_name ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  filteredProducts = computed(() => {
+    const q = this.productSearch.toLowerCase();
+    return this.allProducts().filter(p =>
+      p.name.toLowerCase().includes(q) || (p.barcode ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  totalUnits = computed(() => this.cart().reduce((s, l) => s + l.quantity_shipped, 0));
+  totalShipped = computed(() => this.selectedNoteItems().reduce((s, i) => s + i.quantity_shipped, 0));
+  totalAccepted = computed(() => this.selectedNoteItems().reduce((s, i) => s + i.quantity_accepted, 0));
+  totalRejected = computed(() => this.selectedNoteItems().reduce((s, i) => s + i.quantity_rejected, 0));
+
+  stats = computed(() => [
+    { label: 'Total Notes', value: this.notes().length, color: 'text-slate-800' },
+    { label: 'Draft', value: this.notes().filter(n => n.status === 'DRAFT').length, color: 'text-amber-600' },
+    { label: 'In Transit', value: this.notes().filter(n => n.status === 'DISPATCHED').length, color: 'text-indigo-600' },
+    { label: 'Delivered', value: this.notes().filter(n => n.status === 'DELIVERED' || n.status === 'PARTIAL_REJECTED').length, color: 'text-emerald-600' },
+  ]);
+
+  ngOnInit() { this.loadNotes(); }
+
+  // ── Local storage helpers ─────────────────────────────────────────────
+
+  private readNotes(): DeliveryNote[] {
+    try { return JSON.parse(localStorage.getItem(this.storeKey) ?? '[]'); } catch { return []; }
+  }
+  private writeNotes(notes: DeliveryNote[]) {
+    localStorage.setItem(this.storeKey, JSON.stringify(notes));
+  }
+  private readAllItems(): Record<string, DeliveryNoteItem[]> {
+    try { return JSON.parse(localStorage.getItem(this.itemsKey) ?? '{}'); } catch { return {}; }
+  }
+  private writeAllItems(map: Record<string, DeliveryNoteItem[]>) {
+    localStorage.setItem(this.itemsKey, JSON.stringify(map));
+  }
+  private resolveCustomer(id?: string): Customer | undefined {
+    if (!id) return undefined;
+    return this.customers().find(c => c.id === id);
+  }
+
+  // ── CRUD ─────────────────────────────────────────────────────────────
+
+  loadNotes() {
+    const raw = this.readNotes();
+    this.notes.set(raw.map(n => ({ ...n, customer: this.resolveCustomer(n.customer_id) })));
+  }
+
+  openCreate() {
+    this.cart.set([]);
+    this.newNote = { customer_id: '', recipient_name: '', driver_name: '', driver_phone: '', notes: '' };
+    this.productSearch = '';
+    this.view.set('create');
+  }
+
+  openDetail(note: DeliveryNote) {
+    this.selectedNote.set(note);
+    this.view.set('detail');
+    const rawItems = this.readAllItems()[note.id] ?? [];
+    this.selectedNoteItems.set(rawItems.map(i => ({
+      ...i,
+      product: this.allProducts().find(p => p.id === i.product_id)
+    })));
+  }
+
+  addToCart(p: Product) {
+    if (this.cart().some(l => l.product.id === p.id)) return;
+    this.cart.update(c => [...c, { product: p, quantity_shipped: 1 }]);
+  }
+
+  removeFromCart(productId: string) {
+    this.cart.update(c => c.filter(l => l.product.id !== productId));
+  }
+
+  saveDeliveryNote() {
+    const storeId = this.storeService.currentStore()?.id;
+    if (!storeId || this.cart().length === 0) return;
+    this.saving.set(true);
+
+    const now = new Date().toISOString();
+    const noteId = crypto.randomUUID();
+    const noteNumber = `DN - ${new Date().getFullYear()} - ${Date.now().toString().slice(-5)}`;
+
+    const note: DeliveryNote = {
+      id: noteId,
+      store_id: storeId,
+      note_number: noteNumber,
+      status: 'DRAFT',
+      customer_id: this.newNote.customer_id || undefined,
+      customer: this.resolveCustomer(this.newNote.customer_id),
+      recipient_name: this.newNote.recipient_name || undefined,
+      driver_name: this.newNote.driver_name || undefined,
+      driver_phone: this.newNote.driver_phone || undefined,
+      notes: this.newNote.notes || undefined,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const items: DeliveryNoteItem[] = this.cart().map(l => ({
+      id: crypto.randomUUID(),
+      delivery_note_id: noteId,
+      product_id: l.product.id,
+      product: l.product,
+      quantity_shipped: l.quantity_shipped,
+      quantity_accepted: 0,
+      quantity_rejected: 0,
+    }));
+
+    this.writeNotes([note, ...this.readNotes()]);
+    const allItems = this.readAllItems();
+    allItems[noteId] = items;
+    this.writeAllItems(allItems);
+
+    this.saving.set(false);
+    this.loadNotes();
+    this.view.set('list');
+  }
+
+  dispatch(note: DeliveryNote) {
+    const updated = { ...note, status: 'DISPATCHED' as DeliveryStatus, dispatched_at: new Date().toISOString() };
+    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
+    this.loadNotes();
+    if (this.selectedNote()?.id === note.id) this.selectedNote.set(updated);
+    // Auto-print the dispatch note
+    this.triggerPrint(updated);
+  }
+
+  markDelivered(note: DeliveryNote) {
+    const updated = { ...note, status: 'DELIVERED' as DeliveryStatus, delivered_at: new Date().toISOString() };
+    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
+    this.loadNotes();
+    if (this.selectedNote()?.id === note.id) this.selectedNote.set(updated);
+  }
+
+  openReceive(note: DeliveryNote) {
+    this.selectedNote.set(note);
+    const rawItems = this.readAllItems()[note.id] ?? [];
+    const lines: ReceivingLine[] = rawItems.map(i => ({
+      ...i,
+      product: this.allProducts().find(p => p.id === i.product_id),
+      accepted_input: i.quantity_shipped,
+      rejected_input: 0,
+      rejection_reason_input: '',
+    }));
+    this.receivingLines.set(lines);
+    this.view.set('receive');
+  }
+
+  syncRejected(line: ReceivingLine) {
+    line.rejected_input = Math.max(0, line.quantity_shipped - line.accepted_input);
+  }
+
+  receivedTotalShipped = computed(() => this.receivingLines().reduce((s, l) => s + l.quantity_shipped, 0));
+  receivedTotalAccepted = computed(() => this.receivingLines().reduce((s, l) => s + l.accepted_input, 0));
+  receivedTotalRejected = computed(() => this.receivingLines().reduce((s, l) => s + l.rejected_input, 0));
+
+  receivingValid = computed(() =>
+    this.receivingLines().every(l => l.accepted_input + l.rejected_input === l.quantity_shipped)
+  );
+
+  receivingLineStatus(line: ReceivingLine): string {
+    const ok = line.accepted_input + line.rejected_input === line.quantity_shipped;
+    return ok ? 'hover:bg-slate-50/50 transition-colors' : 'bg-amber-50/50 hover:bg-amber-50 transition-colors';
+  }
+
+  confirmReceiving() {
+    const note = this.selectedNote();
+    if (!note) return;
+    const lines = this.receivingLines();
+
+    // Save updated items
+    const updatedItems: DeliveryNoteItem[] = lines.map(l => ({
+      ...l,
+      quantity_accepted: l.accepted_input,
+      quantity_rejected: l.rejected_input,
+      rejection_reason: l.rejection_reason_input || undefined,
+    }));
+    const allItems = this.readAllItems();
+    allItems[note.id] = updatedItems;
+    this.writeAllItems(allItems);
+
+    // Determine final status
+    const hasRejections = lines.some(l => l.rejected_input > 0);
+    const finalStatus: DeliveryStatus = hasRejections ? 'PARTIAL_REJECTED' : 'DELIVERED';
+    const updated = { ...note, status: finalStatus, delivered_at: new Date().toISOString() };
+    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
+
+    this.loadNotes();
+    this.selectedNote.set(updated);
+    this.openDetail(updated);
+  }
+
+  // ── Invoice generation ──────────────────────────────────
+
+  invoiceableLines = computed(() => {
+    const note = this.selectedNote();
+    return this.selectedNoteItems()
+      .map(i => {
+        // If e-POD was done, use accepted qty. If quick-delivered (accepted=0), fall back to shipped.
+        const acceptedQty = i.quantity_accepted > 0 ? i.quantity_accepted : i.quantity_shipped;
+        return {
+          ...i,
+          accepted: acceptedQty,
+          price: i.product?.price ?? 0,
+          lineTotal: (i.product?.price ?? 0) * acceptedQty,
+        };
+      })
+      .filter(l => l.accepted > 0);
+  });
+
+  invoiceTotal = computed(() =>
+    this.invoiceableLines().reduce((s, l) => s + l.lineTotal, 0)
+  );
+
+  generateInvoice() {
+    const note = this.selectedNote();
+    const storeId = this.storeService.currentStore()?.id;
+    if (!note || !storeId || this.invoiceableLines().length === 0) return;
+
+    this.generatingInvoice.set(true);
+    const lines = this.invoiceableLines();
+    const subtotal = this.invoiceTotal();
+
+    const cartItems: CartItem[] = lines.map(l => ({
+      product: l.product!,
+      quantity: l.accepted,
+    }));
+
+    const txData: Omit<Transaction, 'id' | 'created_at'> = {
+      store_id: storeId,
+      customer_id: note.customer_id,
+      subtotal_amount: subtotal,
+      total_discount: 0,
+      total_amount: subtotal,
+      tax_amount: 0,
+      payment_method: this.invoicePaymentMethod,
+      delivery_note_id: note.id,
+      metadata: { type: 'SALE', source: 'DELIVERY_NOTE', delivery_note_number: note.note_number },
+    };
+
+    const markInvoiced = () => {
+      const invoicedNote = { ...note, invoiced_at: new Date().toISOString() };
+      this.writeNotes(this.readNotes().map(n => n.id === note.id ? invoicedNote : n));
+      this.loadNotes();
+      this.selectedNote.set(invoicedNote);
+      this.generatingInvoice.set(false);
+      this.showInvoiceModal.set(false);
+    };
+
+    this.supabase.addTransaction(txData, cartItems).subscribe({
+      next: () => markInvoiced(),
+      error: (err) => { console.warn('Supabase invoice failed, marking locally:', err); markInvoiced(); }
+    });
+  }
+
+  printNote() {
+    const note = this.selectedNote();
+    if (note) this.triggerPrint(note);
+  }
+
+  triggerPrint(note: DeliveryNote) {
+    const storeName = this.storeService.currentStore()?.name ?? 'OmniPOS';
+    const storeAddr = (this.storeService.currentStore() as any)?.address ?? '';
+    const rawItems = this.readAllItems()[note.id] ?? [];
+    const allProds = this.allProducts();
+    const items = rawItems.map((i: any) => ({
+      ...i,
+      productName: allProds.find((p: Product) => p.id === i.product_id)?.name ?? i.product_id ?? 'Unknown'
+    }));
+    const totalShipped = items.reduce((s: number, i: any) => s + i.quantity_shipped, 0);
+    const noteDate = new Date(note.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    const customerName = (note as any).customer?.full_name ?? 'Walk-in Customer';
+
+    const rowsHtml = items.map((item: any, idx: number) => `
+      <tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};">
+        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; font-weight:600; color:#888;">${idx + 1}</td>
+        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; font-weight:700;">${item.productName}</td>
+        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center; font-weight:900; font-family:monospace; font-size:16px;">${item.quantity_shipped}</td>
+        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
+        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
+      </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Delivery Note ${note.note_number}</title>
+  <style>
+    @page { margin: 14mm 14mm 14mm 14mm; size: A4 portrait; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }
+    table { border-collapse: collapse; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #000; padding-bottom:14px; margin-bottom:16px;">
+    <div>
+      <div style="font-size:22px; font-weight:900; letter-spacing:-0.5px; text-transform:uppercase;">${storeName}</div>
+      <div style="font-size:10px; color:#555; margin-top:3px;">${storeAddr}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:#666;">Delivery Note</div>
+      <div style="font-size:20px; font-weight:900; font-family:monospace; color:#1e3a8a; margin-top:2px;">${note.note_number}</div>
+      <div style="font-size:10px; color:#555; margin-top:3px;">Date: ${noteDate}</div>
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; background:#1e3a8a; color:#fff; padding:2px 10px; border-radius:4px; margin-top:5px; display:inline-block; letter-spacing:1px;">${note.status}</div>
+    </div>
+  </div>
+
+  <!-- DELIVERY INFO -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:18px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb;">
+    <div>
+      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:5px;">Deliver To</div>
+      <div style="font-size:13px; font-weight:700;">${customerName}</div>
+      <div style="font-size:11px; color:#555; margin-top:2px;">Attn: ${note.recipient_name ?? '—'}</div>
+    </div>
+    <div>
+      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:5px;">Driver / Courier</div>
+      <div style="font-size:13px; font-weight:700;">${note.driver_name ?? '—'}</div>
+      <div style="font-size:11px; color:#555; margin-top:2px;">Tel: ${note.driver_phone ?? '—'}</div>
+    </div>
+  </div>
+
+  <!-- ITEMS -->
+  <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:6px;">Items Dispatched — Physical Goods Only (No Pricing)</div>
+  <table>
+    <thead>
+      <tr style="background:#1e3a8a; color:#fff;">
+        <th style="padding:8px 12px; text-align:left; font-size:9px; font-weight:800; text-transform:uppercase;">#</th>
+        <th style="padding:8px 12px; text-align:left; font-size:9px; font-weight:800; text-transform:uppercase;">Product</th>
+        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Shipped</th>
+        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Received</th>
+        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Rejected</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+    <tfoot>
+      <tr style="background:#f1f5f9;">
+        <td colspan="2" style="padding:9px 12px; font-weight:800; font-size:9px; text-transform:uppercase;">TOTAL</td>
+        <td style="padding:9px 12px; text-align:center; font-weight:900; font-family:monospace; font-size:16px;">${totalShipped}</td>
+        <td style="padding:9px 12px; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
+        <td style="padding:9px 12px; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${note.notes ? `<div style="margin-top:16px; padding:10px 14px; border-left:4px solid #1e3a8a; background:#eff6ff; font-size:11px;"><strong>Notes:</strong> ${note.notes}</div>` : ''}
+
+  <!-- SIGNATURE -->
+  <div style="border-top:2px solid #000; padding-top:18px; margin-top:24px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px;">
+    <div>
+      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Received By (Print Name)</div>
+      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
+    </div>
+    <div>
+      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Signature</div>
+      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
+    </div>
+    <div>
+      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Date Received</div>
+      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="margin-top:20px; text-align:center; font-size:8px; color:#bbb; text-transform:uppercase; letter-spacing:1.5px; border-top:1px dashed #e5e7eb; padding-top:8px;">
+    &#9888; This document contains NO pricing information &bull; Powered by OmniPOS
+  </div>
+
+</body>
+</html>`;
+
+    // Create an invisible iframe to handle printing without popups (won't be blocked by browsers)
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const fw = iframe.contentWindow;
+    if (fw) {
+      fw.document.open();
+      fw.document.write(html);
+      fw.document.close();
+
+      // Allow the DOM inside the iframe to calculate layout
+      setTimeout(() => {
+        fw.focus();
+        fw.print();
+
+        // Cleanup the iframe after giving the print dialog time to open
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 2000);
+      }, 250);
+    } else {
+      // Fallback
+      document.body.removeChild(iframe);
+      window.print();
+    }
+  }
+
+  statusBadge(status: DeliveryStatus): string {
+    const map: Record<DeliveryStatus, string> = {
+      DRAFT: 'bg-amber-100 text-amber-700',
+      DISPATCHED: 'bg-indigo-100 text-indigo-700',
+      DELIVERED: 'bg-emerald-100 text-emerald-700',
+      PARTIAL_REJECTED: 'bg-red-100 text-red-700',
+      CANCELLED: 'bg-slate-100 text-slate-500',
+    };
+    return map[status] ?? 'bg-slate-100 text-slate-500';
+  }
+}

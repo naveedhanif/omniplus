@@ -278,6 +278,10 @@ import { DialogService } from '../../../../core/services/dialog.service';
                     <button (click)="activeTab.set('COLLECT')" [class.border-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.text-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.border-transparent]="activeTab() !== 'COLLECT'" [class.text-slate-500]="activeTab() !== 'COLLECT'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
                         Collect Payment
                     </button>
+                    <button (click)="activeTab.set('STATEMENT')" [class.border-[var(--primary-color)]]="activeTab() === 'STATEMENT'" [class.text-[var(--primary-color)]]="activeTab() === 'STATEMENT'" [class.border-transparent]="activeTab() !== 'STATEMENT'" [class.text-slate-500]="activeTab() !== 'STATEMENT'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1.5">
+                        <span class="material-symbols-rounded text-[16px]">description</span>
+                        Account Statement
+                    </button>
                 </div>
             </div>
 
@@ -587,6 +591,131 @@ import { DialogService } from '../../../../core/services/dialog.service';
                         </div>
                     </div>
                 }
+
+                <!-- TAB 4: ACCOUNT STATEMENT -->
+                @if (activeTab() === 'STATEMENT') {
+                  <div class="p-6 animate-in fade-in duration-300">
+
+                    <!-- Statement Header -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden mb-4">
+                      <div class="p-6 bg-gradient-to-r from-indigo-600 to-violet-600 flex items-center justify-between">
+                        <div>
+                          <p class="text-xs font-black uppercase tracking-widest text-indigo-200">Account Statement</p>
+                          <p class="text-2xl font-black text-white mt-1">{{ customer.full_name }}</p>
+                          <p class="text-indigo-200 text-sm mt-1">Delivery Notes &amp; Invoices — Order-to-Cash Summary</p>
+                        </div>
+                        <div class="flex flex-col items-end gap-2">
+                          <button (click)="printStatement()"
+                            class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all border border-white/20">
+                            <span class="material-symbols-rounded text-[16px]">print</span> Print Statement
+                          </button>
+                          <p class="text-indigo-200 text-xs">Generated: {{ today | date:'dd MMM yyyy' }}</p>
+                        </div>
+                      </div>
+
+                      <!-- Summary Chips -->
+                      <div class="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
+                        <div class="p-4 text-center">
+                          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Notes</p>
+                          <p class="text-2xl font-black text-slate-800 dark:text-white mt-1">{{ customerDeliveryNotes().length }}</p>
+                        </div>
+                        <div class="p-4 text-center">
+                          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Invoiced</p>
+                          <p class="text-2xl font-black text-emerald-600 mt-1">{{ customerDeliveryNotes().filter(n => n.invoiced_at).length }}</p>
+                        </div>
+                        <div class="p-4 text-center">
+                          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Invoice Total</p>
+                          <p class="text-2xl font-black text-slate-800 dark:text-white mt-1">{{ statementInvoiceTotal() | currency:storeService.currency() }}</p>
+                        </div>
+                        <div class="p-4 text-center">
+                          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Outstanding</p>
+                          <p class="text-2xl font-black mt-1" [class]="customer.current_balance < 0 ? 'text-red-500' : 'text-emerald-600'">{{ customer.current_balance | currency:storeService.currency() }}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Statement Table -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <table class="w-full text-sm">
+                        <thead class="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                          <tr>
+                            <th class="px-5 py-3.5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Note</th>
+                            <th class="px-5 py-3.5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                            <th class="px-5 py-3.5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            <th class="px-5 py-3.5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Invoice Amount</th>
+                            <th class="px-5 py-3.5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Payment Terms</th>
+                            <th class="px-5 py-3.5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Invoice</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+                          @for (row of statementRows(); track row.note.id) {
+                            <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                              <td class="px-5 py-4">
+                                <span class="font-mono font-black text-indigo-600 dark:text-indigo-400 text-xs bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-1 rounded-lg">{{ row.note.note_number }}</span>
+                              </td>
+                              <td class="px-5 py-4 text-slate-500 text-xs">{{ row.note.created_at | date:'dd MMM yyyy' }}</td>
+                              <td class="px-5 py-4">
+                                <span class="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                                  [class]="row.note.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-700' :
+                                           row.note.status === 'PARTIAL_REJECTED' ? 'bg-red-100 text-red-700' :
+                                           row.note.status === 'DISPATCHED' ? 'bg-indigo-100 text-indigo-700' :
+                                           'bg-amber-100 text-amber-700'">
+                                  {{ row.note.status.replace('_',' ') }}
+                                </span>
+                              </td>
+                              <td class="px-5 py-4 text-right font-black">
+                                @if (row.invoice) {
+                                  <span class="text-slate-800 dark:text-white">{{ row.invoice.total_amount | currency:storeService.currency() }}</span>
+                                } @else {
+                                  <span class="text-slate-300">—</span>
+                                }
+                              </td>
+                              <td class="px-5 py-4">
+                                @if (row.invoice) {
+                                  <span class="text-xs font-bold text-slate-600 dark:text-slate-300">{{ row.invoice.payment_method }}</span>
+                                } @else {
+                                  <span class="text-slate-300 text-xs">—</span>
+                                }
+                              </td>
+                              <td class="px-5 py-4 text-center">
+                                @if (row.note.invoiced_at) {
+                                  <span class="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
+                                    <span class="material-symbols-rounded text-[12px]">check_circle</span> Invoiced
+                                  </span>
+                                } @else if (row.note.status === 'DELIVERED' || row.note.status === 'PARTIAL_REJECTED') {
+                                  <span class="inline-flex items-center gap-1 text-[10px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
+                                    <span class="material-symbols-rounded text-[12px]">pending</span> Pending
+                                  </span>
+                                } @else {
+                                  <span class="text-slate-300 text-xs">—</span>
+                                }
+                              </td>
+                            </tr>
+                          } @empty {
+                            <tr>
+                              <td colspan="6" class="py-16 text-center">
+                                <span class="material-symbols-rounded text-4xl text-slate-200 block mb-3">receipt_long</span>
+                                <p class="text-slate-400 font-semibold">No delivery notes found for this customer.</p>
+                                <p class="text-slate-300 text-xs mt-1">Create delivery notes in the Delivery Notes module.</p>
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                        @if (statementRows().length > 0) {
+                          <tfoot class="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+                            <tr>
+                              <td colspan="3" class="px-5 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Totals</td>
+                              <td class="px-5 py-3 text-right font-black text-slate-800 dark:text-white">{{ statementInvoiceTotal() | currency:storeService.currency() }}</td>
+                              <td colspan="2"></td>
+                            </tr>
+                          </tfoot>
+                        }
+                      </table>
+                    </div>
+
+                  </div>
+                }
+
             </div>
           } @else {
              <!-- Empty State for Details Panel -->
@@ -794,7 +923,8 @@ export class CustomerCRMComponent {
     customerTransactions = signal<Transaction[]>([]);
     customerTotalSpend = signal(0);
     crmViewMode = signal<'DETAILS' | 'CREATE'>('CREATE');
-    activeTab = signal<'ACTIVITY' | 'DETAILS' | 'COLLECT'>('ACTIVITY');
+    activeTab = signal<'ACTIVITY' | 'DETAILS' | 'COLLECT' | 'STATEMENT'>('ACTIVITY');
+    today = new Date().toISOString();
 
     showTransactionDetailModal = signal(false);
     selectedTransactionItems = signal<TransactionItem[]>([]);
@@ -805,6 +935,33 @@ export class CustomerCRMComponent {
     paymentForm: FormGroup;
     paymentFormValue!: Signal<any>;
     projectedBalance: Signal<number>;
+
+    // ── Account Statement helpers ────────────────────────────────
+
+    customerDeliveryNotes = computed(() => {
+        const cust = this.selectedCustomer();
+        if (!cust) return [];
+        const storeId = this.storeService.currentStore()?.id ?? 'x';
+        try {
+            const all: any[] = JSON.parse(localStorage.getItem(`dn_notes_${storeId}`) ?? '[]');
+            return all.filter((n: any) => n.customer_id === cust.id);
+        } catch { return []; }
+    });
+
+    statementRows = computed(() => {
+        const notes = this.customerDeliveryNotes();
+        const txs = this.customerTransactions();
+        return notes.map(note => ({
+            note,
+            invoice: txs.find(tx => tx.delivery_note_id === note.id) ?? null,
+        }));
+    });
+
+    statementInvoiceTotal = computed(() =>
+        this.statementRows().reduce((s, r) => s + (r.invoice?.total_amount ?? 0), 0)
+    );
+
+    printStatement() { window.print(); }
 
     constructor() {
         this.crmViewMode.set('CREATE');

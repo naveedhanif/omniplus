@@ -18,6 +18,8 @@ import { StockManagerComponent } from '../../inventory/components/stock/stock-ma
 import { SupplierManagerComponent } from '../../procurement/components/suppliers/supplier-manager.component';
 import { AnalyticsDashboardComponent } from './analytics/analytics-dashboard.component';
 import { MarketingAutomationComponent } from './marketing/marketing-automation.component';
+import { DeliveryNotesComponent } from '../../procurement/components/delivery-notes/delivery-notes.component';
+
 
 @Component({
   selector: 'app-admin-dashboard',
@@ -36,7 +38,8 @@ import { MarketingAutomationComponent } from './marketing/marketing-automation.c
     StockManagerComponent,
     SupplierManagerComponent,
     AnalyticsDashboardComponent,
-    MarketingAutomationComponent
+    MarketingAutomationComponent,
+    DeliveryNotesComponent
   ],
   template: `
     <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
@@ -64,6 +67,7 @@ import { MarketingAutomationComponent } from './marketing/marketing-automation.c
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'marketing', icon: 'campaign', label: 'Marketing Automation', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'suppliers', icon: 'local_shipping', label: 'Suppliers', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'purchase-orders', icon: 'shopping_cart', label: 'Purchase Orders', disabled: allStores().length === 0 }"></ng-container>
+          <ng-container *ngTemplateOutlet="navItem; context: { id: 'delivery-notes', icon: 'local_shipping', label: 'Delivery Notes', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'history', icon: 'receipt_long', label: 'Sales History', disabled: allStores().length === 0 }"></ng-container>
           <ng-container *ngTemplateOutlet="navItem; context: { id: 'auditing', icon: 'analytics', label: 'Activity Audit', disabled: allStores().length === 0 }"></ng-container>
         </div>
@@ -139,6 +143,7 @@ import { MarketingAutomationComponent } from './marketing/marketing-automation.c
             @case ('customers') { <app-customer-crm /> }
             @case ('marketing') { <app-marketing-automation /> }
             @case ('purchase-orders') { <app-purchase-orders /> }
+            @case ('delivery-notes') { <app-delivery-notes /> }
             @case ('history') { <app-sales-history /> }
             @case ('auditing') { <app-activity-log /> }
             @case ('suppliers') { <app-supplier-manager /> }
@@ -153,7 +158,7 @@ export class AdminDashboardComponent {
   supabase = inject(MockSupabaseService);
   storeService = inject(StoreConfigService);
 
-  activeTab = signal<'stores' | 'analytics' | 'config' | 'categories' | 'inventory' | 'stock' | 'customers' | 'marketing' | 'purchase-orders' | 'history' | 'auditing' | 'schema' | 'suppliers'>('analytics');
+  activeTab = signal<'stores' | 'analytics' | 'config' | 'categories' | 'inventory' | 'stock' | 'customers' | 'marketing' | 'purchase-orders' | 'delivery-notes' | 'history' | 'auditing' | 'schema' | 'suppliers'>('analytics');
 
   allStores: Signal<Store[]> = toSignal(this.supabase.getAllStores(), { initialValue: [] as Store[] });
 
