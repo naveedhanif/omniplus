@@ -10,8 +10,8 @@ declare var JsBarcode: any;
   standalone: true,
   imports: [CommonModule, FormsModule, CurrencyPipe],
   template: `
-    <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div class="bg-[var(--card-bg)] w-full max-w-4xl rounded-xl shadow-2xl flex flex-col h-[90vh] scale-100 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-700">
+    <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 print:p-0 print:bg-white print:backdrop-blur-none print:block print:inset-0 print:overflow-visible">
+      <div class="bg-[var(--card-bg)] w-full max-w-4xl rounded-xl shadow-2xl flex flex-col h-[90vh] scale-100 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-700 print:w-full print:max-w-none print:h-auto print:border-none print:shadow-none print:rounded-none print:overflow-visible print:bg-white print:transform-none">
         
         <!-- Header & Controls -->
         <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center no-print">
@@ -68,8 +68,8 @@ declare var JsBarcode: any;
         </div>
 
         <!-- Printable Area -->
-        <div id="label-sheet" class="flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-900 p-4">
-          <div class="grid grid-cols-3 gap-x-px gap-y-px bg-white dark:bg-slate-800 shadow-lg p-px aspect-[8.5/11]">
+        <div id="label-sheet" class="flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-900 p-4 print:overflow-visible print:bg-white print:p-0 print:block">
+          <div class="grid grid-cols-3 gap-x-px gap-y-px bg-white dark:bg-slate-800 shadow-lg p-px aspect-[8.5/11] print:shadow-none print:border-none print:m-0 print:p-[0.5in_0.1875in] print:gap-0 print:bg-white print:w-full print:h-full print:box-border">
             @for (item of labelsToRender(); track $index) {
               <div class="border border-dashed border-slate-200 dark:border-slate-700 p-1 text-center text-[8px] flex flex-col justify-center items-center">
                 <div class="font-bold truncate w-full px-1">{{ product().name }}</div>
@@ -83,36 +83,17 @@ declare var JsBarcode: any;
     </div>
     <style>
       @media print {
-        body > * { display: none !important; }
-        .no-print { display: none !important; }
-
-        #label-sheet, #label-sheet * { 
-          display: block !important; 
-          visibility: visible !important; 
+        @page {
+          size: letter portrait;
+          margin: 0;
         }
 
-        #label-sheet { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 100vw !important; 
-            height: 100vh !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: white !important;
-            overflow: hidden !important;
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          background: white !important;
         }
-        
-        #label-sheet .grid {
-            height: 100% !important;
-            width: 100% !important;
-            padding: 0.5in 0.1875in !important; /* Standard Avery 5160 margins */
-            box-sizing: border-box !important;
-            gap: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-        }
-        
+
         #label-sheet .border {
             border: none !important; /* Hide dashed borders for printing */
             padding: 2px !important;
@@ -159,21 +140,21 @@ export class LabelPrintComponent {
 
     // When the product input changes (e.g. after saving), re-run barcode generation
     effect(() => {
-        const p = this.product(); // Depend on product
-        setTimeout(() => this.generateBarcodes(), 0);
+      const p = this.product(); // Depend on product
+      setTimeout(() => this.generateBarcodes(), 0);
     });
   }
-  
+
   generateBarcodes() {
     const barcodeValue = this.product().barcode || this.product().id;
     this.barcodeSvgs.forEach(svgRef => {
-        if (svgRef.nativeElement) {
+      if (svgRef.nativeElement) {
         if (!barcodeValue) {
-            svgRef.nativeElement.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="8" fill="red">NO BARCODE</text>`;
-            return;
+          svgRef.nativeElement.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="8" fill="red">NO BARCODE</text>`;
+          return;
         }
         try {
-            JsBarcode(svgRef.nativeElement, barcodeValue, {
+          JsBarcode(svgRef.nativeElement, barcodeValue, {
             format: "CODE128",
             displayValue: true,
             fontSize: 10,
@@ -181,24 +162,24 @@ export class LabelPrintComponent {
             margin: 0,
             textMargin: 0,
             fontOptions: "bold"
-            });
+          });
         } catch (e) {
-            console.error("JsBarcode error:", e);
-            svgRef.nativeElement.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="8" fill="red">INVALID</text>`;
+          console.error("JsBarcode error:", e);
+          svgRef.nativeElement.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="8" fill="red">INVALID</text>`;
         }
-        }
+      }
     });
   }
 
   onSaveBarcode() {
-      this.isSaving.set(true);
-      this.saveBarcode.emit(this.product().id);
-      // A slight delay to show saving state, parent component will update the product input
-      // which will then cause the isSaved state to show up via the computed property in the template.
-      setTimeout(() => {
-          this.isSaving.set(false);
-          this.isSaved.set(true);
-      }, 500);
+    this.isSaving.set(true);
+    this.saveBarcode.emit(this.product().id);
+    // A slight delay to show saving state, parent component will update the product input
+    // which will then cause the isSaved state to show up via the computed property in the template.
+    setTimeout(() => {
+      this.isSaving.set(false);
+      this.isSaved.set(true);
+    }, 500);
   }
 
   printLabels() {

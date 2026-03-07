@@ -42,51 +42,16 @@
       --card-bg: #ffffff;
       transition: background-color 0.3s ease, color 0.3s ease;
     }
+
     .dark {
       --bg-color: #0f172a;
       --text-color: #f8fafc;
       --card-bg: #1e293b;
     }
+
     body {
       background-color: var(--bg-color);
       color: var(--text-color);
-    }
-
-    /* ── PRINT STYLES ──────────────────────────────────────── */
-    @media print {
-      /* Hide EVERYTHING in the page */
-      body > * { display: none !important; }
-      app-root { display: none !important; }
-
-      /* Show ONLY the delivery note print block */
-      .dn-print-page {
-        display: block !important;
-        position: fixed !important;
-        inset: 0 !important;
-        z-index: 99999 !important;
-        background: white !important;
-        color: black !important;
-        font-family: 'Inter', sans-serif !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-
-      /* Reset page margins */
-      @page {
-        margin: 15mm 15mm 15mm 15mm;
-        size: A4 portrait;
-      }
-
-      /* Ensure links and buttons don't show */
-      a[href]::after { content: none !important; }
-      button { display: none !important; }
-      .dn-print-page button { display: none !important; }
-      .no-print { display: none !important; }
-    }
-
-    /* Hidden on screen, visible during print */
-    .dn-print-page {
-      display: none;
     }
   </style>
   <!-- Zone.js is now imported directly in index.tsx to guarantee load order -->

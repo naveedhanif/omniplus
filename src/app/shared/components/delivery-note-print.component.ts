@@ -52,7 +52,7 @@ import { DeliveryNote, Store } from '../../core/services/mock-supabase.service';
           
           <!-- TEMPLATE 1: STANDARD -->
           @if (activeTemplate() === 'standard') {
-            <div class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-black font-sans leading-relaxed print:shadow-none print:m-0 print:p-0 print:w-full print:border-none border border-slate-200">
+            <div class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-black font-sans leading-relaxed flex flex-col print:shadow-none print:m-0 print:p-[15mm] print:w-full print:border-none border border-slate-200">
               
               <!-- Watermark -->
               <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-[0.03]">
@@ -119,10 +119,18 @@ import { DeliveryNote, Store } from '../../core/services/mock-supabase.service';
                              <td class="py-4 px-2 font-black text-slate-800">{{ item.productName }}</td>
                              <td class="py-4 text-center font-black font-mono text-lg text-slate-600">{{ item.quantity_shipped }}</td>
                              <td class="py-4 text-center">
-                                <div class="w-16 border-b-2 border-slate-300 mx-auto"></div>
+                                @if (note().status === 'DELIVERED' || note().status === 'PARTIAL_REJECTED') {
+                                   <span class="font-black text-indigo-600 text-lg">{{ item.quantity_accepted }}</span>
+                                } @else {
+                                   <div class="w-16 border-b-2 border-slate-300 mx-auto"></div>
+                                }
                              </td>
                              <td class="py-4 text-right">
-                                <div class="w-6 h-6 border-2 border-slate-300 rounded ml-auto"></div>
+                                @if (note().status === 'DELIVERED' || note().status === 'PARTIAL_REJECTED') {
+                                   <span class="material-symbols-rounded text-emerald-500">check_circle</span>
+                                } @else {
+                                   <div class="w-6 h-6 border-2 border-slate-300 rounded ml-auto"></div>
+                                }
                              </td>
                           </tr>
                        }
@@ -169,7 +177,7 @@ import { DeliveryNote, Store } from '../../core/services/mock-supabase.service';
 
           <!-- TEMPLATE 2: MODERN -->
           @if (activeTemplate() === 'modern') {
-            <div class="bg-white w-[210mm] min-h-[297mm] shadow-2xl relative text-black font-sans leading-relaxed flex flex-col print:shadow-none print:m-0 print:border-none border border-slate-200">
+            <div class="bg-white w-[210mm] min-h-[297mm] shadow-2xl relative text-black font-sans leading-relaxed flex flex-col print:shadow-none print:m-0 print:p-[15mm] print:border-none border border-slate-200">
               
               <!-- Dark Sidebar Layout -->
               <div class="flex flex-1">
@@ -229,10 +237,20 @@ import { DeliveryNote, Store } from '../../core/services/mock-supabase.service';
                       @for (item of mappedItems(); track item.id) {
                         <tr class="border-b border-slate-100">
                            <td class="py-4 font-black text-slate-800">{{ item.productName }}</td>
-                           <td class="py-4 text-center font-black font-mono text-lg text-slate-600">{{ item.quantity_shipped }}</td>
+                           <td class="py-4 text-center">
+                             @if (note().status === 'DELIVERED' || note().status === 'PARTIAL_REJECTED') {
+                               <span class="font-black text-indigo-600">{{ item.quantity_accepted }}</span>
+                             } @else {
+                               <span class="text-slate-400 font-mono">—</span>
+                             }
+                           </td>
                            <td class="py-4 text-right">
                              <div class="inline-flex gap-2">
-                               <div class="w-10 h-8 border border-slate-300 rounded bg-slate-50 print-bg shadow-inner"></div>
+                               @if (note().status === 'DELIVERED' || note().status === 'PARTIAL_REJECTED') {
+                                 <span class="material-symbols-rounded text-emerald-500 text-sm">verified</span>
+                               } @else {
+                                 <div class="w-10 h-8 border border-slate-300 rounded bg-slate-50 print-bg shadow-inner"></div>
+                               }
                              </div>
                            </td>
                         </tr>

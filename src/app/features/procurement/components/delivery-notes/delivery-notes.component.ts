@@ -869,10 +869,11 @@ export class DeliveryNotesComponent implements OnInit {
   // ── Invoice generation ──────────────────────────────────
 
   invoiceableLines = computed(() => {
-    const note = this.selectedNote();
     return this.selectedNoteItems()
       .map(i => {
-        const acceptedQty = i.quantity_accepted > 0 ? i.quantity_accepted : i.quantity_shipped;
+        // If status is DELIVERED, we MUST have quantity_accepted filled.
+        // Fallback to 0 if not yet set, rather than shipped quantity.
+        const acceptedQty = i.quantity_accepted ?? 0;
         return {
           ...i,
           accepted: acceptedQty,

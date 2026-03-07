@@ -7,11 +7,11 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
    standalone: true,
    imports: [CommonModule, CurrencyPipe, DatePipe],
    template: `
-    <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 no-print">
-      <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[95vh] border border-slate-200 overflow-hidden">
+    <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 print:p-0 print:bg-white print:backdrop-blur-none print:block print:inset-0 print:overflow-visible">
+      <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[95vh] border border-slate-200 overflow-hidden print:w-full print:max-w-none print:h-auto print:border-none print:shadow-none print:rounded-none print:overflow-visible">
         
         <!-- Header & Controls -->
-        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 print:hidden">
           <div class="flex items-center gap-3">
              <div class="w-10 h-10 rounded-xl bg-[var(--primary-color)] flex items-center justify-center text-white shadow-lg shadow-[var(--primary-color)]/20">
                 <span class="material-symbols-rounded">print</span>
@@ -33,10 +33,11 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
         </div>
 
         <!-- Scrollable Document View -->
-        <div class="flex-1 overflow-y-auto bg-slate-200/50 p-12 flex justify-center custom-scrollbar">
+        <div class="flex-1 overflow-y-auto bg-slate-200/50 p-12 flex justify-center custom-scrollbar print:overflow-visible print:bg-white print:p-0 print:block">
           
           <!-- The Actual A4 Document -->
-          <div id="po-document" class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-slate-800 font-sans leading-relaxed">
+          <div id="po-document" class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-slate-800 font-sans leading-relaxed flex flex-col print:shadow-none print:m-0 print:p-[15mm] print:w-full print:border-none border border-slate-200">
+
             
             <!-- WATERMARK -->
             <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none" [class.opacity-[0.03]]="po().status !== 'DRAFT'" [class.opacity-[0.05]]="po().status === 'DRAFT'" [class.text-red-900]="po().status === 'DRAFT'" [class.text-slate-900]="po().status !== 'DRAFT'">
@@ -176,31 +177,19 @@ import { PurchaseOrder, Store, Supplier } from '../../core/services/mock-supabas
       .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       
       @media print {
-        body > * { display: none !important; }
-        .no-print { display: none !important; }
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
 
-        #po-document {
-          display: block !important;
-          visibility: visible !important;
-          position: fixed !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          height: auto !important;
-          padding: 20mm !important;
-          margin: 0 !important;
-          box-shadow: none !important;
-          print-color-adjust: exact;
-          -webkit-print-color-adjust: exact;
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          background: white !important;
         }
 
         /* Ensure page breaks don't cut items */
         tr { page-break-inside: avoid; }
-        
-        @page {
-          size: A4;
-          margin: 0;
-        }
       }
     </style>
   `

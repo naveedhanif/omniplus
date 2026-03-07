@@ -3,16 +3,16 @@ import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { SupplierInvoice } from '../../core/services/mock-supabase.service';
 
 @Component({
-    selector: 'app-supplier-invoice-print',
-    standalone: true,
-    imports: [CommonModule, CurrencyPipe, DatePipe],
-    template: `
+  selector: 'app-supplier-invoice-print',
+  standalone: true,
+  imports: [CommonModule, CurrencyPipe, DatePipe],
+  template: `
     <!-- Overlay wrapper (hidden during print) -->
-    <div class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 no-print-overlay">
-      <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[95vh] border border-slate-200 overflow-hidden">
+    <div class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 print:p-0 print:bg-white print:backdrop-blur-none print:block print:inset-0 print:overflow-visible">
+      <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[95vh] border border-slate-200 overflow-hidden print:w-full print:max-w-none print:h-auto print:border-none print:shadow-none print:rounded-none print:overflow-visible">
 
         <!-- Print Controls Header -->
-        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0 print:hidden">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center text-white shadow-lg shadow-teal-600/20">
               <span class="material-symbols-rounded">receipt_long</span>
@@ -39,13 +39,14 @@ import { SupplierInvoice } from '../../core/services/mock-supabase.service';
         </div>
 
         <!-- Scrollable Document Preview -->
-        <div class="flex-1 overflow-y-auto bg-slate-200/50 p-12 flex justify-center custom-scrollbar">
+        <div class="flex-1 overflow-y-auto bg-slate-200/50 p-12 flex justify-center custom-scrollbar print:overflow-visible print:bg-white print:p-0 print:block">
 
           <!-- ═══════════════════════════════════════════════════════
                THE PRINTABLE A4 DOCUMENT — id must be "inv-document"
                ═══════════════════════════════════════════════════════ -->
           <div id="inv-document"
-            class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-slate-800 font-sans leading-relaxed">
+            class="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl relative text-slate-800 font-sans leading-relaxed flex flex-col print:shadow-none print:m-0 print:p-[15mm] print:w-full print:border-none border border-slate-200">
+
 
             <!-- Watermark -->
             <div class="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none">
@@ -235,61 +236,48 @@ import { SupplierInvoice } from '../../core/services/mock-supabase.service';
       .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
       @media print {
-        /* Hide everything except the invoice document */
-        body > * { display: none !important; }
-        .no-print-overlay { display: none !important; }
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
 
-        #inv-document {
-          display: block !important;
-          visibility: visible !important;
-          position: fixed !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          height: auto !important;
-          padding: 20mm !important;
-          margin: 0 !important;
-          box-shadow: none !important;
-          print-color-adjust: exact;
-          -webkit-print-color-adjust: exact;
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          background: white !important;
         }
 
         tr { page-break-inside: avoid; }
-
-        @page {
-          size: A4;
-          margin: 0;
-        }
       }
     </style>
   `
 })
 export class SupplierInvoicePrintComponent {
-    invoice = input.required<SupplierInvoice & { items?: any[]; supplier?: any }>();
-    currency = input.required<string>();
-    storeName = input<string>('OmniPOS Store');
-    poNumber = input<string>('');
+  invoice = input.required<SupplierInvoice & { items?: any[]; supplier?: any }>();
+  currency = input.required<string>();
+  storeName = input<string>('OmniPOS Store');
+  poNumber = input<string>('');
 
-    close = output<void>();
+  close = output<void>();
 
-    onPrint() {
-        window.print();
-    }
+  onPrint() {
+    window.print();
+  }
 
-    isOverdue(): boolean {
-        if (!this.invoice().due_date || this.invoice().payment_status === 'PAID') return false;
-        return new Date(this.invoice().due_date!) < new Date();
-    }
+  isOverdue(): boolean {
+    if (!this.invoice().due_date || this.invoice().payment_status === 'PAID') return false;
+    return new Date(this.invoice().due_date!) < new Date();
+  }
 
-    paymentTermDays(): number {
-        if (!this.invoice().due_date || !this.invoice().issued_date) return 30;
-        const issued = new Date(this.invoice().issued_date);
-        const due = new Date(this.invoice().due_date!);
-        return Math.round((due.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24));
-    }
+  paymentTermDays(): number {
+    if (!this.invoice().due_date || !this.invoice().issued_date) return 30;
+    const issued = new Date(this.invoice().issued_date);
+    const due = new Date(this.invoice().due_date!);
+    return Math.round((due.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24));
+  }
 
-    taxRate(): number {
-        if (!this.invoice().subtotal || !this.invoice().tax_amount) return 0;
-        return Math.round((this.invoice().tax_amount / this.invoice().subtotal) * 100);
-    }
+  taxRate(): number {
+    if (!this.invoice().subtotal || !this.invoice().tax_amount) return 0;
+    return Math.round((this.invoice().tax_amount / this.invoice().subtotal) * 100);
+  }
 }
