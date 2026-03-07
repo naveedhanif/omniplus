@@ -7,6 +7,7 @@ import {
   DeliveryStatus, Product, Customer, CartItem, Transaction
 } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
+import { DeliveryNotePrintComponent } from '../../../../shared/components/delivery-note-print.component';
 
 type View = 'list' | 'create' | 'detail' | 'receive';
 
@@ -24,7 +25,7 @@ interface CartLine {
 @Component({
   selector: 'app-delivery-notes',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DeliveryNotePrintComponent],
   template: `
     <div class="h-full flex flex-col gap-6 animate-in fade-in duration-300">
 
@@ -626,17 +627,22 @@ interface CartLine {
         </div>
       }
 
+      <!-- ── PRINT MODAL ── -->
+      @if (showPrintModal() && selectedNote()) {
+        <app-delivery-note-print
+          [note]="selectedNote()!"
+          [items]="selectedNoteItems()"
+          [store]="storeService.currentStore()"
+          (close)="showPrintModal.set(false)"
+        />
+      }
+
     </div>
   `
 })
 export class DeliveryNotesComponent implements OnInit {
   private supabase = inject(MockSupabaseService);
   private storeService = inject(StoreConfigService);
-
-
-  // Keys are per-store so stores don't bleed into each other
-  private get storeKey(): string { return `dn_notes_${this.storeService.currentStore()?.id ?? 'x'}`; }
-  private get itemsKey(): string { return `dn_items_${this.storeService.currentStore()?.id ?? 'x'}`; }
 
   view = signal<View>('list');
   notes = signal<DeliveryNote[]>([]);
@@ -645,6 +651,7 @@ export class DeliveryNotesComponent implements OnInit {
   receivingLines = signal<ReceivingLine[]>([]);
   saving = signal(false);
   showInvoiceModal = signal(false);
+  showPrintModal = signal(false);
   generatingInvoice = signal(false);
   invoicePaymentMethod: 'ON_ACCOUNT' | 'CASH' | 'CARD' = 'ON_ACCOUNT';
 
@@ -697,30 +704,15 @@ export class DeliveryNotesComponent implements OnInit {
 
   ngOnInit() { this.loadNotes(); }
 
-  // ── Local storage helpers ─────────────────────────────────────────────
-
-  private readNotes(): DeliveryNote[] {
-    try { return JSON.parse(localStorage.getItem(this.storeKey) ?? '[]'); } catch { return []; }
-  }
-  private writeNotes(notes: DeliveryNote[]) {
-    localStorage.setItem(this.storeKey, JSON.stringify(notes));
-  }
-  private readAllItems(): Record<string, DeliveryNoteItem[]> {
-    try { return JSON.parse(localStorage.getItem(this.itemsKey) ?? '{}'); } catch { return {}; }
-  }
-  private writeAllItems(map: Record<string, DeliveryNoteItem[]>) {
-    localStorage.setItem(this.itemsKey, JSON.stringify(map));
-  }
-  private resolveCustomer(id?: string): Customer | undefined {
-    if (!id) return undefined;
-    return this.customers().find(c => c.id === id);
-  }
-
-  // ── CRUD ─────────────────────────────────────────────────────────────
+  // ── Database CRUD (Supabase) ─────────────────────────────────────────────
 
   loadNotes() {
-    const raw = this.readNotes();
-    this.notes.set(raw.map(n => ({ ...n, customer: this.resolveCustomer(n.customer_id) })));
+    const storeId = this.storeService.currentStore()?.id;
+    if (!storeId) return;
+    this.supabase.getDeliveryNotes(storeId).subscribe({
+      next: (data) => this.notes.set(data),
+      error: (err) => console.error("Failed to load notes", err)
+    });
   }
 
   openCreate() {
@@ -733,11 +725,10 @@ export class DeliveryNotesComponent implements OnInit {
   openDetail(note: DeliveryNote) {
     this.selectedNote.set(note);
     this.view.set('detail');
-    const rawItems = this.readAllItems()[note.id] ?? [];
-    this.selectedNoteItems.set(rawItems.map(i => ({
-      ...i,
-      product: this.allProducts().find(p => p.id === i.product_id)
-    })));
+    this.supabase.getDeliveryNoteItems(note.id).subscribe({
+      next: (items) => this.selectedNoteItems.set(items),
+      error: (err) => console.error("Failed to load note items", err)
+    });
   }
 
   addToCart(p: Product) {
@@ -754,73 +745,77 @@ export class DeliveryNotesComponent implements OnInit {
     if (!storeId || this.cart().length === 0) return;
     this.saving.set(true);
 
-    const now = new Date().toISOString();
-    const noteId = crypto.randomUUID();
-    const noteNumber = `DN - ${new Date().getFullYear()} - ${Date.now().toString().slice(-5)}`;
+    const noteNumber = `DN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
 
-    const note: DeliveryNote = {
-      id: noteId,
+    const noteData: Omit<DeliveryNote, 'id' | 'created_at' | 'updated_at'> = {
       store_id: storeId,
       note_number: noteNumber,
       status: 'DRAFT',
       customer_id: this.newNote.customer_id || undefined,
-      customer: this.resolveCustomer(this.newNote.customer_id),
       recipient_name: this.newNote.recipient_name || undefined,
       driver_name: this.newNote.driver_name || undefined,
       driver_phone: this.newNote.driver_phone || undefined,
       notes: this.newNote.notes || undefined,
-      created_at: now,
-      updated_at: now,
     };
 
-    const items: DeliveryNoteItem[] = this.cart().map(l => ({
-      id: crypto.randomUUID(),
-      delivery_note_id: noteId,
+    const items: Omit<DeliveryNoteItem, 'id' | 'delivery_note_id'>[] = this.cart().map(l => ({
       product_id: l.product.id,
-      product: l.product,
       quantity_shipped: l.quantity_shipped,
       quantity_accepted: 0,
       quantity_rejected: 0,
     }));
 
-    this.writeNotes([note, ...this.readNotes()]);
-    const allItems = this.readAllItems();
-    allItems[noteId] = items;
-    this.writeAllItems(allItems);
-
-    this.saving.set(false);
-    this.loadNotes();
-    this.view.set('list');
+    this.supabase.createDeliveryNote(noteData, items).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.loadNotes();
+        this.view.set('list');
+      },
+      error: (err) => {
+        console.error("Failed to save delivery note", err);
+        this.saving.set(false);
+      }
+    });
   }
 
   dispatch(note: DeliveryNote) {
-    const updated = { ...note, status: 'DISPATCHED' as DeliveryStatus, dispatched_at: new Date().toISOString() };
-    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
-    this.loadNotes();
-    if (this.selectedNote()?.id === note.id) this.selectedNote.set(updated);
-    // Auto-print the dispatch note
-    this.triggerPrint(updated);
+    this.supabase.updateDeliveryNoteStatus(note.id, 'DISPATCHED').subscribe({
+      next: () => {
+        this.loadNotes();
+        const updated = { ...note, status: 'DISPATCHED' as DeliveryStatus };
+        if (this.selectedNote()?.id === note.id) this.selectedNote.set(updated);
+        // Auto-print after dispatch
+        setTimeout(() => this.printNote(), 200);
+      },
+      error: (err) => console.error('Dispatch failed', err)
+    });
   }
 
   markDelivered(note: DeliveryNote) {
-    const updated = { ...note, status: 'DELIVERED' as DeliveryStatus, delivered_at: new Date().toISOString() };
-    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
-    this.loadNotes();
-    if (this.selectedNote()?.id === note.id) this.selectedNote.set(updated);
+    this.supabase.updateDeliveryNoteStatus(note.id, 'DELIVERED').subscribe({
+      next: () => {
+        this.loadNotes();
+        if (this.selectedNote()?.id === note.id) this.selectedNote.set({ ...note, status: 'DELIVERED' as DeliveryStatus });
+      },
+      error: (err) => console.error('Mark delivered failed', err)
+    });
   }
 
   openReceive(note: DeliveryNote) {
     this.selectedNote.set(note);
-    const rawItems = this.readAllItems()[note.id] ?? [];
-    const lines: ReceivingLine[] = rawItems.map(i => ({
-      ...i,
-      product: this.allProducts().find(p => p.id === i.product_id),
-      accepted_input: i.quantity_shipped,
-      rejected_input: 0,
-      rejection_reason_input: '',
-    }));
-    this.receivingLines.set(lines);
-    this.view.set('receive');
+    this.supabase.getDeliveryNoteItems(note.id).subscribe({
+      next: (rawItems) => {
+        const lines: ReceivingLine[] = rawItems.map(i => ({
+          ...i,
+          accepted_input: i.quantity_shipped,
+          rejected_input: 0,
+          rejection_reason_input: '',
+        }));
+        this.receivingLines.set(lines);
+        this.view.set('receive');
+      },
+      error: (err) => console.error("Failed to load items for receive", err)
+    });
   }
 
   syncRejected(line: ReceivingLine) {
@@ -845,26 +840,30 @@ export class DeliveryNotesComponent implements OnInit {
     if (!note) return;
     const lines = this.receivingLines();
 
-    // Save updated items
     const updatedItems: DeliveryNoteItem[] = lines.map(l => ({
       ...l,
       quantity_accepted: l.accepted_input,
       quantity_rejected: l.rejected_input,
       rejection_reason: l.rejection_reason_input || undefined,
     }));
-    const allItems = this.readAllItems();
-    allItems[note.id] = updatedItems;
-    this.writeAllItems(allItems);
 
-    // Determine final status
     const hasRejections = lines.some(l => l.rejected_input > 0);
     const finalStatus: DeliveryStatus = hasRejections ? 'PARTIAL_REJECTED' : 'DELIVERED';
-    const updated = { ...note, status: finalStatus, delivered_at: new Date().toISOString() };
-    this.writeNotes(this.readNotes().map(n => n.id === note.id ? updated : n));
 
-    this.loadNotes();
-    this.selectedNote.set(updated);
-    this.openDetail(updated);
+    this.supabase.updateDeliveryNoteItems(updatedItems).subscribe({
+      next: () => {
+        this.supabase.updateDeliveryNoteStatus(note.id, finalStatus).subscribe({
+          next: () => {
+            this.loadNotes();
+            const updated = { ...note, status: finalStatus };
+            this.selectedNote.set(updated);
+            this.openDetail(updated);
+          },
+          error: (err) => console.error('Status update failed', err)
+        });
+      },
+      error: (err) => console.error('Item update failed', err)
+    });
   }
 
   // ── Invoice generation ──────────────────────────────────
@@ -873,7 +872,6 @@ export class DeliveryNotesComponent implements OnInit {
     const note = this.selectedNote();
     return this.selectedNoteItems()
       .map(i => {
-        // If e-POD was done, use accepted qty. If quick-delivered (accepted=0), fall back to shipped.
         const acceptedQty = i.quantity_accepted > 0 ? i.quantity_accepted : i.quantity_shipped;
         return {
           ...i,
@@ -916,170 +914,25 @@ export class DeliveryNotesComponent implements OnInit {
     };
 
     const markInvoiced = () => {
-      const invoicedNote = { ...note, invoiced_at: new Date().toISOString() };
-      this.writeNotes(this.readNotes().map(n => n.id === note.id ? invoicedNote : n));
-      this.loadNotes();
-      this.selectedNote.set(invoicedNote);
-      this.generatingInvoice.set(false);
-      this.showInvoiceModal.set(false);
+      this.supabase.updateDeliveryNoteStatus(note.id, note.status, { invoiced_at: new Date().toISOString() }).subscribe({
+        next: () => {
+          this.loadNotes();
+          this.selectedNote.set({ ...note, invoiced_at: new Date().toISOString() });
+          this.generatingInvoice.set(false);
+          this.showInvoiceModal.set(false);
+        }
+      });
     };
 
     this.supabase.addTransaction(txData, cartItems).subscribe({
       next: () => markInvoiced(),
-      error: (err) => { console.warn('Supabase invoice failed, marking locally:', err); markInvoiced(); }
+      error: (err) => { console.warn('Supabase invoice failed', err); markInvoiced(); }
     });
   }
 
   printNote() {
     const note = this.selectedNote();
-    if (note) this.triggerPrint(note);
-  }
-
-  triggerPrint(note: DeliveryNote) {
-    const storeName = this.storeService.currentStore()?.name ?? 'OmniPOS';
-    const storeAddr = (this.storeService.currentStore() as any)?.address ?? '';
-    const rawItems = this.readAllItems()[note.id] ?? [];
-    const allProds = this.allProducts();
-    const items = rawItems.map((i: any) => ({
-      ...i,
-      productName: allProds.find((p: Product) => p.id === i.product_id)?.name ?? i.product_id ?? 'Unknown'
-    }));
-    const totalShipped = items.reduce((s: number, i: any) => s + i.quantity_shipped, 0);
-    const noteDate = new Date(note.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-    const customerName = (note as any).customer?.full_name ?? 'Walk-in Customer';
-
-    const rowsHtml = items.map((item: any, idx: number) => `
-      <tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};">
-        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; font-weight:600; color:#888;">${idx + 1}</td>
-        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; font-weight:700;">${item.productName}</td>
-        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center; font-weight:900; font-family:monospace; font-size:16px;">${item.quantity_shipped}</td>
-        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
-        <td style="padding:9px 12px; border-bottom:1px solid #e5e7eb; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
-      </tr>
-    `).join('');
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Delivery Note ${note.note_number}</title>
-  <style>
-    @page { margin: 14mm 14mm 14mm 14mm; size: A4 portrait; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; background: #fff; }
-    table { border-collapse: collapse; width: 100%; }
-  </style>
-</head>
-<body>
-
-  <!-- HEADER -->
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #000; padding-bottom:14px; margin-bottom:16px;">
-    <div>
-      <div style="font-size:22px; font-weight:900; letter-spacing:-0.5px; text-transform:uppercase;">${storeName}</div>
-      <div style="font-size:10px; color:#555; margin-top:3px;">${storeAddr}</div>
-    </div>
-    <div style="text-align:right;">
-      <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:#666;">Delivery Note</div>
-      <div style="font-size:20px; font-weight:900; font-family:monospace; color:#1e3a8a; margin-top:2px;">${note.note_number}</div>
-      <div style="font-size:10px; color:#555; margin-top:3px;">Date: ${noteDate}</div>
-      <div style="font-size:10px; font-weight:700; text-transform:uppercase; background:#1e3a8a; color:#fff; padding:2px 10px; border-radius:4px; margin-top:5px; display:inline-block; letter-spacing:1px;">${note.status}</div>
-    </div>
-  </div>
-
-  <!-- DELIVERY INFO -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:18px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb;">
-    <div>
-      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:5px;">Deliver To</div>
-      <div style="font-size:13px; font-weight:700;">${customerName}</div>
-      <div style="font-size:11px; color:#555; margin-top:2px;">Attn: ${note.recipient_name ?? '—'}</div>
-    </div>
-    <div>
-      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:5px;">Driver / Courier</div>
-      <div style="font-size:13px; font-weight:700;">${note.driver_name ?? '—'}</div>
-      <div style="font-size:11px; color:#555; margin-top:2px;">Tel: ${note.driver_phone ?? '—'}</div>
-    </div>
-  </div>
-
-  <!-- ITEMS -->
-  <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; color:#999; margin-bottom:6px;">Items Dispatched — Physical Goods Only (No Pricing)</div>
-  <table>
-    <thead>
-      <tr style="background:#1e3a8a; color:#fff;">
-        <th style="padding:8px 12px; text-align:left; font-size:9px; font-weight:800; text-transform:uppercase;">#</th>
-        <th style="padding:8px 12px; text-align:left; font-size:9px; font-weight:800; text-transform:uppercase;">Product</th>
-        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Shipped</th>
-        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Received</th>
-        <th style="padding:8px 12px; text-align:center; font-size:9px; font-weight:800; text-transform:uppercase;">Qty Rejected</th>
-      </tr>
-    </thead>
-    <tbody>${rowsHtml}</tbody>
-    <tfoot>
-      <tr style="background:#f1f5f9;">
-        <td colspan="2" style="padding:9px 12px; font-weight:800; font-size:9px; text-transform:uppercase;">TOTAL</td>
-        <td style="padding:9px 12px; text-align:center; font-weight:900; font-family:monospace; font-size:16px;">${totalShipped}</td>
-        <td style="padding:9px 12px; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
-        <td style="padding:9px 12px; text-align:center;"><div style="width:60px; height:30px; border:2px solid #374151; border-radius:4px; display:inline-block;"></div></td>
-      </tr>
-    </tfoot>
-  </table>
-
-  ${note.notes ? `<div style="margin-top:16px; padding:10px 14px; border-left:4px solid #1e3a8a; background:#eff6ff; font-size:11px;"><strong>Notes:</strong> ${note.notes}</div>` : ''}
-
-  <!-- SIGNATURE -->
-  <div style="border-top:2px solid #000; padding-top:18px; margin-top:24px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px;">
-    <div>
-      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Received By (Print Name)</div>
-      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
-    </div>
-    <div>
-      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Signature</div>
-      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
-    </div>
-    <div>
-      <div style="font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#999; margin-bottom:18px;">Date Received</div>
-      <div style="border-bottom:1.5px solid #000; height:26px;"></div>
-    </div>
-  </div>
-
-  <!-- FOOTER -->
-  <div style="margin-top:20px; text-align:center; font-size:8px; color:#bbb; text-transform:uppercase; letter-spacing:1.5px; border-top:1px dashed #e5e7eb; padding-top:8px;">
-    &#9888; This document contains NO pricing information &bull; Powered by OmniPOS
-  </div>
-
-</body>
-</html>`;
-
-    // Create an invisible iframe to handle printing without popups (won't be blocked by browsers)
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const fw = iframe.contentWindow;
-    if (fw) {
-      fw.document.open();
-      fw.document.write(html);
-      fw.document.close();
-
-      // Allow the DOM inside the iframe to calculate layout
-      setTimeout(() => {
-        fw.focus();
-        fw.print();
-
-        // Cleanup the iframe after giving the print dialog time to open
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 2000);
-      }, 250);
-    } else {
-      // Fallback
-      document.body.removeChild(iframe);
-      window.print();
-    }
+    if (note) this.showPrintModal.set(true);
   }
 
   statusBadge(status: DeliveryStatus): string {

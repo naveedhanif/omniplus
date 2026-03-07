@@ -621,7 +621,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
                         </div>
                         <div class="p-4 text-center">
                           <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Invoiced</p>
-                          <p class="text-2xl font-black text-emerald-600 mt-1">{{ customerDeliveryNotes().filter(n => n.invoiced_at).length }}</p>
+                          <p class="text-2xl font-black text-emerald-600 mt-1">{{ customerInvoicedNotesCount() }}</p>
                         </div>
                         <div class="p-4 text-center">
                           <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Invoice Total</p>
@@ -947,6 +947,8 @@ export class CustomerCRMComponent {
             return all.filter((n: any) => n.customer_id === cust.id);
         } catch { return []; }
     });
+
+    customerInvoicedNotesCount = computed(() => this.customerDeliveryNotes().filter((n: any) => n.invoiced_at).length);
 
     statementRows = computed(() => {
         const notes = this.customerDeliveryNotes();

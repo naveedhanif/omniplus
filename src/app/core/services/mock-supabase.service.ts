@@ -2756,6 +2756,29 @@ export class MockSupabaseService {
         return from(promise);
     }
 
+    updateDeliveryNoteItems(items: DeliveryNoteItem[]): Observable<void> {
+        return from(new Promise<void>(async (resolve, reject) => {
+            try {
+                // Upsert requires the id to be present in each object to update them
+                const { error } = await this.supabase
+                    .from('delivery_note_items')
+                    .upsert(items.map(item => ({
+                        id: item.id,
+                        delivery_note_id: item.delivery_note_id,
+                        product_id: item.product_id,
+                        quantity_shipped: item.quantity_shipped,
+                        quantity_accepted: item.quantity_accepted,
+                        quantity_rejected: item.quantity_rejected,
+                        rejection_reason: item.rejection_reason
+                    })));
+                if (error) throw error;
+                resolve();
+            } catch (err) {
+                reject(err);
+            }
+        }));
+    }
+
     // Marketing Automation - Live Supabase
     getMarketingRules(storeId: string): Observable<MarketingRule[]> {
         const promise = this.supabase

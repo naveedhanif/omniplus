@@ -42,76 +42,14 @@ ADD COLUMN IF NOT EXISTS delivery_note_id UUID REFERENCES public.delivery_notes(
 ALTER TABLE public.delivery_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.delivery_note_items ENABLE ROW LEVEL SECURITY;
 
--- Delivery Notes Policies
-CREATE POLICY "Users can view delivery notes for their assigned stores"
-    ON public.delivery_notes FOR SELECT
-    USING (store_id IN (
-        SELECT store_id FROM public.staff WHERE id = auth.uid()
-        UNION
-        SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-    ));
+-- Delivery Notes Policies (Open for Demo)
+CREATE POLICY "Enable read access for all users" ON public.delivery_notes FOR SELECT USING (true);
+CREATE POLICY "Enable insert access for all users" ON public.delivery_notes FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update access for all users" ON public.delivery_notes FOR UPDATE USING (true);
+CREATE POLICY "Enable delete access for all users" ON public.delivery_notes FOR DELETE USING (true);
 
-CREATE POLICY "Users can insert delivery notes for their assigned stores"
-    ON public.delivery_notes FOR INSERT
-    WITH CHECK (store_id IN (
-        SELECT store_id FROM public.staff WHERE id = auth.uid()
-        UNION
-        SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-    ));
-
-CREATE POLICY "Users can update delivery notes for their assigned stores"
-    ON public.delivery_notes FOR UPDATE
-    USING (store_id IN (
-        SELECT store_id FROM public.staff WHERE id = auth.uid()
-        UNION
-        SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-    ));
-
-CREATE POLICY "Users can delete delivery notes for their assigned stores"
-    ON public.delivery_notes FOR DELETE
-    USING (store_id IN (
-        SELECT store_id FROM public.staff WHERE id = auth.uid()
-        UNION
-        SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-    ));
-
--- Delivery Note Items Policies
-CREATE POLICY "Users can view delivery note items via delivery notes"
-    ON public.delivery_note_items FOR SELECT
-    USING (delivery_note_id IN (
-        SELECT id FROM public.delivery_notes WHERE store_id IN (
-             SELECT store_id FROM public.staff WHERE id = auth.uid()
-             UNION
-             SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-        )
-    ));
-
-CREATE POLICY "Users can insert delivery note items via delivery notes"
-    ON public.delivery_note_items FOR INSERT
-    WITH CHECK (delivery_note_id IN (
-        SELECT id FROM public.delivery_notes WHERE store_id IN (
-             SELECT store_id FROM public.staff WHERE id = auth.uid()
-             UNION
-             SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-        )
-    ));
-
-CREATE POLICY "Users can update delivery note items via delivery notes"
-    ON public.delivery_note_items FOR UPDATE
-    USING (delivery_note_id IN (
-        SELECT id FROM public.delivery_notes WHERE store_id IN (
-             SELECT store_id FROM public.staff WHERE id = auth.uid()
-             UNION
-             SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-        )
-    ));
-
-CREATE POLICY "Users can delete delivery note items via delivery notes"
-    ON public.delivery_note_items FOR DELETE
-    USING (delivery_note_id IN (
-        SELECT id FROM public.delivery_notes WHERE store_id IN (
-             SELECT store_id FROM public.staff WHERE id = auth.uid()
-             UNION
-             SELECT store_id FROM public.store_profiles WHERE id = auth.uid()
-        )
-    ));
+-- Delivery Note Items Policies (Open for Demo)
+CREATE POLICY "Enable read access for all users" ON public.delivery_note_items FOR SELECT USING (true);
+CREATE POLICY "Enable insert access for all users" ON public.delivery_note_items FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update access for all users" ON public.delivery_note_items FOR UPDATE USING (true);
+CREATE POLICY "Enable delete access for all users" ON public.delivery_note_items FOR DELETE USING (true);
