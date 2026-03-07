@@ -10,7 +10,7 @@ import { CustomerCRMComponent } from './crm/customer-crm.component';
 import { InventoryManagerComponent } from '../../inventory/components/inventory/inventory-manager.component';
 import { CategoriesManagerComponent } from '../../inventory/components/categories/categories-manager.component';
 import { ConfigurationManagerComponent } from './config/configuration-manager.component';
-import { SalesHistoryComponent } from '../../inventory/components/history/sales-history.component';
+import { SalesHistoryComponent } from '../../sales/components/history/sales-history.component';
 import { PurchaseOrderComponent } from '../../procurement/components/purchase-orders/purchase-orders.component';
 import { DatabaseSchemaComponent } from './schema/database-schema.component';
 import { ActivityLogComponent } from './auditing/activity-log.component';
@@ -18,7 +18,7 @@ import { StockManagerComponent } from '../../inventory/components/stock/stock-ma
 import { SupplierManagerComponent } from '../../procurement/components/suppliers/supplier-manager.component';
 import { AnalyticsDashboardComponent } from './analytics/analytics-dashboard.component';
 import { MarketingAutomationComponent } from './marketing/marketing-automation.component';
-import { DeliveryNotesComponent } from '../../procurement/components/delivery-notes/delivery-notes.component';
+import { DeliveryNotesComponent } from '../../sales/components/delivery-notes/delivery-notes.component';
 
 
 @Component({
@@ -55,21 +55,40 @@ import { DeliveryNotesComponent } from '../../procurement/components/delivery-no
           <span class="ml-4 font-black tracking-widest text-[15px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 pointer-events-none">OMNIPLUS</span>
         </div>
 
-        <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-3 space-y-1">
-          <!-- Navigation Items -->
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'stores', icon: 'store', label: 'Stores', disabled: false }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'analytics', icon: 'insights', label: 'Reports & Analytics', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'config', icon: 'settings', label: 'Configuration', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'categories', icon: 'category', label: 'Categories', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'inventory', icon: 'inventory_2', label: 'Inventory Manager', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'stock', icon: 'warehouse', label: 'Stock Management', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'customers', icon: 'group', label: 'Customers & CRM', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'marketing', icon: 'campaign', label: 'Marketing Automation', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'suppliers', icon: 'local_shipping', label: 'Suppliers', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'purchase-orders', icon: 'shopping_cart', label: 'Purchase Orders', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'delivery-notes', icon: 'local_shipping', label: 'Delivery Notes', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'history', icon: 'receipt_long', label: 'Sales History', disabled: allStores().length === 0 }"></ng-container>
-          <ng-container *ngTemplateOutlet="navItem; context: { id: 'auditing', icon: 'analytics', label: 'Activity Audit', disabled: allStores().length === 0 }"></ng-container>
+        <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-3 space-y-6 pb-6">
+          
+          <!-- Core Overview Domain -->
+          <div class="space-y-1">
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'stores', icon: 'store', label: 'Stores', disabled: false }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'analytics', icon: 'insights', label: 'Reports & Analytics', disabled: allStores().length === 0 }"></ng-container>
+          </div>
+
+          <!-- Sales & Fulfillment Domain -->
+          <div class="space-y-1 relative">
+            <div class="pl-[20px] mb-2 text-[9px] font-black uppercase tracking-widest text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Sales & CRM</div>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'history', icon: 'receipt_long', label: 'Sales History', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'delivery-notes', icon: 'local_shipping', label: 'Delivery Notes', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'customers', icon: 'group', label: 'Customers & CRM', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'marketing', icon: 'campaign', label: 'Marketing Automation', disabled: allStores().length === 0 }"></ng-container>
+          </div>
+
+          <!-- Procurement & Inventory Domain -->
+          <div class="space-y-1 relative">
+            <div class="pl-[20px] mb-2 text-[9px] font-black uppercase tracking-widest text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Inventory</div>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'inventory', icon: 'inventory_2', label: 'Inventory Library', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'categories', icon: 'category', label: 'Categories', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'stock', icon: 'warehouse', label: 'Stock Manager', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'suppliers', icon: 'handshake', label: 'Suppliers', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'purchase-orders', icon: 'shopping_cart', label: 'Purchase Orders', disabled: allStores().length === 0 }"></ng-container>
+          </div>
+
+          <!-- System Settings Domain -->
+          <div class="space-y-1 relative">
+            <div class="pl-[20px] mb-2 text-[9px] font-black uppercase tracking-widest text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">System</div>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'config', icon: 'settings', label: 'Configuration', disabled: allStores().length === 0 }"></ng-container>
+            <ng-container *ngTemplateOutlet="navItem; context: { id: 'auditing', icon: 'analytics', label: 'Activity Audit', disabled: allStores().length === 0 }"></ng-container>
+          </div>
+          
         </div>
 
         <div class="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">

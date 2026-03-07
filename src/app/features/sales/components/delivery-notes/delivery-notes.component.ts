@@ -9,6 +9,9 @@ import {
 } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DeliveryNotePrintComponent } from '../../../../shared/components/delivery-note-print.component';
+import { CustomerInvoicePrintComponent } from '../../../../shared/components/customer-invoice-print.component';
+import { TransactionItem } from '../../../../core/services/mock-supabase.service';
+import { DialogService } from '../../../../core/services/dialog.service';
 
 type View = 'list' | 'create' | 'detail' | 'receive';
 
@@ -26,7 +29,7 @@ interface CartLine {
 @Component({
   selector: 'app-delivery-notes',
   standalone: true,
-  imports: [CommonModule, FormsModule, DeliveryNotePrintComponent],
+  imports: [CommonModule, FormsModule, DeliveryNotePrintComponent, CustomerInvoicePrintComponent],
   template: `
     <div class="h-full flex flex-col gap-6 animate-in fade-in duration-300">
 
@@ -106,20 +109,39 @@ interface CartLine {
                     <td class="px-5 py-3.5">
                       <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button (click)="openDetail(note)"
-                          class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                          <span class="material-symbols-rounded text-[14px]">open_in_new</span> View
+                          class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                          <span class="material-symbols-rounded text-[14px]">visibility</span> Details
                         </button>
+
+                        <!-- Next Logical Action -->
                         @if (note.status === 'DRAFT') {
                           <button (click)="dispatch(note)"
-                            class="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                            <span class="material-symbols-rounded text-[14px]">local_shipping</span> Dispatch
+                            class="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm border border-blue-100/50">
+                            <span class="material-symbols-rounded text-[14px]">local_shipping</span> Dispatch Now
                           </button>
-                        }
-                        @if (note.status === 'DISPATCHED') {
+                        } @else if (note.status === 'DISPATCHED') {
                           <button (click)="openReceive(note)"
-                            class="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            class="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm border border-violet-100/50">
                             <span class="material-symbols-rounded text-[14px]">inventory</span> Receive Goods
                           </button>
+                        } @else if (note.status === 'DELIVERED' || note.status === 'PARTIAL_REJECTED') {
+                           @if (!note.invoiced_at) {
+                              <button (click)="openDetail(note); showInvoiceModal.set(true)"
+                                class="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm border border-emerald-100/50">
+                                <span class="material-symbols-rounded text-[14px]">receipt_long</span> Invoice Order
+                              </button>
+                           } @else {
+                              <button (click)="viewInvoice(note)"
+                                [disabled]="loadingInvoice()"
+                                class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm border border-indigo-100/50 disabled:opacity-50">
+                                @if (loadingInvoice()) {
+                                  <div class="w-3 h-3 border border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                                } @else {
+                                  <span class="material-symbols-rounded text-[14px]">print</span>
+                                }
+                                View A4 Invoice
+                              </button>
+                           }
                         }
                       </div>
                     </td>
@@ -293,17 +315,43 @@ interface CartLine {
                 }
                 @if (selectedNote()!.status === 'DELIVERED' || selectedNote()!.status === 'PARTIAL_REJECTED') {
                   @if (!selectedNote()!.invoiced_at) {
-                    <button (click)="showInvoiceModal.set(true)"
-                      class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/25 transition-all">
-                      <span class="material-symbols-rounded text-[16px]">receipt_long</span> Generate Invoice
+                    <button (click)="showInvoiceModal.set(true)" 
+                       class="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-5 py-2.5 rounded-2xl text-xs font-black transition-all border border-emerald-100 shadow-sm active:scale-95">
+                      <span class="material-symbols-rounded text-base">receipt_long</span>
+                      GENERATE INVOICE
                     </button>
                   } @else {
-                    <div class="flex flex-col items-end">
-                      <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl border border-emerald-200">
-                        <span class="material-symbols-rounded text-[16px]">task_alt</span>
-                        Invoiced
+                    <div class="flex items-center gap-4 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100/50 dark:border-emerald-800/30 backdrop-blur-sm rounded-2xl p-3 shadow-sm border-l-4 border-l-emerald-500">
+                      <div class="flex flex-col">
+                        <div class="flex items-center gap-2 mb-0.5">
+                           <div class="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+                           <span class="text-[10px] font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-widest">Settled & Invoiced</span>
+                        </div>
+                        <span class="text-[9px] font-bold text-emerald-600/60 dark:text-emerald-500/50 uppercase leading-none">
+                          Issued {{ selectedNote()!.invoiced_at | date:'dd MMM, HH:mm' }}
+                        </span>
                       </div>
-                      <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase">Issued: {{ selectedNote()!.invoiced_at | date:'dd MMM, HH:mm' }}</p>
+                      
+                      @if (selectedNoteTransaction()) {
+                        <div class="w-px h-8 bg-emerald-100 dark:bg-emerald-800/50 mx-1"></div>
+                        <div class="flex flex-col">
+                           <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">Ref #</span>
+                           <span class="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                             {{ selectedNoteTransaction()?.id?.substring(0,8) }}
+                           </span>
+                        </div>
+                        <div class="w-px h-8 bg-emerald-100 dark:bg-emerald-800/50 mx-1"></div>
+                        <button (click)="viewInvoice(selectedNote()!)" 
+                          [disabled]="loadingInvoice()"
+                          class="p-2 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all disabled:opacity-50"
+                          title="View Professional A4 Invoice">
+                          @if (loadingInvoice()) {
+                            <div class="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                          } @else {
+                            <span class="material-symbols-rounded text-lg">print</span>
+                          }
+                        </button>
+                      }
                     </div>
                   }
                 }
@@ -642,6 +690,9 @@ interface CartLine {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      }
 
       <!-- ── SUCCESS CONFIRMATION MODAL ── -->
       @if (showInvoiceSuccess()) {
@@ -675,17 +726,30 @@ interface CartLine {
         />
       }
 
+      <!-- ── A4 INVOICE PRINT MODAL ── -->
+      @if (showInvoicePrintModal() && invoiceData()) {
+        <app-customer-invoice-print
+          [transaction]="invoiceData()!.transaction"
+          [items]="invoiceData()!.items"
+          [store]="storeService.currentStore()"
+          [currency]="storeService.currency()"
+          (close)="showInvoicePrintModal.set(false)"
+        />
+      }
+
     </div>
   `
 })
 export class DeliveryNotesComponent implements OnInit {
   private supabase = inject(MockSupabaseService);
   private storeService = inject(StoreConfigService);
+  private dialog = inject(DialogService);
 
   view = signal<View>('list');
   notes = signal<DeliveryNote[]>([]);
   selectedNote = signal<DeliveryNote | null>(null);
   selectedNoteItems = signal<DeliveryNoteItem[]>([]);
+  selectedNoteTransaction = signal<Transaction | null>(null);
   receivingLines = signal<ReceivingLine[]>([]);
   saving = signal(false);
   showInvoiceModal = signal(false);
@@ -693,6 +757,9 @@ export class DeliveryNotesComponent implements OnInit {
   generatingInvoice = signal(false);
   showInvoiceSuccess = signal(false);
   lastInvoiceId = signal('');
+  showInvoicePrintModal = signal(false); // Added
+  invoiceData = signal<{ transaction: Transaction, items: TransactionItem[] } | null>(null); // Added
+  loadingInvoice = signal(false);
   invoicePaymentMethod: 'ON_ACCOUNT' | 'CASH' | 'CARD' = 'ON_ACCOUNT';
 
   paymentMethods = [
@@ -763,12 +830,21 @@ export class DeliveryNotesComponent implements OnInit {
   }
 
   openDetail(note: DeliveryNote) {
-    this.selectedNote.set(note);
     this.view.set('detail');
+    this.selectedNote.set(note);
+    this.selectedNoteTransaction.set(null); // Reset
+
     this.supabase.getDeliveryNoteItems(note.id).subscribe({
       next: (items) => this.selectedNoteItems.set(items),
       error: (err) => console.error("Failed to load note items", err)
     });
+
+    if (note.invoiced_at) {
+      this.supabase.getTransactionByDeliveryNote(note.id).subscribe({
+        next: (tx) => this.selectedNoteTransaction.set(tx),
+        error: (err) => console.error("Failed to load linked transaction", err)
+      });
+    }
   }
 
   addToCart(p: Product) {
@@ -965,12 +1041,19 @@ export class DeliveryNotesComponent implements OnInit {
         this.loadNotes();
         const updated = { ...note, invoiced_at: new Date().toISOString() };
         this.selectedNote.set(updated);
+
+        // Fetch the fresh transaction info immediately
+        this.supabase.getTransactionByDeliveryNote(note.id).subscribe({
+          next: (tx) => this.selectedNoteTransaction.set(tx),
+          error: (err) => console.error("Failed to load note transaction", err)
+        });
         this.showInvoiceModal.set(false);
         this.showInvoiceSuccess.set(true);
       },
       error: (err) => {
-        console.error('Invoice generation failed:', err);
-        alert('Invoice Error: Please check if the customer has an assigned store account or try a different payment method.');
+        const detail = err?.message ?? err?.error_description ?? JSON.stringify(err);
+        console.error('Invoice generation failed — full error:', err);
+        alert(`Invoice Error:\n${detail}\n\nCheck the browser console for full details.`);
       }
     });
   }
@@ -978,6 +1061,40 @@ export class DeliveryNotesComponent implements OnInit {
   printNote() {
     const note = this.selectedNote();
     if (note) this.showPrintModal.set(true);
+  }
+
+  viewInvoice(note: DeliveryNote) {
+    if (!note.invoiced_at) return;
+
+    this.loadingInvoice.set(true);
+
+    // First find the transaction ID
+    this.supabase.getTransactionByDeliveryNote(note.id).pipe(
+      finalize(() => this.loadingInvoice.set(false))
+    ).subscribe({
+      next: (tx) => {
+        if (!tx) {
+          this.dialog.alert(
+            'Invoicing Link Not Found',
+            'This delivery note was invoiced using an older version of the system where records were not yet linked. You can still find the total in the Sales History context, but the A4 commercial preview is only available for newer records.'
+          );
+          return;
+        }
+
+        // Then get all items for that transaction
+        this.supabase.getTransactionItems(tx.id).subscribe({
+          next: (items) => {
+            this.invoiceData.set({ transaction: tx, items });
+            this.showInvoicePrintModal.set(true);
+          },
+          error: (err) => console.error("Failed to load invoice items", err)
+        });
+      },
+      error: (err) => {
+        console.error("Failed to find linked transaction", err);
+        this.dialog.alert('Connection Error', 'We encountered a problem fetching the financial records. Please check your connection or contact support.');
+      }
+    });
   }
 
   statusBadge(status: DeliveryStatus): string {

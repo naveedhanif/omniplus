@@ -1708,11 +1708,20 @@ export class MockSupabaseService {
 
     // --- Transaction Methods ---
 
-    getTransactions(storeId: string): Observable<Transaction[]> {
-        const promise = this.supabase
+    getTransactions(storeId: string, dateRange?: { start?: string, end?: string }): Observable<Transaction[]> {
+        let query = this.supabase
             .from('transactions')
-            .select('*')
-            .eq('store_id', storeId)
+            .select('*, customer:customers(*)')
+            .eq('store_id', storeId);
+
+        if (dateRange?.start) {
+            query = query.gte('created_at', dateRange.start);
+        }
+        if (dateRange?.end) {
+            query = query.lte('created_at', dateRange.end);
+        }
+
+        const promise = query
             .order('created_at', { ascending: false })
             .then(({ data, error }) => {
                 if (error) throw error;
@@ -1730,6 +1739,15 @@ export class MockSupabaseService {
                 .order('created_at', { ascending: false })
                 .limit(50)
         ).pipe(map(r => r.data as Transaction[]));
+    }
+
+    getTransactionByDeliveryNote(noteId: string): Observable<Transaction | null> {
+        return from(
+            this.supabase.from('transactions')
+                .select('*')
+                .eq('delivery_note_id', noteId)
+                .maybeSingle()
+        ).pipe(map(r => r.data as Transaction));
     }
 
     getRecentTransactionsByCustomer(customerId: string): Observable<Transaction[]> {
@@ -2686,7 +2704,7 @@ export class MockSupabaseService {
             .from('delivery_note_items')
             .select(`
                 *,
-                product:products(id, name, barcode, stock_quantity)
+                product:products(id, name, barcode, stock_quantity, price, cost_price)
             `)
             .eq('delivery_note_id', noteId)
             .then(({ data, error }) => {
