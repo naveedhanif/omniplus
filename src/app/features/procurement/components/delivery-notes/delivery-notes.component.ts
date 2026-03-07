@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { map, switchMap, tap, finalize } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   MockSupabaseService, DeliveryNote, DeliveryNoteItem,
@@ -297,9 +298,12 @@ interface CartLine {
                       <span class="material-symbols-rounded text-[16px]">receipt_long</span> Generate Invoice
                     </button>
                   } @else {
-                    <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200">
-                      <span class="material-symbols-rounded text-[16px]">task_alt</span>
-                      Invoice Generated
+                    <div class="flex flex-col items-end">
+                      <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl border border-emerald-200">
+                        <span class="material-symbols-rounded text-[16px]">task_alt</span>
+                        Invoiced
+                      </div>
+                      <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase">Issued: {{ selectedNote()!.invoiced_at | date:'dd MMM, HH:mm' }}</p>
                     </div>
                   }
                 }
@@ -409,7 +413,13 @@ interface CartLine {
                     <tr class="border-b border-dashed border-slate-100">
                       <td class="py-2">{{ item.product?.name ?? '—' }}</td>
                       <td class="py-2 text-right">{{ item.quantity_shipped }}</td>
-                      <td class="py-2 text-right w-16">[ &nbsp;&nbsp;&nbsp; ]</td>
+                      <td class="py-2 text-right w-16">
+                        @if (selectedNote()?.status === 'DELIVERED' || selectedNote()?.status === 'PARTIAL_REJECTED') {
+                          <span class="font-bold text-indigo-600">[{{ item.quantity_accepted }}]</span>
+                        } @else {
+                          [ &nbsp;&nbsp;&nbsp; ]
+                        }
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -542,88 +552,116 @@ interface CartLine {
 
       <!-- ── INVOICE MODAL ── -->
       @if (showInvoiceModal()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-100">
-
-            <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/25">
-                <span class="material-symbols-rounded text-white text-[20px]">receipt_long</span>
-              </div>
-              <div>
-                <h3 class="text-lg font-black text-slate-800">Generate Invoice</h3>
-                <p class="text-xs text-slate-400 font-semibold">Based on e-POD accepted quantities only</p>
-              </div>
-            </div>
-
-            <!-- Summary -->
-            <div class="bg-slate-50 rounded-xl p-4 mb-5 space-y-2">
-              <div class="flex justify-between text-sm">
-                <span class="text-slate-500 font-semibold">Delivery Note</span>
-                <span class="font-black text-indigo-600 font-mono">{{ selectedNote()!.note_number }}</span>
-              </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-slate-500 font-semibold">Customer</span>
-                <span class="font-bold text-slate-700">{{ selectedNote()!.customer?.full_name ?? 'Walk-in' }}</span>
-              </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-slate-500 font-semibold">Lines to Invoice</span>
-                <span class="font-bold text-slate-700">{{ invoiceableLines().length }}</span>
-              </div>
-              <div class="border-t border-slate-200 pt-2 flex justify-between">
-                <span class="text-slate-500 font-bold text-sm">Invoice Total</span>
-                <span class="font-black text-xl text-emerald-600">{{ invoiceTotal() | currency:'GBP' }}</span>
-              </div>
-            </div>
-
-            <!-- Line breakdown -->
-            <div class="max-h-36 overflow-y-auto mb-5 rounded-xl border border-slate-100 divide-y divide-slate-50">
-              @for (line of invoiceableLines(); track line.id) {
-                <div class="flex items-center justify-between px-4 py-2.5 text-sm">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] w-full max-w-xl overflow-hidden border border-white/20 scale-100 animate-in zoom-in-95 duration-200">
+            
+            <!-- Header Section -->
+            <div class="bg-slate-900 p-8 text-white relative overflow-hidden">
+               <div class="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+               <div class="relative z-10 flex justify-between items-start">
                   <div>
-                    <p class="font-bold text-slate-700">{{ line.product?.name }}</p>
-                    <p class="text-xs text-slate-400">{{ line.accepted }} × {{ line.price | currency:'GBP' }}</p>
+                    <h3 class="text-2xl font-black tracking-tight uppercase">Generate Invoice</h3>
+                    <p class="text-emerald-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Ready for Billing · Delivery Note Ref #{{ selectedNote()?.note_number }}</p>
                   </div>
-                  <span class="font-black text-slate-800">{{ line.lineTotal | currency:'GBP' }}</span>
-                </div>
-              } @empty {
-                <p class="p-4 text-center text-slate-400 text-sm">No accepted items to invoice.</p>
-              }
+                  <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+                    <span class="material-symbols-rounded text-white">receipt_long</span>
+                  </div>
+               </div>
             </div>
 
-            <!-- Payment method -->
-            <div class="mb-5">
-              <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Payment Terms</label>
-              <div class="grid grid-cols-3 gap-2">
-                @for (m of paymentMethods; track m.value) {
-                  <button (click)="invoicePaymentMethod = m.value"
-                    [class]="invoicePaymentMethod === m.value
-                      ? 'border-2 border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'"
-                    class="flex flex-col items-center gap-1 p-3 rounded-xl text-xs font-bold transition-all">
-                    <span class="material-symbols-rounded text-[20px]">{{ m.icon }}</span>
-                    {{ m.label }}
-                  </button>
-                }
+            <div class="p-8">
+              <!-- Summary Bento -->
+              <div class="grid grid-cols-2 gap-4 mb-8">
+                 <div class="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Items Confirmed</p>
+                    <p class="text-xl font-black text-slate-800 dark:text-white">{{ invoiceableLines().length }} Lines</p>
+                 </div>
+                 <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
+                    <p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Billable</p>
+                    <p class="text-xl font-black text-emerald-600">{{ invoiceTotal() | currency:'GBP' }}</p>
+                 </div>
+              </div>
+
+              <!-- Line Items Table -->
+              <div class="mb-8 overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800">
+                <table class="w-full text-xs">
+                   <thead class="bg-slate-50 dark:bg-slate-900/50">
+                      <tr>
+                        <th class="px-4 py-3 text-left font-black text-slate-400 uppercase">Product</th>
+                        <th class="px-4 py-3 text-center font-black text-slate-400 uppercase">Qty</th>
+                        <th class="px-4 py-3 text-right font-black text-slate-400 uppercase">Total</th>
+                      </tr>
+                   </thead>
+                   <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+                      @for (line of invoiceableLines(); track line.id) {
+                        <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                          <td class="px-4 py-3 font-bold text-slate-700 dark:text-slate-300">{{ line.product?.name }}</td>
+                          <td class="px-4 py-3 text-center font-black text-slate-900 dark:text-white">{{ line.accepted }}</td>
+                          <td class="px-4 py-3 text-right font-black text-slate-600 dark:text-slate-400">{{ line.lineTotal | currency:'GBP' }}</td>
+                        </tr>
+                      } @empty {
+                        <tr><td colspan="3" class="p-8 text-center text-slate-400 italic">No accepted items discovered.</td></tr>
+                      }
+                   </tbody>
+                </table>
+              </div>
+
+              <!-- Payment Method Controls -->
+              <div class="mb-8">
+                <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-4">Payment Terms & Settlement</label>
+                <div class="grid grid-cols-3 gap-3">
+                  @for (m of paymentMethods; track m.value) {
+                    <button (click)="invoicePaymentMethod = m.value"
+                      [class]="invoicePaymentMethod === m.value
+                        ? 'border-2 border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 shadow-lg shadow-indigo-600/10'
+                        : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'"
+                      class="flex flex-col items-center gap-2 p-4 rounded-2xl text-xs font-bold transition-all duration-200">
+                      <span class="material-symbols-rounded text-2xl">{{ m.icon }}</span>
+                      {{ m.label }}
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex gap-4">
+                <button (click)="showInvoiceModal.set(false)"
+                  class="flex-1 py-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-bold text-sm transition-all">
+                  Discard
+                </button>
+                <button (click)="generateInvoice()"
+                  [disabled]="invoiceableLines().length === 0 || generatingInvoice()"
+                  class="flex-[2] py-4 rounded-2xl bg-slate-900 hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm transition-all flex items-center justify-center gap-3 shadow-xl">
+                  @if (generatingInvoice()) {
+                    <span class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Processing...
+                  } @else {
+                    <span class="material-symbols-rounded">check_circle</span>
+                    Confirm & Publish Invoice
+                  }
+                </button>
               </div>
             </div>
 
-            <div class="flex gap-3">
-              <button (click)="showInvoiceModal.set(false)"
-                class="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-all">
-                Cancel
-              </button>
-              <button (click)="generateInvoice()"
-                [disabled]="invoiceableLines().length === 0 || generatingInvoice()"
-                class="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm transition-all flex items-center justify-center gap-2">
-                @if (generatingInvoice()) {
-                  <span class="material-symbols-rounded text-[16px] animate-spin">sync</span> Generating…
-                } @else {
-                  <span class="material-symbols-rounded text-[16px]">receipt_long</span> Confirm &amp; Generate
-                }
-              </button>
-            </div>
-
-          </div>
+      <!-- ── SUCCESS CONFIRMATION MODAL ── -->
+      @if (showInvoiceSuccess()) {
+        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-500">
+           <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-10 max-w-sm w-full text-center border border-white/20 animate-in zoom-in-95 duration-300">
+              <div class="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                <span class="material-symbols-rounded text-4xl">check_circle</span>
+              </div>
+              <h3 class="text-2xl font-black text-slate-800 dark:text-white mb-2 uppercase tracking-tight">Invoice Published!</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400 mb-8 font-medium">
+                 Your document has been successfully converted to **Transaction #{{ lastInvoiceId() }}**. 
+                 All ledger entries and stock updates are finalized.
+              </p>
+              <div class="flex flex-col gap-3">
+                 <button (click)="showInvoiceSuccess.set(false)" 
+                    class="w-full py-4 bg-slate-900 hover:bg-black text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-xs">
+                    Great, Continue
+                 </button>
+              </div>
+           </div>
         </div>
       }
 
@@ -653,6 +691,8 @@ export class DeliveryNotesComponent implements OnInit {
   showInvoiceModal = signal(false);
   showPrintModal = signal(false);
   generatingInvoice = signal(false);
+  showInvoiceSuccess = signal(false);
+  lastInvoiceId = signal('');
   invoicePaymentMethod: 'ON_ACCOUNT' | 'CASH' | 'CARD' = 'ON_ACCOUNT';
 
   paymentMethods = [
@@ -914,20 +954,24 @@ export class DeliveryNotesComponent implements OnInit {
       metadata: { type: 'SALE', source: 'DELIVERY_NOTE', delivery_note_number: note.note_number },
     };
 
-    const markInvoiced = () => {
-      this.supabase.updateDeliveryNoteStatus(note.id, note.status, { invoiced_at: new Date().toISOString() }).subscribe({
-        next: () => {
-          this.loadNotes();
-          this.selectedNote.set({ ...note, invoiced_at: new Date().toISOString() });
-          this.generatingInvoice.set(false);
-          this.showInvoiceModal.set(false);
-        }
-      });
-    };
-
-    this.supabase.addTransaction(txData, cartItems).subscribe({
-      next: () => markInvoiced(),
-      error: (err) => { console.warn('Supabase invoice failed', err); markInvoiced(); }
+    this.supabase.addTransaction(txData, cartItems).pipe(
+      switchMap(tx => {
+        this.lastInvoiceId.set(tx.id.substring(0, 8));
+        return this.supabase.updateDeliveryNoteStatus(note.id, note.status, { invoiced_at: new Date().toISOString() });
+      }),
+      finalize(() => this.generatingInvoice.set(false))
+    ).subscribe({
+      next: () => {
+        this.loadNotes();
+        const updated = { ...note, invoiced_at: new Date().toISOString() };
+        this.selectedNote.set(updated);
+        this.showInvoiceModal.set(false);
+        this.showInvoiceSuccess.set(true);
+      },
+      error: (err) => {
+        console.error('Invoice generation failed:', err);
+        alert('Invoice Error: Please check if the customer has an assigned store account or try a different payment method.');
+      }
     });
   }
 
