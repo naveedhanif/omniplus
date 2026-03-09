@@ -14,11 +14,12 @@ import {
 } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
+import { LedgerAcComponent } from './ledger-ac/ledger-ac.component';
 
 @Component({
     selector: 'app-customer-crm',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe],
+    imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe, LedgerAcComponent],
     template: `
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
       <!-- Left: Customer List -->
@@ -275,6 +276,9 @@ import { DialogService } from '../../../../core/services/dialog.service';
                     <button (click)="activeTab.set('DETAILS')" [class.border-[var(--primary-color)]]="activeTab() === 'DETAILS'" [class.text-[var(--primary-color)]]="activeTab() === 'DETAILS'" [class.border-transparent]="activeTab() !== 'DETAILS'" [class.text-slate-500]="activeTab() !== 'DETAILS'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
                         Profile Details
                     </button>
+                    <button (click)="activeTab.set('LEDGER')" [class.border-[var(--primary-color)]]="activeTab() === 'LEDGER'" [class.text-[var(--primary-color)]]="activeTab() === 'LEDGER'" [class.border-transparent]="activeTab() !== 'LEDGER'" [class.text-slate-500]="activeTab() !== 'LEDGER'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
+                        Ledger Account
+                    </button>
                     <button (click)="activeTab.set('COLLECT')" [class.border-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.text-[var(--primary-color)]]="activeTab() === 'COLLECT'" [class.border-transparent]="activeTab() !== 'COLLECT'" [class.text-slate-500]="activeTab() !== 'COLLECT'" class="pb-4 font-bold text-sm border-b-2 transition-colors hover:text-slate-800 dark:hover:text-slate-200">
                         Collect Payment
                     </button>
@@ -340,6 +344,12 @@ import { DialogService } from '../../../../core/services/dialog.service';
                                 </div>
                             </div>
                         </div>
+                    </div>
+                }
+
+                @if (activeTab() === 'LEDGER') {
+                    <div class="h-full bg-slate-50 dark:bg-slate-900 overflow-y-auto">
+                        <app-ledger-ac [customer]="customer"></app-ledger-ac>
                     </div>
                 }
 

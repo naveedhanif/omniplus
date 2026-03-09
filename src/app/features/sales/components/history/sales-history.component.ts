@@ -11,11 +11,13 @@ import {
 } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
+import { CustomerInvoicePrintComponent } from '../../../../shared/components/customer-invoice-print.component';
+import { DateRangePickerComponent, DateRange } from '../../../../shared/components/date-range-picker.component';
 
 @Component({
   selector: 'app-sales-history',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe],
+  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe, CustomerInvoicePrintComponent, DateRangePickerComponent],
   template: `
     <div class="space-y-6">
       <!-- Search & Filters -->
@@ -29,17 +31,11 @@ import { DialogService } from '../../../../core/services/dialog.service';
                 placeholder="Search by Transaction ID or Customer..." 
                 class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-colors">
            </div>
-           <div class="relative w-full md:w-auto">
-              <!-- Reusable Custom Select Dropdown Styling -->
-              <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10 text-[18px]">calendar_month</span>
-              <select [formControl]="timeframeControl" class="w-full md:w-auto bg-slate-50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-lg pl-10 pr-8 py-2 text-sm outline-none appearance-none font-medium text-slate-700 dark:text-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-shadow">
-                 <option value="ALL">All Time</option>
-                 <option value="TODAY">Today</option>
-                 <option value="LAST_7_DAYS">Last 7 Days</option>
-                 <option value="THIS_MONTH">This Month</option>
-                 <option value="LAST_MONTH">Last Month</option>
-              </select>
-              <span class="material-symbols-rounded absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">expand_more</span>
+           <div class="relative w-full md:w-auto z-20">
+              <app-date-range-picker 
+                [initialPreset]="'THIS_MONTH'"
+                (rangeSelected)="onRangeSelected($event)">
+              </app-date-range-picker>
            </div>
 
            <div class="relative w-full md:w-auto">
@@ -90,9 +86,14 @@ import { DialogService } from '../../../../core/services/dialog.service';
                   }
                 </td>
                 <td class="p-4 text-right">
-                  <button (click)="viewTransactionDetail(tx)" class="p-2 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors">
-                    <span class="material-symbols-rounded text-lg">visibility</span>
-                  </button>
+                  <div class="flex items-center justify-end gap-2">
+                    <button (click)="openPrintModal(tx)" tooltip="Print Invoice" class="p-2 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-indigo-600 dark:text-indigo-400">
+                      <span class="material-symbols-rounded text-lg">print</span>
+                    </button>
+                    <button (click)="viewTransactionDetail(tx)" tooltip="View Details" class="p-2 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                      <span class="material-symbols-rounded text-lg">visibility</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             } @empty {
@@ -228,26 +229,37 @@ import { DialogService } from '../../../../core/services/dialog.service';
        </div>
     }
 
-    <!-- Payment Correction Modal (Same as in CRM) -->
-    @if (showCorrectionModal()) {
-       <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-sm p-6 border border-slate-200 dark:border-slate-700">
-               <h3 class="text-lg font-bold mb-4">Correct Payment</h3>
-               <div class="grid grid-cols-1 gap-2 mb-6">
-                   <button (click)="submitPaymentCorrection('CASH')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
-                     <span class="material-symbols-rounded text-green-600">payments</span> CASH
-                   </button>
-                   <button (click)="submitPaymentCorrection('CARD')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
-                     <span class="material-symbols-rounded text-blue-600">credit_card</span> CARD
-                   </button>
-                   <button (click)="submitPaymentCorrection('ON_ACCOUNT')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
-                     <span class="material-symbols-rounded text-orange-600">account_balance_wallet</span> ON ACCOUNT
-                   </button>
-               </div>
-               <button (click)="showCorrectionModal.set(false)" class="w-full py-2 opacity-50">Cancel</button>
-          </div>
-       </div>
-    }
+     <!-- Payment Correction Modal (Same as in CRM) -->
+     @if (showCorrectionModal()) {
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+           <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-sm p-6 border border-slate-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold mb-4">Correct Payment</h3>
+                <div class="grid grid-cols-1 gap-2 mb-6">
+                    <button (click)="submitPaymentCorrection('CASH')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
+                      <span class="material-symbols-rounded text-green-600">payments</span> CASH
+                    </button>
+                    <button (click)="submitPaymentCorrection('CARD')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
+                      <span class="material-symbols-rounded text-blue-600">credit_card</span> CARD
+                    </button>
+                    <button (click)="submitPaymentCorrection('ON_ACCOUNT')" class="p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left flex items-center gap-2">
+                      <span class="material-symbols-rounded text-orange-600">account_balance_wallet</span> ON ACCOUNT
+                    </button>
+                </div>
+                <button (click)="showCorrectionModal.set(false)" class="w-full py-2 opacity-50">Cancel</button>
+           </div>
+        </div>
+     }
+
+     <!-- Invoice Print Overlay -->
+     @if (showPrintModal() && selectedTx()) {
+        <app-customer-invoice-print 
+          [transaction]="selectedTx()!"
+          [items]="selectedTxItems()"
+          [store]="storeService.currentStore()!"
+          [currency]="storeService.currency()"
+          (close)="showPrintModal.set(false)">
+        </app-customer-invoice-print>
+     }
   `,
   styleUrls: []
 })
@@ -258,49 +270,41 @@ export class SalesHistoryComponent {
   fb = inject(FormBuilder);
   historySearchControl = this.fb.control('');
   methodFilterControl = this.fb.control('ALL');
-  timeframeControl = this.fb.control('ALL');
 
   historySearchQuery = toSignal(this.historySearchControl.valueChanges, { initialValue: '' });
   methodFilter = toSignal(this.methodFilterControl.valueChanges, { initialValue: 'ALL' });
-  timeframeFilter = toSignal(this.timeframeControl.valueChanges, { initialValue: 'ALL' });
 
-  // Compute the ISO Date Range server-side args based on the UI Timeframe string
+  // Custom Date Range Signal from DateRangePicker
+  selectedDateRange = signal<{ start: Date | null, end: Date | null }>({ start: null, end: null });
+
+  // Compute the ISO Date Range server-side args based on the DateRange
   dateRangeArgs = computed(() => {
-    const timeframe = this.timeframeFilter();
-    let start: Date | undefined;
-    let end: Date | undefined;
-    const now = new Date();
+    const range = this.selectedDateRange();
 
-    if (timeframe === 'TODAY') {
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Midnight today
-    } else if (timeframe === 'LAST_7_DAYS') {
-      start = new Date();
-      start.setDate(now.getDate() - 7);
-    } else if (timeframe === 'THIS_MONTH') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (timeframe === 'LAST_MONTH') {
-      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      end = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of previous month
-    }
-
-    if (!start && !end) return undefined;
+    if (!range.start && !range.end) return undefined;
 
     return {
-      start: start?.toISOString(),
-      end: end?.toISOString()
+      start: range.start?.toISOString(),
+      end: range.end?.toISOString()
     };
   });
+
+  onRangeSelected(range: DateRange) {
+    this.selectedDateRange.set({ start: range.start, end: range.end });
+  }
 
   private refreshTrigger = new BehaviorSubject<void>(undefined);
 
   private transactions$ = combineLatest({
     store: this.storeService.currentStore$,
     refresh: this.refreshTrigger.asObservable(),
-    timeframe: this.timeframeControl.valueChanges
+    // We implicitly react to the dateRangeArgs via the switchMap below
   }).pipe(
     switchMap(({ store }) => {
       if (!store) return of([]);
-      return this.supabase.getTransactions(store.id, this.dateRangeArgs()); // Pass computed args to DB!
+      // Ensure we subscribe to changes in the signal by reading it inside switchMap (which isn't reactive on its own to signals unless inside an effect or computed). 
+      // To fix this gracefully in standard RxJS:
+      return this.supabase.getTransactions(store.id, this.dateRangeArgs());
     })
   );
 
@@ -323,6 +327,7 @@ export class SalesHistoryComponent {
 
   showDetailModal = signal(false);
   showCorrectionModal = signal(false);
+  showPrintModal = signal(false);
   selectedTx = signal<Transaction | null>(null);
   selectedTxItems = signal<TransactionItem[]>([]);
 
@@ -333,6 +338,21 @@ export class SalesHistoryComponent {
 
     this.supabase.getTransactionItems(tx.id).subscribe({
       next: (items) => this.selectedTxItems.set(items),
+      error: (err) => console.error('Failed to load transaction items', err)
+    });
+  }
+
+  openPrintModal(tx: Transaction) {
+    this.selectedTx.set(tx);
+    this.selectedTxItems.set([]);
+    this.showPrintModal.set(true);
+
+    // Fetch items specifically for the print invoice
+    this.supabase.getTransactionItems(tx.id).subscribe({
+      next: (items) => {
+        this.selectedTxItems.set(items);
+        // We wait slightly to allow angular to render the component before user clicks print
+      },
       error: (err) => console.error('Failed to load transaction items', err)
     });
   }

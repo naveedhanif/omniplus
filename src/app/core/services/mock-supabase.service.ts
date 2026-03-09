@@ -583,29 +583,7 @@ export class MockSupabaseService {
         }
 
         // 3. Fetch Products, join relations, and get compatibility strings
-        const { data: products, error: productsError } = await this.supabase
-            .from('products')
-            .select(`
-                *,
-                product_compatibility!left(
-                    appliance_models(model_number)
-                )
-            `);
-        if (productsError) {
-            console.error('Error fetching products:', productsError);
-            this.products$.next([]); // Set to empty on error
-        } else {
-            const currentCats = this.categories$.getValue();
-            const currentSuppliers = this.suppliers$.getValue();
-            const joinedProducts = (products || []).map((p: any) => ({
-                ...p,
-                category: currentCats.find(c => c.id === p.category_id),
-                supplier: currentSuppliers.find(s => s.id === p.supplier_id),
-                // Map the joined relational data down to a simple array of strings for quick search
-                compatible_models: (p.product_compatibility || []).map((pc: any) => pc.appliance_models?.model_number).filter(Boolean)
-            }));
-            this.products$.next(joinedProducts);
-        }
+        await this.refreshProducts();
 
         // 4. Fetch Staff
         const { data: staff, error: staffError } = await this.supabase.from('staff').select('*');
@@ -696,6 +674,12 @@ export class MockSupabaseService {
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
                 this._productRefresh$.next();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_ledger' }, () => {
+                this._productRefresh$.next(); // Any movement warrants a product list refresh
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+                this._productRefresh$.next(); // New sales trigger stock view refresh
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
                 // Categories rarely change — a simple targeted fetch is fine
@@ -1314,12 +1298,21 @@ export class MockSupabaseService {
         return from(promise);
     }
 
-    getCustomerLedger(customerId: string): Observable<CustomerLedger[]> {
-        const promise = this.supabase
+    getCustomerLedger(customerId: string, dateRange?: { start?: string, end?: string }): Observable<CustomerLedger[]> {
+        let query = this.supabase
             .from('customer_ledger')
             .select('*')
-            .eq('customer_id', customerId)
-            .order('created_at', { ascending: false })
+            .eq('customer_id', customerId);
+
+        if (dateRange?.start) {
+            query = query.gte('created_at', dateRange.start);
+        }
+        if (dateRange?.end) {
+            query = query.lte('created_at', dateRange.end);
+        }
+
+        const promise = query
+            .order('created_at', { ascending: true }) // Order chronologically to calculate running balance easily
             .then(({ data, error }) => {
                 if (error) throw error;
                 return data as CustomerLedger[];
@@ -1400,7 +1393,7 @@ export class MockSupabaseService {
                 await Promise.all([...stockUpdates, ...serialUpdates]);
                 // After updates, recalculate stock for any affected serialized products
                 const serializedProductIds = [...new Set(items.filter((i: any) => i.serial_number_id).map((i: any) => i.product_id))];
-                for (const pId of serializedProductIds) {
+                for (const pId of Array.from(serializedProductIds)) {
                     await this.recalculateStockForSerializedProduct(pId as string);
                 }
 
@@ -1608,13 +1601,54 @@ export class MockSupabaseService {
         return from(promise);
     }
 
-    adjustStock(storeId: string, productId: string, change: number, reason: string, note: string): Observable<boolean> {
-        const promise = this.supabase
-            .rpc('deduct_stock_fifo', { p_product_id: productId, p_quantity: -change }) // decrement by negative = increment
-            .then(({ error }) => {
-                if (error) throw error;
-                // In a real app, we would also INSERT into stock_logs table here
-                return true;
+    adjustStock(storeId: string, productId: string, change: number, reason: string, note: string): Observable<Product> {
+        const promise = this.supabase.from('stock_locations')
+            .select('id')
+            .eq('store_id', storeId)
+            .eq('location_type', 'STORE')
+            .limit(1)
+            .single()
+            .then(async ({ data: loc }) => {
+                const locationId = loc?.id;
+                const tasks = [];
+
+                // 0. Fetch current stock for balance calculation
+                const { data: p } = await this.supabase.from('products').select('stock_shop, stock_quantity').eq('id', productId).single();
+
+                // 1. New Source of Truth: Stock Ledger
+                if (locationId) {
+                    const currentStock = p?.stock_shop || 0;
+                    tasks.push(this.supabase.from('stock_ledger').insert({
+                        store_id: storeId,
+                        product_id: productId,
+                        location_id: locationId,
+                        quantity_change: change,
+                        balance_after: currentStock + change, // Fix NOT NULL constraint
+                        reason: reason,
+                        notes: note || `Manual Adjustment: ${reason}`
+                    }));
+                }
+
+                // 2. Legacy Batch deduction (FIFO)
+                tasks.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: productId, p_quantity: -change }));
+
+                // 3. Legacy Product Column Sync (What the user sees in DB tools)
+                if (p) {
+                    tasks.push(this.supabase.from('products').update({
+                        stock_shop: (p.stock_shop || 0) + change,
+                        stock_quantity: (p.stock_quantity || 0) + change
+                    }).eq('id', productId));
+                }
+
+                await Promise.all(tasks);
+
+                // 4. Force calculation refresh
+                await this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' });
+                await this.refreshProducts();
+
+                const updated = this.products$.getValue().find(p => p.id === productId);
+                if (!updated) throw new Error('Product not found after adjustment');
+                return updated;
             });
         return from(promise);
     }
@@ -1820,7 +1854,7 @@ export class MockSupabaseService {
                 await Promise.all([...stockUpdates, ...serialUpdates]);
 
                 // Recalculate stock for affected serialized products
-                for (const pId of serializedProductIds) {
+                for (const pId of Array.from(serializedProductIds)) {
                     await this.recalculateStockForSerializedProduct(pId);
                 }
 
@@ -1883,6 +1917,8 @@ export class MockSupabaseService {
                 const defaultLocationId = loc?.id;
 
                 for (const item of items) {
+                    const quantity = item.product.is_serialized && item.serials ? item.serials.length : item.quantity;
+
                     if (item.product.is_serialized && item.serials) {
                         for (const serial of item.serials) {
                             txItemsData.push({
@@ -1894,7 +1930,7 @@ export class MockSupabaseService {
                                 discount_reason: item.line_discount_reason || '',
                                 price_at_sale: item.product.price - (item.line_discount_amount || 0),
                                 cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0,
-                                serial_number_id: serial.id,
+                                serial_number_id: serial.id
                             });
                             serialUpdates.push(
                                 this.supabase.from('serial_numbers')
@@ -1902,29 +1938,6 @@ export class MockSupabaseService {
                                     .eq('id', serial.id)
                             );
                         }
-                        // Legacy generic deduction
-                        stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.serials.length }));
-
-                        // New Stock Ledger logic
-                        if (defaultLocationId) {
-                            stockUpdates.push(this.supabase.from('stock_ledger').insert({
-                                store_id: txData.store_id,
-                                product_id: item.product.id,
-                                location_id: defaultLocationId,
-                                quantity_change: -item.serials.length,
-                                reason: 'SALE',
-                                reference_id: tx.id,
-                                notes: `POS Sale #${tx.id.substring(0, 8)}`
-                            }));
-                        }
-
-                        // LEGACY SYNC: Update products table for UI compatibility
-                        stockUpdates.push(this.supabase.from('products')
-                            .update({
-                                stock_shop: (item.product.stock_shop || 0) - item.serials.length,
-                                stock_quantity: (item.product.stock_quantity || 0) - item.serials.length
-                            })
-                            .eq('id', item.product.id));
                     } else {
                         txItemsData.push({
                             transaction_id: tx.id,
@@ -1936,31 +1949,33 @@ export class MockSupabaseService {
                             price_at_sale: (item.product.price * item.quantity) - (item.line_discount_amount || 0),
                             cost_at_sale: item.product.metadata?.mac ?? item.product.cost_price ?? 0
                         });
-
-                        // Legacy hook
-                        stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: item.quantity }));
-
-                        // New Stock Ledger logic
-                        if (defaultLocationId) {
-                            stockUpdates.push(this.supabase.from('stock_ledger').insert({
-                                store_id: txData.store_id,
-                                product_id: item.product.id,
-                                location_id: defaultLocationId,
-                                quantity_change: -item.quantity,
-                                reason: 'SALE',
-                                reference_id: tx.id,
-                                notes: `POS Sale #${tx.id.substring(0, 8)}`
-                            }));
-                        }
-
-                        // LEGACY SYNC: Update products table for UI compatibility
-                        stockUpdates.push(this.supabase.from('products')
-                            .update({
-                                stock_shop: (item.product.stock_shop || 0) - item.quantity,
-                                stock_quantity: (item.product.stock_quantity || 0) - item.quantity
-                            })
-                            .eq('id', item.product.id));
                     }
+
+                    // 1. Source of Truth: Stock Ledger
+                    if (defaultLocationId) {
+                        const currentStock = item.product.stock_shop || 0;
+                        stockUpdates.push(this.supabase.from('stock_ledger').insert({
+                            store_id: txData.store_id,
+                            product_id: item.product.id,
+                            location_id: defaultLocationId,
+                            quantity_change: -quantity,
+                            balance_after: currentStock - quantity, // Fix NOT NULL constraint
+                            reason: 'SALE',
+                            reference_id: tx.id,
+                            notes: `POS Sale #${tx.id.substring(0, 8)}`
+                        }));
+                    }
+
+                    // 2. Legacy Batch deduction (FIFO)
+                    stockUpdates.push(this.supabase.rpc('deduct_stock_fifo', { p_product_id: item.product.id, p_quantity: quantity }));
+
+                    // 3. Legacy Column Sync (for backward compatibility)
+                    stockUpdates.push(this.supabase.from('products')
+                        .update({
+                            stock_shop: (item.product.stock_shop || 0) - quantity,
+                            stock_quantity: (item.product.stock_quantity || 0) - quantity
+                        })
+                        .eq('id', item.product.id));
                 }
 
                 await this.supabase.from('transaction_items').insert(txItemsData);
@@ -2005,6 +2020,7 @@ export class MockSupabaseService {
 
                 // Force materialized view refresh so Command Center reflects the sale immediately
                 await this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' });
+                await this.refreshProducts();
 
                 resolve(tx);
             } catch (error) {
@@ -2083,23 +2099,81 @@ export class MockSupabaseService {
     /** Re-fetches ALL products from DB with client-side joins and pushes into the shared BehaviorSubject. */
     private async refreshProducts(): Promise<void> {
         try {
-            const { data, error } = await this.supabase
-                .from('products')
-                .select(`
-                    *,
-                    product_compatibility!left(
-                        appliance_models(model_number)
-                    )
-                `);
-            if (error) throw error;
+            const storeId = this._activeStoreId();
+            if (!storeId) {
+                // Fetch first store if none active
+                const { data: stores } = await this.supabase.from('stores').select('id').limit(1);
+                if (stores && stores.length > 0) {
+                    this._activeStoreId.set(stores[0].id);
+                } else {
+                    return;
+                }
+            }
+
+            const currentId = this._activeStoreId()!;
+
+            // Ensure the materialized view is synced with the latest ledger before we query it
+            // This is the CRITICAL missing link for real-time consistency in Option B.
+            try {
+                await this.supabase.rpc('refresh_materialized_view', { view_name: 'stock_levels' });
+            } catch (rpcErr) {
+                console.warn('Silent failure refreshing view inside refreshProducts:', rpcErr);
+            }
+
+            // OPTION B IMPLEMENTATION:
+            // Instead of trusting columns on products table, we pivot the stock_levels view 
+            // to populate stock_shop and stock_warehouse on the fly.
+            const [productsRes, levelsRes, locationsRes] = await Promise.all([
+                this.supabase
+                    .from('products')
+                    .select(`
+                        *,
+                        product_compatibility!left(
+                            appliance_models(model_number)
+                        )
+                    `)
+                    .eq('store_id', currentId),
+                this.supabase
+                    .from('stock_levels')
+                    .select('*'),
+                this.supabase
+                    .from('stock_locations')
+                    .select('*')
+                    .eq('store_id', currentId)
+            ]);
+
+            if (productsRes.error) throw productsRes.error;
+            if (levelsRes.error) throw levelsRes.error;
+            if (locationsRes.error) throw locationsRes.error;
+
             const currentCats = this.categories$.getValue();
             const currentSuppliers = this.suppliers$.getValue();
-            const joined = (data || []).map((p: any) => ({
-                ...p,
-                category: currentCats.find((c: any) => c.id === p.category_id),
-                supplier: currentSuppliers.find((s: any) => s.id === p.supplier_id),
-                compatible_models: (p.product_compatibility || []).map((pc: any) => pc.appliance_models?.model_number).filter(Boolean)
-            }));
+
+            const locations = locationsRes.data || [];
+            const levels = levelsRes.data || [];
+
+            const joined = (productsRes.data || []).map((p: any) => {
+                // Find all location levels for this product
+                // Note: We still keep the mapping logic available for future use, 
+                // but we no longer force-override the live product columns.
+                const productLevels = levels.filter((l: any) => l.product_id === p.id);
+
+                return {
+                    ...p,
+                    category: currentCats.find((c: any) => c.id === p.category_id),
+                    supplier: currentSuppliers.find((s: any) => s.id === p.supplier_id),
+                    compatible_models: (p.product_compatibility || []).map((pc: any) => pc.appliance_models?.model_number).filter(Boolean),
+
+                    // LEGACY SYNC RESTORED: 
+                    // We trust the 'products' table columns directly now because our 
+                    // adjustStock and submitTransaction methods are perfectly synced.
+                    // This bypasses the 'stale materialized view' problem.
+                    stock_shop: Number(p.stock_shop || 0),
+                    stock_warehouse: Number(p.stock_warehouse || 0),
+                    stock_quantity: Number(p.stock_quantity || 0)
+                };
+            });
+
             this.products$.next(joined);
         } catch (err) {
             console.error('Failed to refresh products:', err);

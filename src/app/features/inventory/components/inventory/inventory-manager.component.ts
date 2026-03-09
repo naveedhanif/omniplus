@@ -900,7 +900,12 @@ export class InventoryManagerComponent {
   showManageSerialsModal = signal(false); // Add later
 
   isImporting = signal(false);
-  selectedProduct = signal<Product | null>(null);
+  selectedProductId = signal<string | null>(null);
+  selectedProduct = computed(() => {
+    const id = this.selectedProductId();
+    if (!id) return null;
+    return this.productsSignal().find(p => p.id === id) || null;
+  });
   currentStockLogs = signal<StockLog[]>([]);
   parsedData = signal<{ data: any, isValid: boolean, error?: string, isNewCategory?: boolean }[]>([]);
   selectedImageFile = signal<File | null>(null);
@@ -939,7 +944,7 @@ export class InventoryManagerComponent {
 
   // ── Panel navigation helpers ──────────────────────────────────────────
   selectProduct(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.activeDetailTab.set('GENERAL');
     this.fetchStockLogs(product);
     this.fetchCompatibility(product.id);
@@ -962,7 +967,7 @@ export class InventoryManagerComponent {
   }
 
   openEditProductPanel(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.editProductForm.patchValue({
       ...product,
       wholesale_price: product.wholesale_price || 0,
@@ -1316,7 +1321,7 @@ export class InventoryManagerComponent {
   }
 
   openEditProductModal(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.editProductForm.patchValue({
       ...product,
       wholesale_price: product.wholesale_price || 0,
@@ -1476,10 +1481,12 @@ export class InventoryManagerComponent {
 
   async showDelete(product: Product) {
     if (await this.dialog.confirm('Delete Product', `Are you sure you want to delete ${product.name}?`)) {
-      this.supabase.deleteProduct(product.id).subscribe({
+      const id = product.id;
+      if (!id) return;
+      this.supabase.deleteProduct(id).subscribe({
         next: () => {
           this.dialog.alert('Success', 'Product deleted.');
-          this.selectedProduct.set(null);
+          this.selectedProductId.set(null);
           this.panelState.set('EMPTY');
         },
         error: err => this.dialog.alert('Error', 'Failed to delete product.')
@@ -1488,7 +1495,7 @@ export class InventoryManagerComponent {
   }
 
   openAdjustStock(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.adjustStockForm.reset({ type: 'ADD', quantity: 1, reason: 'RESTOCK', note: '' });
     this.showAdjustStock.set(true);
   }
@@ -1502,9 +1509,10 @@ export class InventoryManagerComponent {
     const change = type === 'ADD' ? quantity! : -quantity!;
 
     this.supabase.adjustStock(store.id, product.id, change, reason as StockReason, note!).subscribe({
-      next: () => {
+      next: (updatedProduct) => {
         this.dialog.alert('Success', 'Stock adjusted.');
         this.showAdjustStock.set(false);
+        // Note: selectedProduct() updates automatically via computed signal link to productsSignal
       },
       error: err => this.dialog.alert('Error', `Failed to adjust stock: ${err.message} `)
     });
@@ -1515,20 +1523,20 @@ export class InventoryManagerComponent {
   }
 
   viewStockLogs(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.supabase.getStockLogs(product.id).subscribe(logs => this.currentStockLogs.set(logs));
     this.showStockLogs.set(true);
   }
 
   openLabelPrint(product: Product) {
-    this.selectedProduct.set(product);
+    this.selectedProductId.set(product.id);
     this.showLabelPrintModal.set(true);
   }
 
   handleSaveBarcode(productId: string) {
     this.supabase.updateProduct(productId, { barcode: productId }).subscribe({
       next: (updatedProduct) => {
-        this.selectedProduct.set(updatedProduct);
+        this.selectedProductId.set(updatedProduct.id);
       }
     });
   }
