@@ -1,6 +1,6 @@
 import { Component, inject, computed, signal, effect, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { StoreConfigService } from '../../../core/services/store-config.service';
 import { MockSupabaseService, Store, Category, Product, Customer, PaymentMethod } from '../../../core/services/mock-supabase.service';
 import { DialogService } from '../../../core/services/dialog.service';
@@ -13,11 +13,12 @@ import { ConnectivityService } from '../../../core/services/connectivity.service
 import { OfflineStorageService } from '../../../core/services/offline-storage.service';
 
 @Component({
-  selector: 'app-epos',
-  standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
-  template: `
+   selector: 'app-epos',
+   standalone: true,
+   imports: [CommonModule, RouterLink, FormsModule],
+   template: `
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       .enactor-shadow { box-shadow: 0 0 40px rgba(0,0,0,0.1); }
@@ -27,10 +28,10 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
     </style>
 
     @if (allStores().length > 0) {
-      <div class="h-screen flex flex-col overflow-hidden bg-[#F2F4F7] text-slate-900 font-sans selection:bg-indigo-100">
+      <div class="h-screen flex flex-col overflow-hidden bg-[#F2F4F7] text-slate-900 font-['Outfit'] selection:bg-indigo-100">
         
-        <!-- 1. Enactor-Style Top Navigation Bar -->
-        <nav class="h-20 bg-black text-white px-2 flex items-center justify-between shrink-0 shadow-2xl relative z-50">
+        <!-- 1. Premium Top Navigation Bar -->
+        <nav class="h-[76px] bg-slate-900 text-white mx-3 mt-3 rounded-2xl flex items-center justify-between shrink-0 shadow-2xl relative z-50 border border-white/10">
           <div class="flex items-center gap-2 pl-4">
              <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
                 <span class="material-symbols-rounded text-2xl">point_of_sale</span>
@@ -41,37 +42,51 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
              </div>
           </div>
 
-          <div class="flex-1 flex justify-center gap-1">
-             <button (click)="goHome()" class="flex flex-col items-center justify-center w-20 h-20 hover:bg-white/10 transition-colors group">
-                <span class="material-symbols-rounded text-2xl group-active:scale-90 transition-transform">home</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">Home</span>
+          <div class="flex-1 flex justify-center gap-2">
+             <!-- Mode 1: Home Mode -->
+             <button (click)="goHome()" [ngClass]="{ 'bg-white text-slate-900 shadow-[0_0_20px_rgba(255,255,255,0.3)] border-white': leftPanelMode() === 'BAG' && cart().length === 0, 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'BAG' || cart().length !== 0 }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
+                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">home</span>
+                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'BAG' && cart().length === 0">Home</span>
              </button>
-             <button (click)="leftPanelMode.set('BAG')" [ngClass]="{ 'bg-white/10': leftPanelMode() === 'BAG' }" class="flex flex-col items-center justify-center w-20 h-20 hover:bg-white/10 transition-colors group border-b-4" [class.border-indigo-500]="leftPanelMode() === 'BAG'" [class.border-transparent]="leftPanelMode() !== 'BAG'">
-                <span class="material-symbols-rounded text-2xl group-active:scale-90 transition-transform">shopping_basket</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">Sell</span>
+
+             <!-- Mode 2: Selling Mode -->
+             <button (click)="leftPanelMode.set('BAG')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_25px_rgba(99,102,241,0.5)] border-indigo-400': leftPanelMode() === 'BAG' && cart().length > 0, 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'BAG' || cart().length === 0 }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
+                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">shopping_basket</span>
+                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'BAG' && cart().length > 0">Sell</span>
              </button>
-             <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-white/10': leftPanelMode() === 'PRODUCTS' }" class="flex flex-col items-center justify-center w-20 h-20 hover:bg-white/10 transition-colors group border-b-4" [class.border-indigo-500]="leftPanelMode() === 'PRODUCTS'" [class.border-transparent]="leftPanelMode() !== 'PRODUCTS'">
-                <span class="material-symbols-rounded text-2xl group-active:scale-90 transition-transform">inventory_2</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">Products</span>
+
+             <!-- Mode 3: Inventory/Products Mode -->
+             <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-teal-500 text-white shadow-[0_0_25px_rgba(20,184,166,0.5)] border-teal-400': leftPanelMode() === 'PRODUCTS', 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'PRODUCTS' }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
+                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">inventory_2</span>
+                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'PRODUCTS'">Items</span>
              </button>
-             <button (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-white/10': leftPanelMode() === 'LEDGER' }" class="flex flex-col items-center justify-center w-20 h-20 hover:bg-white/10 transition-colors group border-b-4" [class.border-indigo-500]="leftPanelMode() === 'LEDGER'" [class.border-transparent]="leftPanelMode() !== 'LEDGER'">
-                <span class="material-symbols-rounded text-2xl group-active:scale-90 transition-transform">groups</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">CRM</span>
+
+             <!-- Mode 4: CRM/Accounts Mode -->
+             <button (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-violet-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.5)] border-violet-400': leftPanelMode() === 'LEDGER', 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'LEDGER' }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
+                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">groups</span>
+                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'LEDGER'">CRM</span>
              </button>
-             <button (click)="openOrderHistory()" class="flex flex-col items-center justify-center w-20 h-20 hover:bg-white/10 transition-colors group">
-                <span class="material-symbols-rounded text-2xl group-active:scale-90 transition-transform">history_edu</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">Admin</span>
-             </button>
+
+             <div class="w-px h-10 bg-slate-700 mx-2 self-center"></div>
+
+             <!-- Split Action: EPOS / Admin -->
+             <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-white/5 shadow-inner">
+                <button class="flex items-center gap-2 px-4 h-[56px] rounded-lg bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded">point_of_sale</span> EPOS
+                </button>
+                <button (click)="openOrderHistory()" class="flex items-center gap-2 px-4 h-[56px] rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition-all font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded">admin_panel_settings</span> Admin
+                </button>
+             </div>
           </div>
 
           <div class="flex items-center gap-6 pr-6">
-             <div class="text-right hidden xl:block">
+             <div class="text-right hidden xl:block mr-4">
                 <p class="text-[10px] font-black uppercase tracking-widest text-indigo-400">{{ currentTime() | date: 'dd MMM yyyy' }}</p>
-                <p class="text-xl font-mono tracking-tighter">{{ currentTime() | date: 'HH:mm:ss' }}</p>
+                <p class="text-xl font-mono tracking-tighter leading-none">{{ currentTime() | date: 'HH:mm:ss' }}</p>
              </div>
-             <button class="flex flex-col items-center justify-center w-20 h-20 hover:bg-red-500/10 text-red-400 transition-colors">
-                <span class="material-symbols-rounded text-2xl">logout</span>
-                <span class="text-[9px] font-black uppercase mt-1 tracking-widest">Log Out</span>
+             <button (click)="logout()" class="flex items-center justify-center w-12 h-12 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all transform hover:scale-[1.05] active:scale-95 group shadow-sm">
+                <span class="material-symbols-rounded text-2xl group-hover:-translate-x-0.5 transition-transform">logout</span>
              </button>
           </div>
         </nav>
@@ -120,10 +135,10 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
               </div>
 
               <!-- Content Area (Bag or Ledger) -->
-              <div class="flex-1 overflow-y-auto no-scrollbar relative">
+              <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar relative min-h-0 bg-white">
                  @if (leftPanelMode() === 'BAG') {
                     <table class="w-full border-collapse">
-                       <thead class="bg-slate-50 sticky top-0 z-10 border-b border-slate-100 text-slate-400">
+                       <thead class="bg-white/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-100 text-slate-400 shadow-sm">
                           <tr class="text-[10px] font-black uppercase tracking-widest">
                              <th class="py-4 pl-8 text-left">Item</th>
                              <th class="py-4 text-center">Qty</th>
@@ -268,23 +283,60 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
                  }
               </div>
 
-              <!-- Terminal Function Grid (Enactor Grid) -->
-              <div class="h-40 bg-slate-50 border-t border-slate-100 p-3 shrink-0 grid grid-cols-4 gap-2">
-                 <button (click)="leftPanelMode.set('BAG')" class="enactor-btn" [class.enactor-btn-black]="leftPanelMode() === 'BAG'">Sell Item</button>
-                 <button (click)="applyGlobalDiscount()" class="enactor-btn enactor-btn-black">Discounts</button>
-                 <button (click)="returnMode.set(!returnMode())" class="enactor-btn" [class.bg-red-600]="returnMode()" [class.text-white]="returnMode()" [class.enactor-btn-black]="!returnMode()">{{ returnMode() ? 'Cancel Return' : 'Returns' }}</button>
-                 <button (click)="voidTransaction()" class="enactor-btn enactor-btn-black">Void Sale</button>
-                 <button (click)="leftPanelMode.set('PRODUCTS')" class="enactor-btn border-2 border-slate-900 bg-white" [class.bg-slate-900]="leftPanelMode() === 'PRODUCTS'" [class.text-white]="leftPanelMode() === 'PRODUCTS'">Inventory Grid</button>
-                 <button (click)="leftPanelMode.set('LEDGER')" class="enactor-btn border-2 border-indigo-600 bg-white text-indigo-600" [class.bg-indigo-600]="leftPanelMode() === 'LEDGER'" [class.text-white]="leftPanelMode() === 'LEDGER'">A/C Statement</button>
-                 <button (click)="openCheckoutModal()" class="enactor-btn">Check Out</button>
-                 <button (click)="clearCustomer()" class="enactor-btn text-red-600">Clear Customer</button>
+              <!-- Terminal Function Grid (Premium Physical Card View) -->
+              <div class="h-[140px] bg-slate-50 p-4 shrink-0 grid grid-cols-4 gap-4 border-t border-slate-200">
+                 
+                 <!-- Card 1: Refunds & Adjustments -->
+                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden" [class.border-pink-500]="returnMode()" [class.shadow-[0_0_15px_rgba(236,72,153,0.2)]]="returnMode()">
+                    @if (returnMode()) {
+                        <div class="absolute inset-0 bg-pink-500/5"></div>
+                    }
+                    <div class="flex items-center gap-2 w-full text-slate-500 relative z-10">
+                       <span class="material-symbols-rounded text-lg text-slate-400" [class.text-pink-500]="returnMode()">assignment_return</span>
+                       <span class="text-xs font-bold tracking-wide" [class.text-pink-600]="returnMode()">Returns Desk</span>
+                    </div>
+                    <button (click)="returnMode.set(!returnMode())" class="relative z-10 h-11 w-full font-bold rounded-xl transition-all transform active:scale-95 text-[11px] uppercase tracking-wider" 
+                            [class.bg-pink-500]="returnMode()" [class.text-white]="returnMode()" [class.hover:bg-pink-600]="returnMode()"
+                            [class.bg-white]="!returnMode()" [class.text-slate-900]="!returnMode()" [class.border]="!returnMode()" [class.border-slate-300]="!returnMode()" [class.hover:bg-slate-50]="!returnMode()">
+                       {{ returnMode() ? 'Cancel Refund' : 'Initiate Refund' }}
+                    </button>
+                 </div>
+
+                 <!-- Card 2: Financial & CRM -->
+                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <button (click)="applyGlobalDiscount()" class="flex items-center gap-2 w-full text-slate-500 hover:text-indigo-600 transition-colors group">
+                       <span class="material-symbols-rounded text-lg text-slate-400 group-hover:text-indigo-500 transition-colors">loyalty</span>
+                       <span class="text-xs font-bold tracking-wide">Discounts</span>
+                    </button>
+                    <button (click)="leftPanelMode.set('LEDGER')" class="h-11 w-full border border-indigo-600 text-indigo-600 font-bold rounded-xl bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all transform active:scale-95 text-[11px] uppercase tracking-wider" [class.bg-indigo-600]="leftPanelMode() === 'LEDGER'" [class.text-white]="leftPanelMode() === 'LEDGER'">A/C Statement</button>
+                 </div>
+
+                 <!-- Card 3: Primary Action (Fulfillment) -->
+                 <div class="bg-white rounded-2xl shadow-sm border border-emerald-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow hover:border-emerald-400 overflow-hidden relative group">
+                    <div class="absolute inset-0 bg-gradient-to-br from-emerald-50 to-teal-50/20 z-0"></div>
+                    <div class="flex items-center gap-2 w-full text-slate-500 relative z-10 opacity-70">
+                       <span class="material-symbols-rounded text-lg text-emerald-500 group-hover:scale-110 transition-transform">point_of_sale</span>
+                       <span class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Fulfillment</span>
+                    </div>
+                    <button (click)="openCheckoutModal()" class="relative z-10 h-11 w-full text-white font-black rounded-xl bg-emerald-500 hover:bg-emerald-600 transition-all transform active:scale-95 text-xs uppercase tracking-[0.1em] shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.4)]">Pay & Complete</button>
+                 </div>
+
+                 <!-- Card 4: Danger Zone -->
+                 <div class="bg-red-50/30 rounded-2xl shadow-sm border border-red-100 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <button (click)="voidTransaction()" class="flex items-center gap-2 w-full text-slate-500 hover:text-red-600 transition-colors group">
+                       <span class="material-symbols-rounded text-lg text-slate-400 group-hover:text-red-500 transition-colors">delete_forever</span>
+                       <span class="text-xs font-bold tracking-wide">Void Sale</span>
+                    </button>
+                    <button (click)="clearCustomer()" class="h-11 w-full text-red-500 font-bold rounded-xl bg-white border border-red-200 hover:bg-red-50 transition-all transform active:scale-95 text-[11px] uppercase tracking-wider text-center">Clear Customer</button>
+                 </div>
+
               </div>
            </div>
 
            <!-- RIGHT PANEL: COMMAND CENTER -->
-           <div class="flex-1 min-w-[360px] flex flex-col gap-3">
+           <div class="flex-1 min-w-[360px] flex flex-col gap-3 h-full">
               <!-- Expanded Payment Summary -->
-              <div class="bg-white rounded-2xl border border-slate-200 shadow-xl p-8 flex-1 flex flex-col justify-between relative overflow-hidden">
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-xl p-8 flex-1 flex flex-col justify-between relative overflow-hidden h-full">
                  <!-- Return Mode Indicator -->
                  @if (returnMode()) {
                     <div class="absolute top-0 right-0 bg-red-500 text-white px-8 py-2 rotate-45 translate-x-10 translate-y-2 text-[10px] font-black uppercase tracking-widest">Returns</div>
@@ -417,9 +469,9 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
                     <span class="material-symbols-rounded text-4xl text-slate-400 group-hover:text-amber-500" [class.text-amber-500]="activePaymentMethod() === 'split'">account_balance_wallet</span>
                     <span class="text-xs font-black uppercase tracking-widest" [class.text-amber-700]="activePaymentMethod() === 'split'">On Account</span>
                  </button>
-                 <button class="h-32 border-2 border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center gap-3 transition-all group hover:border-cyan-500 opacity-40">
+                 <button (click)="applyGiftCard()" class="h-32 border-2 border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center gap-3 transition-all group hover:border-cyan-500 hover:bg-cyan-50 active:scale-[0.98]">
                     <span class="material-symbols-rounded text-4xl text-slate-400 group-hover:text-cyan-500">card_giftcard</span>
-                    <span class="text-xs font-black uppercase tracking-widest">Gift Card</span>
+                    <span class="text-xs font-black uppercase tracking-widest group-hover:text-cyan-700">Gift Card</span>
                  </button>
               </div>
 
@@ -469,553 +521,570 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
   `
 })
 export class EposComponent {
-  storeService = inject(StoreConfigService);
-  mockSupabase = inject(MockSupabaseService);
-  dialogService = inject(DialogService);
-  sharedState = inject(POSSharedStateService);
-  syncService = inject(SyncService);
-  connectivity = inject(ConnectivityService);
-  offlineStorage = inject(OfflineStorageService);
+   storeService = inject(StoreConfigService);
+   mockSupabase = inject(MockSupabaseService);
+   dialogService = inject(DialogService);
+   sharedState = inject(POSSharedStateService);
+   syncService = inject(SyncService);
+   connectivity = inject(ConnectivityService);
+   offlineStorage = inject(OfflineStorageService);
+   router = inject(Router);
 
-  // State Signals
-  viewMode = signal<'GRID' | 'LIST'>('GRID');
-  searchQuery = signal('');
-  leftPanelMode = signal<'BAG' | 'LEDGER' | 'PRODUCTS'>('BAG');
-  selectedCategory = signal<string | null>(null);
-  showCustomerInsights = signal(false);
-  showCheckoutModal = signal(false);
-  isCompletingSale = signal(false);
-  returnMode = signal(false); // Global toggle for returns/refunds
-  isOffline = signal(false);
-  pendingSyncCount = signal(0);
-  currentTime = signal(new Date());
+   // State Signals
+   viewMode = signal<'GRID' | 'LIST'>('GRID');
+   searchQuery = signal('');
+   leftPanelMode = signal<'BAG' | 'LEDGER' | 'PRODUCTS'>('BAG');
+   selectedCategory = signal<string | null>(null);
+   showCustomerInsights = signal(false);
+   showCheckoutModal = signal(false);
+   isCompletingSale = signal(false);
+   returnMode = signal(false); // Global toggle for returns/refunds
+   isOffline = signal(false);
+   pendingSyncCount = signal(0);
+   currentTime = signal(new Date());
 
-  // Ledger Signals
-  ledgerEntries = signal<any[]>([]);
-  ledgerBalance = signal<number>(0);
-  ledgerTotals = signal<{ debit: number, credit: number }>({ debit: 0, credit: 0 });
-  allStores = toSignal(this.mockSupabase.getAllStores(), { initialValue: [] as Store[] });
-  Math = Math;
+   // Ledger Signals
+   ledgerEntries = signal<any[]>([]);
+   ledgerBalance = signal<number>(0);
+   ledgerTotals = signal<{ debit: number, credit: number }>({ debit: 0, credit: 0 });
+   allStores = toSignal(this.mockSupabase.getAllStores(), { initialValue: [] as Store[] });
+   Math = Math;
 
-  storeId = computed(() => this.storeService.currentStore()?.id);
+   storeId = computed(() => this.storeService.currentStore()?.id);
 
-  categories = toSignal(
-    toObservable(this.storeId).pipe(
-      switchMap(id => {
-        if (!id) return of([]);
-        if (this.connectivity.isOnline()) {
-          // Online: fetch live from Supabase
-          return this.mockSupabase.getCategories(id);
-        } else {
-          // Offline: read from local IndexedDB cache
-          return from(this.offlineStorage.getAll<Category>('categories'));
-        }
-      })
-    ),
-    { initialValue: [] as Category[] }
-  );
+   categories = toSignal(
+      toObservable(this.storeId).pipe(
+         switchMap(id => {
+            if (!id) return of([]);
+            if (this.connectivity.isOnline()) {
+               // Online: fetch live from Supabase
+               return this.mockSupabase.getCategories(id);
+            } else {
+               // Offline: read from local IndexedDB cache
+               return from(this.offlineStorage.getAll<Category>('categories'));
+            }
+         })
+      ),
+      { initialValue: [] as Category[] }
+   );
 
-  products = toSignal(
-    toObservable(this.storeId).pipe(
-      switchMap(id => {
-        if (!id) return of([]);
-        if (this.connectivity.isOnline()) {
-          // Online: fetch live from Supabase
-          return this.mockSupabase.getProducts(id);
-        } else {
-          // Offline: read from local IndexedDB cache filtered by store
-          return from(
-            this.offlineStorage.getAll<Product>('products').then(
-              all => all.filter(p => p.store_id === id)
-            )
-          );
-        }
-      })
-    ),
-    { initialValue: [] as Product[] }
-  );
+   products = toSignal(
+      toObservable(this.storeId).pipe(
+         switchMap(id => {
+            if (!id) return of([]);
+            if (this.connectivity.isOnline()) {
+               // Online: fetch live from Supabase
+               return this.mockSupabase.getProducts(id);
+            } else {
+               // Offline: read from local IndexedDB cache filtered by store
+               return from(
+                  this.offlineStorage.getAll<Product>('products').then(
+                     all => all.filter(p => p.store_id === id)
+                  )
+               );
+            }
+         })
+      ),
+      { initialValue: [] as Product[] }
+   );
 
-  // Static list for payment methods as service doesn't have a getter yet
-  paymentMethods = signal<{ id: string, name: string }[]>([
-    { id: 'cash', name: 'CASH' },
-    { id: 'card', name: 'CARD' }
-  ]);
+   // Static list for payment methods as service doesn't have a getter yet
+   paymentMethods = signal<{ id: string, name: string }[]>([
+      { id: 'cash', name: 'CASH' },
+      { id: 'card', name: 'CARD' }
+   ]);
 
-  cart = this.sharedState.cart;
-  selectedPaymentMethods = signal<{ id: string, name: string }[]>([]);
+   cart = this.sharedState.cart;
+   selectedPaymentMethods = signal<{ id: string, name: string }[]>([]);
 
-  // Payment Pad & Quick Cash Signals
-  activePaymentMethod = signal<'cash' | 'card' | 'split'>('cash');
-  paymentInputString = signal('');
+   // Payment Pad & Quick Cash Signals
+   activePaymentMethod = signal<'cash' | 'card' | 'split'>('cash');
+   paymentInputString = signal('');
 
-  quickCashAmounts = computed(() => {
-    let t = this.total();
-    if (t <= 0) return [10, 20, 50];
+   quickCashAmounts = computed(() => {
+      let t = this.total();
+      if (t <= 0) return [10, 20, 50];
 
-    // Generate smart suggestions based on total
-    if (t <= 10) return [10, 20, 50];
-    if (t <= 20) return [20, 50, 100];
-    if (t <= 50) return [50, 100, 200];
+      // Generate smart suggestions based on total
+      if (t <= 10) return [10, 20, 50];
+      if (t <= 20) return [20, 50, 100];
+      if (t <= 50) return [50, 100, 200];
 
-    // Round up to nearest 10, 50, 100 for larger amounts
-    const ceil10 = Math.ceil(t / 10) * 10;
-    const ceil50 = Math.ceil(t / 50) * 50;
-    const ceil100 = Math.ceil(t / 100) * 100;
-    return [...new Set([ceil10, ceil50, ceil100])].filter(v => v >= t).slice(0, 3);
-  });
+      // Round up to nearest 10, 50, 100 for larger amounts
+      const ceil10 = Math.ceil(t / 10) * 10;
+      const ceil50 = Math.ceil(t / 50) * 50;
+      const ceil100 = Math.ceil(t / 100) * 100;
+      return [...new Set([ceil10, ceil50, ceil100])].filter(v => v >= t).slice(0, 3);
+   });
 
-  // Computed Properties
-  filteredProducts = computed(() => {
-    const q = this.searchQuery().toLowerCase();
-    const catId = this.selectedCategory();
-    const allProds = this.products();
+   // Computed Properties
+   filteredProducts = computed(() => {
+      const q = this.searchQuery().toLowerCase();
+      const catId = this.selectedCategory();
+      const allProds = this.products();
 
-    return allProds.filter(p => {
-      const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.barcode?.toLowerCase().includes(q);
-      const matchesCategory = !catId || p.category_id === catId;
-      return matchesSearch && matchesCategory;
-    });
-  });
+      return allProds.filter(p => {
+         const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.barcode?.toLowerCase().includes(q);
+         const matchesCategory = !catId || p.category_id === catId;
+         return matchesSearch && matchesCategory;
+      });
+   });
 
-  categoryCounts = computed(() => {
-    const counts: Record<string, number> = {};
-    const allProds = this.products();
-    allProds.forEach(p => {
-      if (p.category_id) {
-        counts[p.category_id] = (counts[p.category_id] || 0) + 1;
-      }
-    });
-    return counts;
-  });
+   categoryCounts = computed(() => {
+      const counts: Record<string, number> = {};
+      const allProds = this.products();
+      allProds.forEach(p => {
+         if (p.category_id) {
+            counts[p.category_id] = (counts[p.category_id] || 0) + 1;
+         }
+      });
+      return counts;
+   });
 
-  selectedCategoryName = computed(() => {
-    const catId = this.selectedCategory();
-    return this.categories().find(c => c.id === catId)?.name || '';
-  });
+   selectedCategoryName = computed(() => {
+      const catId = this.selectedCategory();
+      return this.categories().find(c => c.id === catId)?.name || '';
+   });
 
-  topItems = computed(() => {
-    // Just a slice for "Fast Track" placeholder
-    return this.products().slice(0, 8);
-  });
+   topItems = computed(() => {
+      // Just a slice for "Fast Track" placeholder
+      return this.products().slice(0, 8);
+   });
 
-  subtotal = this.sharedState.subtotal;
-  tax = this.sharedState.taxAmount;
-  total = this.sharedState.total;
+   subtotal = this.sharedState.subtotal;
+   tax = this.sharedState.taxAmount;
+   total = this.sharedState.total;
 
-  paymentAllocations = signal({ cash: 0, card: 0 });
-  paymentBalance = computed(() => {
-    const totalDue = this.total();
-    const allocated = this.paymentAllocations().cash + this.paymentAllocations().card;
-    return Math.max(0, totalDue - allocated);
-  });
+   paymentAllocations = signal({ cash: 0, card: 0 });
+   paymentBalance = computed(() => {
+      const totalDue = this.total();
+      const allocated = this.paymentAllocations().cash + this.paymentAllocations().card;
+      return Math.max(0, totalDue - allocated);
+   });
 
-  // Customer Management
-  customerSearchQuery = signal('');
-  showCustomerDropdown = signal(false);
+   // Customer Management
+   customerSearchQuery = signal('');
+   showCustomerDropdown = signal(false);
 
-  // Debounced search via Supabase
-  filteredCustomers = toSignal(
-    toObservable(this.customerSearchQuery).pipe(
-      debounceTime(300),
-      switchMap((query: string) => {
-        const id = this.storeId();
-        if (!id || query.length < 2) return of([]);
-        return this.mockSupabase.searchCustomers(id, query);
-      })
-    ),
-    { initialValue: [] as Customer[] }
-  );
+   // Debounced search via Supabase
+   filteredCustomers = toSignal(
+      toObservable(this.customerSearchQuery).pipe(
+         debounceTime(300),
+         switchMap((query: string) => {
+            const id = this.storeId();
+            if (!id || query.length < 2) return of([]);
+            return this.mockSupabase.searchCustomers(id, query);
+         })
+      ),
+      { initialValue: [] as Customer[] }
+   );
 
-  updateCustomerSearch(event: Event) {
-    const q = (event.target as HTMLInputElement).value;
-    this.customerSearchQuery.set(q);
-    this.showCustomerDropdown.set(true);
-  }
+   updateCustomerSearch(event: Event) {
+      const q = (event.target as HTMLInputElement).value;
+      this.customerSearchQuery.set(q);
+      this.showCustomerDropdown.set(true);
+   }
 
-  // Promotions
-  promoCodeInput = signal('');
-  validatingPromo = signal(false);
+   // Promotions
+   promoCodeInput = signal('');
+   validatingPromo = signal(false);
 
-  updatePromoInput(event: Event) {
-    this.promoCodeInput.set((event.target as HTMLInputElement).value);
-  }
+   updatePromoInput(event: Event) {
+      this.promoCodeInput.set((event.target as HTMLInputElement).value);
+   }
 
-  applyPromoCode() {
-    const code = this.promoCodeInput().trim().toUpperCase();
-    if (!code || !this.storeId()) return;
+   applyPromoCode() {
+      const code = this.promoCodeInput().trim().toUpperCase();
+      if (!code || !this.storeId()) return;
 
-    this.validatingPromo.set(true);
-    this.mockSupabase.validatePromotion(code, this.storeId()!).subscribe({
-      next: (promo) => {
-        this.validatingPromo.set(false);
-        if (promo) {
-          this.sharedState.appliedPromotion.set(promo);
-          this.dialogService.alert('Promo Applied', `Successfully applied ${promo.discount_percentage}% discount!`);
-        } else {
-          this.dialogService.alert('Invalid Code', 'This promo code is either invalid, expired, or already used.');
-          this.promoCodeInput.set('');
-        }
-      },
-      error: () => {
-        this.validatingPromo.set(false);
-      }
-    });
-  }
+      this.validatingPromo.set(true);
+      this.mockSupabase.validatePromotion(code, this.storeId()!).subscribe({
+         next: (promo) => {
+            this.validatingPromo.set(false);
+            if (promo) {
+               this.sharedState.appliedPromotion.set(promo);
+               this.dialogService.alert('Promo Applied', `Successfully applied ${promo.discount_percentage}% discount!`);
+            } else {
+               this.dialogService.alert('Invalid Code', 'This promo code is either invalid, expired, or already used.');
+               this.promoCodeInput.set('');
+            }
+         },
+         error: () => {
+            this.validatingPromo.set(false);
+         }
+      });
+   }
 
-  clearPromo() {
-    this.sharedState.appliedPromotion.set(null);
-    this.promoCodeInput.set('');
-  }
+   clearPromo() {
+      this.sharedState.appliedPromotion.set(null);
+      this.promoCodeInput.set('');
+   }
 
-  selectCustomer(customer: Customer) {
-    this.sharedState.selectedCustomer.set(customer);
-    this.customerSearchQuery.set('');
-    this.showCustomerDropdown.set(false);
+   selectCustomer(customer: Customer) {
+      this.sharedState.selectedCustomer.set(customer);
+      this.customerSearchQuery.set('');
+      this.showCustomerDropdown.set(false);
 
-    // FETCH LEDGER FOR NEWLY SELECTED CUSTOMER
-    this.mockSupabase.getCustomerLedger(customer.id).subscribe(entries => {
-      let running = 0;
-      let totalDebit = 0;
-      let totalCredit = 0;
+      // FETCH LEDGER FOR NEWLY SELECTED CUSTOMER
+      this.mockSupabase.getCustomerLedger(customer.id).subscribe(entries => {
+         let running = 0;
+         let totalDebit = 0;
+         let totalCredit = 0;
 
-      // Sort chronological to calculate running balance correctly
-      const calculated = entries
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        .map(e => {
-          running += (e.amount || 0);
+         // Sort chronological to calculate running balance correctly
+         const calculated = entries
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map(e => {
+               running += (e.amount || 0);
 
-          // Database Standard: Negative = Debt (Sale), Positive = Credit (Payment)
-          if (e.amount < 0) totalDebit += Math.abs(e.amount);
-          else totalCredit += (e.amount || 0);
+               // Database Standard: Negative = Debt (Sale), Positive = Credit (Payment)
+               if (e.amount < 0) totalDebit += Math.abs(e.amount);
+               else totalCredit += (e.amount || 0);
 
-          return {
-            ...e,
-            running_balance: running,
-            debit: e.amount < 0 ? Math.abs(e.amount) : 0,
-            credit: e.amount > 0 ? e.amount : 0
-          };
-        });
+               return {
+                  ...e,
+                  running_balance: running,
+                  debit: e.amount < 0 ? Math.abs(e.amount) : 0,
+                  credit: e.amount > 0 ? e.amount : 0
+               };
+            });
 
-      // Show most recent on top for the workbench view
-      this.ledgerEntries.set(calculated.reverse());
-      this.ledgerBalance.set(running);
-      this.ledgerTotals.set({ debit: totalDebit, credit: totalCredit });
-    });
-  }
+         // Show most recent on top for the workbench view
+         this.ledgerEntries.set(calculated.reverse());
+         this.ledgerBalance.set(running);
+         this.ledgerTotals.set({ debit: totalDebit, credit: totalCredit });
+      });
+   }
 
-  clearCustomer() {
-    this.sharedState.selectedCustomer.set(null);
-    this.ledgerEntries.set([]);
-    this.ledgerBalance.set(0);
-    this.ledgerTotals.set({ debit: 0, credit: 0 });
-  }
+   clearCustomer() {
+      this.sharedState.selectedCustomer.set(null);
+      this.ledgerEntries.set([]);
+      this.ledgerBalance.set(0);
+      this.ledgerTotals.set({ debit: 0, credit: 0 });
+   }
 
-  constructor() {
-    // Timer effect
-    setInterval(() => {
-      this.currentTime.set(new Date());
-    }, 1000);
-  }
+   constructor() {
+      // Timer effect
+      setInterval(() => {
+         this.currentTime.set(new Date());
+      }, 1000);
+   }
 
-  addToCart(product: Product) {
-    if (product.stock_shop <= 0 && !this.returnMode()) return;
+   addToCart(product: Product) {
+      if (product.stock_shop <= 0 && !this.returnMode()) return;
 
-    // Check if we are in return mode
-    if (this.returnMode()) {
-      // Create a "return" version of the product with negative price
-      const returnItem = { ...product, price: -Math.abs(product.price) };
-      this.sharedState.addToCart(returnItem as any);
-    } else {
-      this.sharedState.addToCart(product);
-    }
-  }
-
-  updateQuantity(item: any, delta: number) {
-    this.sharedState.updateQuantity(item.product.id, item.quantity + delta);
-  }
-
-  goHome() {
-    this.selectedCategory.set(null);
-    this.searchQuery.set('');
-    this.leftPanelMode.set('BAG');
-  }
-
-  onSearchEnter() {
-    const q = this.searchQuery().trim();
-    if (!q) return;
-
-    const exactMatch = this.products().find(p => p.barcode === q || p.name.toLowerCase() === q.toLowerCase());
-    if (exactMatch && exactMatch.stock_shop > 0) {
-      this.addToCart(exactMatch);
-      this.searchQuery.set('');
-    }
-  }
-
-  switchStore(event: Event) {
-    const select = event.target as HTMLSelectElement;
-    this.storeService.loadStore(select.value);
-  }
-
-  openOrderHistory() {
-    console.log('Order History TBD');
-  }
-
-  openCheckoutModal() {
-    this.showCheckoutModal.set(true);
-  }
-
-  closeCheckoutModal() {
-    this.showCheckoutModal.set(false);
-  }
-
-  togglePaymentMethod(method: any) {
-    const selected = this.selectedPaymentMethods();
-    if (selected.find(m => m.id === method.id)) {
-      this.selectedPaymentMethods.set(selected.filter(m => m.id !== method.id));
-    } else {
-      this.selectedPaymentMethods.set([...selected, method]);
-    }
-  }
-
-  isSelectedPayment(method: any) {
-    return !!this.selectedPaymentMethods().find(m => m.id === method.id);
-  }
-
-  getPaymentIcon(method: any) {
-    switch (method.name.toLowerCase()) {
-      case 'cash': return 'payments';
-      case 'card': return 'credit_card';
-      default: return 'account_balance_wallet';
-    }
-  }
-
-  async completeSale() {
-    if (this.isCompletingSale()) return;
-
-    const items = this.sharedState.cart();
-    if (items.length === 0) {
-      this.dialogService.alert('Cart Empty', 'Please add items to the cart before completing the sale.');
-      return;
-    }
-
-    this.isCompletingSale.set(true);
-
-    try {
-      const storeId = this.storeId();
-      if (!storeId) throw new Error("No active store");
-
-      let paymentMethod: PaymentMethod = 'CASH';
-      if (this.activePaymentMethod() === 'split') {
-        paymentMethod = 'SPLIT';
-      } else if (this.activePaymentMethod() === 'card') {
-        paymentMethod = 'CARD';
-      }
-
-      const payments = Object.entries(this.paymentAllocations())
-        .filter(([_, amt]) => amt > 0)
-        .map(([method, amt]) => ({ method: method.toUpperCase() as PaymentMethod, amount: amt }));
-
-      const customer = this.sharedState.selectedCustomer();
-      const txData = {
-        store_id: storeId,
-        customer_id: customer?.id,
-        subtotal_amount: this.subtotal(),
-        total_discount: this.sharedState.loyaltyDiscount(),
-        delivery_fee: this.sharedState.shippingFee(),
-        total_amount: this.total(),
-        tax_amount: this.tax(),
-        payment_method: paymentMethod,
-        payments: payments,
-        metadata: { type: 'SALE' }
-      } as any;
-
-      if (this.connectivity.isOnline()) {
-        const newTx = await firstValueFrom(this.mockSupabase.addTransaction(txData, items));
-
-        // LEDGER INTEGRATION: Record Sale and Payment separately for audit transparency
-        if (customer) {
-          // 1. Record the Sale (Sale is a DEBT, so amount is negative in this system)
-          await firstValueFrom(this.mockSupabase.addLedgerEntry({
-            store_id: storeId,
-            customer_id: customer.id,
-            transaction_id: newTx.id,
-            type: 'SALE',
-            amount: -txData.total_amount,
-            notes: `POS Sale #${newTx.id.slice(0, 8)}. Items: ${items.map(i => i.product.name).join(', ').slice(0, 50)}`
-          }));
-
-          // 2. Record the Payment (Payment is a CREDIT, so amount is positive in this system)
-          const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-          if (totalPaid > 0) {
-            await firstValueFrom(this.mockSupabase.addLedgerEntry({
-              store_id: storeId,
-              customer_id: customer.id,
-              transaction_id: newTx.id,
-              type: 'PAYMENT',
-              amount: totalPaid,
-              notes: `Payment for #${newTx.id.slice(0, 8)} via ${payments.map(p => p.method).join(', ')}`
-            }));
-          }
-
-          // Re-identify customer to refresh the workbench ledger view
-          this.selectCustomer(customer);
-        }
-
-        const promo = this.sharedState.appliedPromotion();
-        if (promo) {
-          this.mockSupabase.markPromotionUsed(promo.id, newTx.id).subscribe();
-        }
-
-        this.dialogService.alert('Payment Successful', 'The transaction has been completed and inventory has been updated.', 'Finish');
+      // Check if we are in return mode
+      if (this.returnMode()) {
+         // Create a "return" version of the product with negative price
+         const returnItem = { ...product, price: -Math.abs(product.price) };
+         this.sharedState.addToCart(returnItem as any);
       } else {
-        await this.syncService.queueOperation('transactions', 'INSERT', {
-          ...txData,
-          items_snapshot: items,
-          queued_at: new Date().toISOString()
-        });
+         this.sharedState.addToCart(product);
+      }
+   }
 
-        this.dialogService.alert('✅ Sale Saved Offline', `kd${this.total().toFixed(2)} transaction saved. It will sync when online.`, 'Got it');
+   updateQuantity(item: any, delta: number) {
+      this.sharedState.updateQuantity(item.product.id, item.quantity + delta);
+   }
+
+   goHome() {
+      this.selectedCategory.set(null);
+      this.searchQuery.set('');
+      this.leftPanelMode.set('BAG');
+   }
+
+   onSearchEnter() {
+      const q = this.searchQuery().trim();
+      if (!q) return;
+
+      const exactMatch = this.products().find(p => p.barcode === q || p.name.toLowerCase() === q.toLowerCase());
+      if (exactMatch && exactMatch.stock_shop > 0) {
+         this.addToCart(exactMatch);
+         this.searchQuery.set('');
+      }
+   }
+
+   switchStore(event: Event) {
+      const select = event.target as HTMLSelectElement;
+      this.storeService.loadStore(select.value);
+   }
+
+   openOrderHistory() {
+      this.dialogService.alert('Admin Dashboard', 'This area requires manager authorization. Please swipe your supervisor card or enter your PIN to access backend reporting and settings.');
+   }
+
+   logout() {
+      this.dialogService.confirm('End Shift', 'Are you sure you want to log out and close this till?', 'Log Out', 'Cancel').then(ok => {
+         if (ok) {
+            this.router.navigate(['/']); // Assuming home is root
+         }
+      });
+   }
+
+   applyGiftCard() {
+      this.dialogService.prompt('Gift Card Validation', 'Please scan the barcode or enter the 16-digit Gift Card Number:', '')
+         .then(val => {
+            if (!val) return;
+            this.dialogService.alert('Processing', 'Connecting to Gift Card Server... Unfortunately, the test gateway is currently offline.');
+         });
+   }
+
+   openCheckoutModal() {
+      this.showCheckoutModal.set(true);
+   }
+
+   closeCheckoutModal() {
+      this.showCheckoutModal.set(false);
+   }
+
+   togglePaymentMethod(method: any) {
+      const selected = this.selectedPaymentMethods();
+      if (selected.find(m => m.id === method.id)) {
+         this.selectedPaymentMethods.set(selected.filter(m => m.id !== method.id));
+      } else {
+         this.selectedPaymentMethods.set([...selected, method]);
+      }
+   }
+
+   isSelectedPayment(method: any) {
+      return !!this.selectedPaymentMethods().find(m => m.id === method.id);
+   }
+
+   getPaymentIcon(method: any) {
+      switch (method.name.toLowerCase()) {
+         case 'cash': return 'payments';
+         case 'card': return 'credit_card';
+         default: return 'account_balance_wallet';
+      }
+   }
+
+   async completeSale() {
+      if (this.isCompletingSale()) return;
+
+      const items = this.sharedState.cart();
+      if (items.length === 0) {
+         this.dialogService.alert('Cart Empty', 'Please add items to the cart before completing the sale.');
+         return;
       }
 
-      // Cleanup
-      this.sharedState.clearCart();
-      this.showCheckoutModal.set(false);
-      this.selectedPaymentMethods.set([]);
+      this.isCompletingSale.set(true);
+
+      try {
+         const storeId = this.storeId();
+         if (!storeId) throw new Error("No active store");
+
+         let paymentMethod: PaymentMethod = 'CASH';
+         if (this.activePaymentMethod() === 'split') {
+            paymentMethod = 'SPLIT';
+         } else if (this.activePaymentMethod() === 'card') {
+            paymentMethod = 'CARD';
+         }
+
+         const payments = Object.entries(this.paymentAllocations())
+            .filter(([_, amt]) => amt > 0)
+            .map(([method, amt]) => ({ method: method.toUpperCase() as PaymentMethod, amount: amt }));
+
+         const customer = this.sharedState.selectedCustomer();
+         const txData = {
+            store_id: storeId,
+            customer_id: customer?.id,
+            subtotal_amount: this.subtotal(),
+            total_discount: this.sharedState.loyaltyDiscount(),
+            delivery_fee: this.sharedState.shippingFee(),
+            total_amount: this.total(),
+            tax_amount: this.tax(),
+            payment_method: paymentMethod,
+            payments: payments,
+            metadata: { type: 'SALE' }
+         } as any;
+
+         if (this.connectivity.isOnline()) {
+            const newTx = await firstValueFrom(this.mockSupabase.addTransaction(txData, items));
+
+            // LEDGER INTEGRATION: Record Sale and Payment separately for audit transparency
+            if (customer) {
+               // 1. Record the Sale (Sale is a DEBT, so amount is negative in this system)
+               await firstValueFrom(this.mockSupabase.addLedgerEntry({
+                  store_id: storeId,
+                  customer_id: customer.id,
+                  transaction_id: newTx.id,
+                  type: 'SALE',
+                  amount: -txData.total_amount,
+                  notes: `POS Sale #${newTx.id.slice(0, 8)}. Items: ${items.map(i => i.product.name).join(', ').slice(0, 50)}`
+               }));
+
+               // 2. Record the Payment (Payment is a CREDIT, so amount is positive in this system)
+               const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+               if (totalPaid > 0) {
+                  await firstValueFrom(this.mockSupabase.addLedgerEntry({
+                     store_id: storeId,
+                     customer_id: customer.id,
+                     transaction_id: newTx.id,
+                     type: 'PAYMENT',
+                     amount: totalPaid,
+                     notes: `Payment for #${newTx.id.slice(0, 8)} via ${payments.map(p => p.method).join(', ')}`
+                  }));
+               }
+
+               // Re-identify customer to refresh the workbench ledger view
+               this.selectCustomer(customer);
+            }
+
+            const promo = this.sharedState.appliedPromotion();
+            if (promo) {
+               this.mockSupabase.markPromotionUsed(promo.id, newTx.id).subscribe();
+            }
+
+            this.dialogService.alert('Payment Successful', 'The transaction has been completed and inventory has been updated.', 'Finish');
+         } else {
+            await this.syncService.queueOperation('transactions', 'INSERT', {
+               ...txData,
+               items_snapshot: items,
+               queued_at: new Date().toISOString()
+            });
+
+            this.dialogService.alert('✅ Sale Saved Offline', `kd${this.total().toFixed(2)} transaction saved. It will sync when online.`, 'Got it');
+         }
+
+         // Cleanup
+         this.sharedState.clearCart();
+         this.showCheckoutModal.set(false);
+         this.selectedPaymentMethods.set([]);
+         this.activePaymentMethod.set('cash');
+         this.paymentAllocations.set({ cash: 0, card: 0 });
+         this.sharedState.shippingFee.set(0);
+         // NOTE: We do NOT clear the customer here anymore to keep the workbench context active for the next sale
+         // if (customer) this.selectCustomer(customer); // already done above if successful
+
+      } catch (error) {
+         console.error('Sale failed', error);
+         this.dialogService.alert('Transaction Failed', 'Error processing payment. Please try again.', 'Dismiss');
+      } finally {
+         this.isCompletingSale.set(false);
+      }
+   }
+
+   syncOfflineTransactions() {
+      console.log('Syncing offline transactions...');
+   }
+
+   setFulfillment(mode: 'PICKUP' | 'DELIVERY' | 'COURIER') {
+      this.sharedState.fulfillmentMode.set(mode);
+      const config = this.storeService.currentStore()?.config;
+
+      let fee = 0;
+      if (mode === 'DELIVERY') {
+         fee = config?.delivery_fee ?? 15;
+      } else if (mode === 'COURIER') {
+         fee = config?.courier_fee ?? 35;
+      }
+
+      this.sharedState.shippingFee.set(fee);
+   }
+
+   openGlobalStockModal() {
+      this.dialogService.alert('Warehouse Bridge', 'Scanning live warehouse stock status for active SKUs...\n\n- WHSE-01: 42 Units\n- WHSE-04: 11 Units\n- TRANSIT: 0 Units');
+   }
+
+   getPaymentAmount(methodId: string): number {
+      return methodId === 'cash' ? this.paymentAllocations().cash : this.paymentAllocations().card;
+   }
+
+   updatePaymentAmount(methodId: string, event: Event) {
+      const val = Number((event.target as HTMLInputElement).value) || 0;
+      this.paymentAllocations.update(p => ({
+         ...p,
+         [methodId]: val
+      }));
+   }
+
+   // --- Function Grid Logic ---
+   applyGlobalDiscount() {
+      this.dialogService.prompt('Line Discount', 'Enter discount percentage for all items (e.g. 10):', '10')
+         .then(val => {
+            if (!val) return;
+            const percent = parseFloat(val);
+            if (isNaN(percent)) return;
+
+            this.sharedState.manualDiscount.set({ type: 'PERCENTAGE', value: percent });
+            this.dialogService.alert('Discount Applied', `${percent}% discount has been applied to the subtotal.`);
+         });
+   }
+
+   voidTransaction() {
+      this.dialogService.confirm('Void Transaction', 'Are you sure you want to clear the entire shopping bag? This cannot be undone.', 'Void All', 'Cancel')
+         .then(ok => {
+            if (ok) {
+               this.sharedState.clearCart();
+               this.paymentInputString.set('');
+               this.paymentAllocations.set({ cash: 0, card: 0 });
+               this.returnMode.set(false);
+            }
+         });
+   }
+
+   // --- Payment Pad Logic ---
+   onNumpadClick(key: string) {
+      if (key === 'BACKSPACE') {
+         this.paymentInputString.update(s => s.slice(0, -1));
+      } else {
+         if (this.paymentInputString() === '' && (key === '00' || key === '0')) return;
+
+         this.paymentInputString.update(s => {
+            if (s === '0' && key !== '.') return key;
+            if (key === '.' && s.includes('.')) return s;
+            // Limit to 2 decimal places for currency
+            if (s.includes('.') && s.split('.')[1].length >= 2) return s;
+            return s + key;
+         });
+      }
+   }
+
+   applyPaymentPad() {
+      if (this.paymentInputString() === '') return;
+
+      const amt = parseFloat(this.paymentInputString()) || 0;
+
+      if (this.activePaymentMethod() === 'split') {
+         const remaining = Math.max(0, this.total() - amt);
+         this.paymentAllocations.set({ cash: amt, card: remaining });
+      } else {
+         this.paymentAllocations.update(p => ({
+            ...p,
+            [this.activePaymentMethod()]: amt
+         }));
+      }
+      this.paymentInputString.set('');
+   }
+
+   clearPaymentMethod() {
+      if (this.activePaymentMethod() === 'split') {
+         this.paymentAllocations.set({ cash: 0, card: 0 });
+      } else {
+         this.paymentAllocations.update(p => ({
+            ...p,
+            [this.activePaymentMethod()]: 0
+         }));
+      }
+      this.paymentInputString.set('');
+   }
+
+   setExactCash() {
+      // First, set the active method to cash
       this.activePaymentMethod.set('cash');
-      this.paymentAllocations.set({ cash: 0, card: 0 });
-      this.sharedState.shippingFee.set(0);
-      // NOTE: We do NOT clear the customer here anymore to keep the workbench context active for the next sale
-      // if (customer) this.selectCustomer(customer); // already done above if successful
-
-    } catch (error) {
-      console.error('Sale failed', error);
-      this.dialogService.alert('Transaction Failed', 'Error processing payment. Please try again.', 'Dismiss');
-    } finally {
-      this.isCompletingSale.set(false);
-    }
-  }
-
-  syncOfflineTransactions() {
-    console.log('Syncing offline transactions...');
-  }
-
-  setFulfillment(mode: 'PICKUP' | 'DELIVERY' | 'COURIER') {
-    this.sharedState.fulfillmentMode.set(mode);
-    const config = this.storeService.currentStore()?.config;
-
-    let fee = 0;
-    if (mode === 'DELIVERY') {
-      fee = config?.delivery_fee ?? 15;
-    } else if (mode === 'COURIER') {
-      fee = config?.courier_fee ?? 35;
-    }
-
-    this.sharedState.shippingFee.set(fee);
-  }
-
-  openGlobalStockModal() {
-    this.dialogService.alert('Warehouse Bridge', 'Scanning live warehouse stock status for active SKUs...\n\n- WHSE-01: 42 Units\n- WHSE-04: 11 Units\n- TRANSIT: 0 Units');
-  }
-
-  getPaymentAmount(methodId: string): number {
-    return methodId === 'cash' ? this.paymentAllocations().cash : this.paymentAllocations().card;
-  }
-
-  updatePaymentAmount(methodId: string, event: Event) {
-    const val = Number((event.target as HTMLInputElement).value) || 0;
-    this.paymentAllocations.update(p => ({
-      ...p,
-      [methodId]: val
-    }));
-  }
-
-  // --- Function Grid Logic ---
-  applyGlobalDiscount() {
-    this.dialogService.prompt('Line Discount', 'Enter discount percentage for all items (e.g. 10):', '10')
-      .then(val => {
-        if (!val) return;
-        const percent = parseFloat(val);
-        if (isNaN(percent)) return;
-
-        this.sharedState.manualDiscount.set({ type: 'PERCENTAGE', value: percent });
-        this.dialogService.alert('Discount Applied', `${percent}% discount has been applied to the subtotal.`);
-      });
-  }
-
-  voidTransaction() {
-    this.dialogService.confirm('Void Transaction', 'Are you sure you want to clear the entire shopping bag? This cannot be undone.', 'Void All', 'Cancel')
-      .then(ok => {
-        if (ok) {
-          this.sharedState.clearCart();
-          this.paymentInputString.set('');
-          this.paymentAllocations.set({ cash: 0, card: 0 });
-          this.returnMode.set(false);
-        }
-      });
-  }
-
-  // --- Payment Pad Logic ---
-  onNumpadClick(key: string) {
-    if (key === 'BACKSPACE') {
-      this.paymentInputString.update(s => s.slice(0, -1));
-    } else {
-      if (this.paymentInputString() === '' && (key === '00' || key === '0')) return;
-
-      this.paymentInputString.update(s => {
-        if (s === '0' && key !== '.') return key;
-        if (key === '.' && s.includes('.')) return s;
-        // Limit to 2 decimal places for currency
-        if (s.includes('.') && s.split('.')[1].length >= 2) return s;
-        return s + key;
-      });
-    }
-  }
-
-  applyPaymentPad() {
-    if (this.paymentInputString() === '') return;
-
-    const amt = parseFloat(this.paymentInputString()) || 0;
-
-    if (this.activePaymentMethod() === 'split') {
-      const remaining = Math.max(0, this.total() - amt);
-      this.paymentAllocations.set({ cash: amt, card: remaining });
-    } else {
+      // Allocate the exact remaining balance to cash
+      const remaining = this.paymentBalance() + this.paymentAllocations().cash;
       this.paymentAllocations.update(p => ({
-        ...p,
-        [this.activePaymentMethod()]: amt
+         ...p,
+         cash: remaining
       }));
-    }
-    this.paymentInputString.set('');
-  }
+   }
 
-  clearPaymentMethod() {
-    if (this.activePaymentMethod() === 'split') {
-      this.paymentAllocations.set({ cash: 0, card: 0 });
-    } else {
+   setQuickCash(amount: number) {
+      this.activePaymentMethod.set('cash');
       this.paymentAllocations.update(p => ({
-        ...p,
-        [this.activePaymentMethod()]: 0
+         ...p,
+         cash: amount
       }));
-    }
-    this.paymentInputString.set('');
-  }
-
-  setExactCash() {
-    // First, set the active method to cash
-    this.activePaymentMethod.set('cash');
-    // Allocate the exact remaining balance to cash
-    const remaining = this.paymentBalance() + this.paymentAllocations().cash;
-    this.paymentAllocations.update(p => ({
-      ...p,
-      cash: remaining
-    }));
-  }
-
-  setQuickCash(amount: number) {
-    this.activePaymentMethod.set('cash');
-    this.paymentAllocations.update(p => ({
-      ...p,
-      cash: amount
-    }));
-  }
+   }
 }
