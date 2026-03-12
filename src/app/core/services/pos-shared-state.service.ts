@@ -104,6 +104,48 @@ export class POSSharedStateService {
         });
     }
 
+    // --- Park & Recall Logic ---
+    parkedTransactions = signal<any[]>([]);
+
+    parkCurrentTransaction() {
+        if (this.cart().length === 0) return;
+
+        const session = {
+            id: crypto.randomUUID(),
+            timestamp: new Date(),
+            cart: [...this.cart()],
+            customer: this.selectedCustomer(),
+            manualDiscount: this.manualDiscount(),
+            appliedPromotion: this.appliedPromotion(),
+            fulfillmentMode: this.fulfillmentMode(),
+            shippingFee: this.shippingFee(),
+            total: this.total()
+        };
+
+        this.parkedTransactions.update(list => [...list, session]);
+        this.clearCart();
+    }
+
+    recallTransaction(sessionId: string) {
+        const session = this.parkedTransactions().find(s => s.id === sessionId);
+        if (!session) return;
+
+        // Restore state
+        this.cart.set(session.cart);
+        this.selectedCustomer.set(session.customer);
+        this.fulfillmentMode.set(session.fulfillmentMode);
+        this.shippingFee.set(session.shippingFee);
+        this.manualDiscount.set(session.manualDiscount);
+        this.appliedPromotion.set(session.appliedPromotion);
+
+        // Remove from parked list
+        this.parkedTransactions.update(list => list.filter(s => s.id !== sessionId));
+    }
+
+    deleteParkedTransaction(sessionId: string) {
+        this.parkedTransactions.update(list => list.filter(s => s.id !== sessionId));
+    }
+
     clearCart() {
         this.cart.set([]);
         this.selectedCustomer.set(null);

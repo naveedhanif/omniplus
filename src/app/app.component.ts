@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StoreConfigService } from './core/services/store-config.service';
 import { MockSupabaseService } from './core/services/mock-supabase.service';
 import { DialogModalComponent } from './shared/components/dialog-modal.component';
@@ -28,27 +28,29 @@ import { ConnectivityService } from './core/services/connectivity.service';
       </div>
     }
     @if (supabase.isConfigured()) {
-      <nav class="bg-gray-800 text-white shadow-md sticky top-0 z-50">
-        <div class="container mx-auto px-6 py-3 flex justify-between items-center">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-rounded text-2xl" [style.color]="storeService.primaryColor()">point_of_sale</span>
-            <span class="text-xl font-bold">OmniPOS</span>
+      @if (router.url !== '/epos' && router.url !== '/') {
+        <nav class="bg-gray-800 text-white shadow-md sticky top-0 z-50">
+          <div class="container mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-rounded text-2xl" [style.color]="storeService.primaryColor()">point_of_sale</span>
+              <span class="text-xl font-bold">OmniPOS</span>
+            </div>
+            <div class="flex items-center gap-6">
+              <a routerLink="/"
+                class="px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                routerLinkActive="bg-[var(--primary-color)]"
+                [routerLinkActiveOptions]="{exact: true}">
+                EPOS View
+              </a>
+              <a routerLink="/admin"
+                class="px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                routerLinkActive="bg-[var(--primary-color)]">
+                Admin Panel
+              </a>
+            </div>
           </div>
-          <div class="flex items-center gap-6">
-            <a routerLink="/"
-              class="px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
-              routerLinkActive="bg-[var(--primary-color)]"
-              [routerLinkActiveOptions]="{exact: true}">
-              EPOS View
-            </a>
-            <a routerLink="/admin"
-              class="px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
-              routerLinkActive="bg-[var(--primary-color)]">
-              Admin Panel
-            </a>
-          </div>
-        </div>
-      </nav>
+        </nav>
+      }
       <main>
         <router-outlet></router-outlet>
       </main>
@@ -84,6 +86,7 @@ export class AppComponent {
   supabase = inject(MockSupabaseService);
   syncService = inject(SyncService);
   connectivity = inject(ConnectivityService);
+  router = inject(Router);
 
   constructor() {
     // Bootstrap the offline engine on every app startup

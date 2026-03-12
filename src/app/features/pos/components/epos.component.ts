@@ -2,7 +2,7 @@ import { Component, inject, computed, signal, effect, HostListener } from '@angu
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { StoreConfigService } from '../../../core/services/store-config.service';
-import { MockSupabaseService, Store, Category, Product, Customer, PaymentMethod } from '../../../core/services/mock-supabase.service';
+import { MockSupabaseService, Store, Category, Product, Customer, PaymentMethod, Transaction, TransactionItem } from '../../../core/services/mock-supabase.service';
 import { DialogService } from '../../../core/services/dialog.service';
 import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { switchMap, of, tap, debounceTime, firstValueFrom, from } from 'rxjs';
@@ -11,11 +11,15 @@ import { FormsModule } from '@angular/forms';
 import { SyncService } from '../../../core/services/sync.service';
 import { ConnectivityService } from '../../../core/services/connectivity.service';
 import { OfflineStorageService } from '../../../core/services/offline-storage.service';
+import { BaseChartDirective } from 'ng2-charts';
+import { Chart, registerables, ChartConfiguration, ChartData } from 'chart.js';
+
+Chart.register(...registerables);
 
 @Component({
    selector: 'app-epos',
    standalone: true,
-   imports: [CommonModule, RouterLink, FormsModule],
+   imports: [CommonModule, RouterLink, FormsModule, BaseChartDirective],
    template: `
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
@@ -85,6 +89,15 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
                 <p class="text-[10px] font-black uppercase tracking-widest text-indigo-400">{{ currentTime() | date: 'dd MMM yyyy' }}</p>
                 <p class="text-xl font-mono tracking-tighter leading-none">{{ currentTime() | date: 'HH:mm:ss' }}</p>
              </div>
+
+             <!-- Held Orders Recall Badge -->
+             @if (sharedState.parkedTransactions().length > 0) {
+               <button (click)="showHoldModal.set(true)" class="relative flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-all transform hover:scale-[1.05] active:scale-95 group shadow-sm">
+                  <span class="material-symbols-rounded text-2xl group-hover:rotate-12 transition-transform">pause_circle</span>
+                  <span class="absolute -top-2 -right-2 bg-amber-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#F2F4F7]">{{ sharedState.parkedTransactions().length }}</span>
+               </button>
+             }
+
              <button (click)="logout()" class="flex items-center justify-center w-12 h-12 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all transform hover:scale-[1.05] active:scale-95 group shadow-sm">
                 <span class="material-symbols-rounded text-2xl group-hover:-translate-x-0.5 transition-transform">logout</span>
              </button>
@@ -137,6 +150,74 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
               <!-- Content Area (Bag or Ledger) -->
               <div class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar relative min-h-0 bg-white">
                  @if (leftPanelMode() === 'BAG') {
+                    <!-- Integrated Customer Dock: Search or Assigned Badge -->
+                    <div class="p-6 bg-slate-50/50 border-b border-slate-100 shrink-0">
+                       @if (!sharedState.selectedCustomer()) {
+                          <div class="relative group">
+                             <span class="material-symbols-rounded absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">person_search</span>
+                             <input 
+                               type="text" 
+                               [ngModel]="customerSearchQuery()"
+                               (ngModelChange)="updateCustomerSearch($event)"
+                               placeholder="Assign Customer (Search by Name or Phone...)" 
+                               class="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all focus:border-indigo-500 shadow-sm font-medium"
+                             >
+                             
+                             <!-- Local Floating Results -->
+                             @if (showCustomerDropdown() && filteredCustomers().length > 0 && customerSearchQuery().length > 1) {
+                                <div class="absolute inset-x-0 top-full mt-2 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 border-t-0">
+                                   @for (customer of filteredCustomers(); track customer.id) {
+                                      <button (click)="selectCustomer(customer)" class="w-full text-left p-4 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-none transition-colors group/item">
+                                         <div class="flex items-center gap-4">
+                                            <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black group-hover/item:bg-indigo-600 group-hover/item:text-white transition-colors">{{ customer.full_name?.charAt(0) }}</div>
+                                            <div>
+                                               <div class="text-xs font-black uppercase text-slate-900">{{ customer.full_name }}</div>
+                                               <div class="text-[10px] text-slate-400 font-mono tracking-wider">{{ customer.phone }}</div>
+                                            </div>
+                                         </div>
+                                         <div class="flex items-center gap-2">
+                                            @if (customer.is_vip) {
+                                               <span class="px-2 py-1 bg-amber-100 text-amber-600 text-[8px] font-black rounded uppercase">VIP</span>
+                                            }
+                                            <span class="material-symbols-rounded text-slate-300 group-hover/item:translate-x-1 transition-transform">chevron_right</span>
+                                         </div>
+                                      </button>
+                                   }
+                                </div>
+                             }
+                          </div>
+                       } @else {
+                          <div class="flex items-center justify-between bg-white border border-indigo-100 rounded-2xl p-4 shadow-[0_4px_20px_rgba(79,70,229,0.08)] animate-in zoom-in-95 duration-300">
+                             <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-lg shadow-indigo-200">
+                                   {{ sharedState.selectedCustomer()?.full_name?.charAt(0) }}
+                                </div>
+                                <div>
+                                   <div class="flex items-center gap-2 mb-0.5">
+                                      <p class="text-[11px] font-black uppercase tracking-widest text-slate-900">{{ sharedState.selectedCustomer()?.full_name }}</p>
+                                      @if (sharedState.selectedCustomer()?.is_vip) {
+                                         <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-black rounded uppercase">VIP GOLD</span>
+                                      }
+                                   </div>
+                                   <div class="flex items-center gap-3">
+                                      <p class="text-[9px] text-indigo-500 font-bold uppercase tracking-wider">Customer Assigned</p>
+                                      <div class="w-1 h-1 rounded-full bg-slate-300"></div>
+                                      <p class="text-[9px] text-slate-400 font-medium">Rewards tracking active</p>
+                                   </div>
+                                </div>
+                             </div>
+                             <div class="flex items-center gap-2">
+                                <button (click)="leftPanelMode.set('LEDGER')" class="h-9 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-slate-200">
+                                   Statement
+                                </button>
+                                <button (click)="clearCustomer()" class="w-9 h-9 border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg flex items-center justify-center transition-all active:scale-95">
+                                   <span class="material-symbols-rounded text-lg">person_remove</span>
+                                </button>
+                             </div>
+                          </div>
+                       }
+                    </div>
+
                     <table class="w-full border-collapse">
                        <thead class="bg-white/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-100 text-slate-400 shadow-sm">
                           <tr class="text-[10px] font-black uppercase tracking-widest">
@@ -232,55 +313,238 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
                        </div>
                     </div>
                  } @else if (leftPanelMode() === 'LEDGER') {
-                    <!-- LEDGER VIEW -->
-                    <div class="p-8 animate-in zoom-in-95 duration-300">
-                       @if (!sharedState.selectedCustomer()) {
-                          <div class="py-32 text-center opacity-20">
-                             <span class="material-symbols-rounded text-8xl block mb-4">person_off</span>
-                             <p class="text-xl font-black uppercase tracking-[0.2em]">Select Customer to View Ledger</p>
-                          </div>
-                       } @else {
-                          <div class="flex items-center justify-between mb-8 pb-8 border-b border-slate-100">
-                             <div>
-                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Account Summary</p>
-                                <h3 class="text-3xl font-black italic">{{ sharedState.selectedCustomer()?.full_name }}</h3>
-                             </div>
-                             <div class="text-right">
-                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Closing Balance</p>
-                                <div class="text-4xl font-black font-mono tracking-tighter" [class.text-red-500]="ledgerBalance() < 0" [class.text-emerald-500]="ledgerBalance() >= 0">
-                                   {{ Math.abs(ledgerBalance()) | currency: storeService.currentStore()?.config?.currency }}
-                                   <span class="text-xs ml-1">{{ ledgerBalance() < 0 ? 'DR' : 'CR' }}</span>
+                    <!-- CUSTOMER INTELLIGENCE DASHBOARD -->
+                     <div class="h-full flex flex-col animate-in zoom-in-95 duration-300">
+                        @if (!sharedState.selectedCustomer()) {
+                           <div class="flex-1 flex flex-col items-center justify-center bg-slate-50">
+                              <div class="w-full max-w-xl p-12 bg-white rounded-[3rem] shadow-2xl shadow-indigo-100 border border-indigo-50 text-center animate-in slide-in-from-bottom-8 duration-500">
+                                 <div class="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-8">
+                                    <span class="material-symbols-rounded text-5xl text-indigo-500">analytics</span>
+                                 </div>
+                                 <h2 class="text-3xl font-black italic tracking-tighter mb-4">Customer Intelligence <span class="text-indigo-600">HUB</span></h2>
+                                 <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-10">Search and audit any customer account instantly</p>
+                                 
+                                 <div class="relative group">
+                                    <span class="material-symbols-rounded absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors text-2xl">person_search</span>
+                                    <input 
+                                      type="text" 
+                                      [ngModel]="customerSearchQuery()"
+                                      (ngModelChange)="updateCustomerSearch($event)"
+                                      placeholder="Search by Name, Phone or ID..." 
+                                      class="w-full pl-16 pr-6 py-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-lg focus:ring-8 focus:ring-indigo-500/5 outline-none transition-all focus:border-indigo-500 shadow-inner font-bold placeholder:text-slate-300"
+                                    >
+                                    
+                                    <!-- Embedded Results for standalone mode -->
+                                    @if (showCustomerDropdown() && filteredCustomers().length > 0 && customerSearchQuery().length > 1) {
+                                       <div class="absolute inset-x-0 top-full mt-4 bg-white border border-slate-100 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.25)] rounded-[2rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-4">
+                                          @for (customer of filteredCustomers(); track customer.id) {
+                                             <button (click)="selectCustomer(customer)" class="w-full text-left p-6 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-none transition-colors group/item">
+                                                <div class="flex items-center gap-6">
+                                                   <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xl group-hover/item:bg-indigo-600 group-hover/item:text-white transition-all transform group-hover/item:rotate-3">{{ customer.full_name?.charAt(0) }}</div>
+                                                   <div class="text-left">
+                                                      <div class="text-sm font-black uppercase text-slate-900 mb-1">{{ customer.full_name }}</div>
+                                                      <div class="text-[11px] text-slate-400 font-mono tracking-widest flex items-center gap-2">
+                                                         <span class="material-symbols-rounded text-sm">phone_iphone</span>
+                                                         {{ customer.phone }}
+                                                      </div>
+                                                   </div>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                   @if (customer.is_vip) {
+                                                      <span class="px-3 py-1 bg-amber-100 text-amber-600 text-[9px] font-black rounded-full uppercase tracking-tighter">VIP Gold</span>
+                                                   }
+                                                   <span class="material-symbols-rounded text-slate-300 group-hover/item:text-indigo-500 group-hover/item:translate-x-1 transition-all">arrow_forward_ios</span>
+                                                </div>
+                                             </button>
+                                          }
+                                       </div>
+                                    }
+                                 </div>
+                              </div>
+                           </div>
+                        } @else {
+                          <!-- 1. Premium Bento Metrics Header -->
+                          <div class="p-8 border-b border-slate-100 bg-slate-50/30 flex gap-6 shrink-0">
+                             <!-- Card A: Account Standing -->
+                             <div class="flex-1 bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+                                <div>
+                                   <p class="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3">Account Standing</p>
+                                   <h3 class="text-2xl font-black italic mb-1">{{ sharedState.selectedCustomer()?.full_name }}</h3>
+                                   <p class="text-[10px] text-indigo-500 font-bold uppercase">{{ sharedState.selectedCustomer()?.is_vip ? 'VIP Gold Status' : 'Standard Member' }}</p>
+                                </div>
+                                <div class="pt-4 mt-4 border-t border-slate-50 flex items-center justify-between">
+                                   <div class="flex items-center gap-2">
+                                      <span class="material-symbols-rounded text-sm text-slate-400">calendar_today</span>
+                                      <span class="text-[9px] font-bold text-slate-500 uppercase">Joined {{ sharedState.selectedCustomer()?.created_at | date:'MMM yyyy' }}</span>
+                                   </div>
                                 </div>
                              </div>
-                          </div>
 
-                          <table class="w-full border-collapse rounded-3xl border border-slate-100 overflow-hidden shadow-sm bg-white">
-                             <thead class="bg-slate-900 text-white">
-                                <tr class="text-[9px] font-black uppercase tracking-[0.2em]">
-                                   <th class="p-4 text-left">Voucher</th>
-                                   <th class="p-4 text-left">Description</th>
-                                   <th class="p-4 text-right">Debit (+)</th>
-                                   <th class="p-4 text-right">Credit (-)</th>
-                                   <th class="p-4 text-right">Balance</th>
-                                </tr>
-                             </thead>
-                             <tbody class="text-[11px] font-bold font-mono divide-y divide-slate-50">
-                                @for (entry of ledgerEntries(); track entry.id) {
-                                   <tr class="hover:bg-slate-50">
-                                      <td class="p-4 text-indigo-600 underline">#{{ entry.id.slice(0, 8) }}</td>
-                                      <td class="p-4 text-slate-500">{{ entry.notes || entry.type }}</td>
-                                      <td class="p-4 text-right text-red-500">{{ entry.debit | number:'1.2-2' }}</td>
-                                      <td class="p-4 text-right text-emerald-500">{{ entry.credit | number:'1.2-2' }}</td>
-                                      <td class="p-4 text-right" [class.text-red-500]="entry.running_balance < 0" [class.text-emerald-500]="entry.running_balance >= 0">
-                                         {{ Math.abs(entry.running_balance) | number:'1.2-2' }} {{ entry.running_balance < 0 ? 'DR' : 'CR' }}
-                                      </td>
-                                   </tr>
-                                }
-                             </tbody>
-                          </table>
-                       }
-                    </div>
-                 }
+                             <!-- Card B: Credit Utilization -->
+                             <div class="flex-1 bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col justify-between group">
+                                <div>
+                                   <div class="flex justify-between items-center mb-3">
+                                      <p class="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em]">Credit Utilization</p>
+                                      <span class="material-symbols-rounded text-lg text-amber-500 group-hover:rotate-12 transition-transform">account_balance_wallet</span>
+                                   </div>
+                                   <div class="text-3xl font-black font-mono tracking-tighter mb-2">
+                                      {{ Math.abs(ledgerBalance()) | currency: storeService.currentStore()?.config?.currency }}
+                                      <span class="text-xs text-slate-400">{{ ledgerBalance() < 0 ? 'USED' : 'CR' }}</span>
+                                   </div>
+                                   
+                                   <!-- Progress Bar -->
+                                   <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
+                                      @let limit = sharedState.selectedCustomer()?.credit_limit || 0;
+                                      @let used = ledgerBalance() < 0 ? Math.abs(ledgerBalance()) : 0;
+                                      @let percent = limit > 0 ? (used / limit) * 100 : 0;
+                                      <div [style.width.%]="percent" [class.bg-red-500]="percent > 90" [class.bg-amber-500]="percent > 50 && percent <= 90" [class.bg-indigo-500]="percent <= 50" class="h-full transition-all duration-1000"></div>
+                                   </div>
+                                </div>
+                                <p class="text-[9px] font-bold text-slate-400 uppercase mt-4">Limit: {{ (sharedState.selectedCustomer()?.credit_limit || 0) | currency: storeService.currentStore()?.config?.currency }}</p>
+                             </div>
+
+                             <!-- Card C: Lifetime Intelligence -->
+                             <div class="flex-1 bg-indigo-600 rounded-[2rem] p-6 shadow-xl shadow-indigo-100 text-white flex flex-col justify-between">
+                                <div>
+                                   <p class="text-[9px] font-black uppercase text-indigo-200 tracking-[0.2em] mb-3">Lifetime Value</p>
+                                   <div class="text-3xl font-black font-mono tracking-tighter mb-1">
+                                      {{ customerLifetimeSpend() | currency: storeService.currentStore()?.config?.currency }}
+                                    </div>
+                                    <p class="text-[10px] text-indigo-200 opacity-80 font-bold uppercase italic">Rank: Top 5% Customer</p>
+                                 </div>
+                                 <div class="flex items-center gap-2 mt-4">
+                                    <span class="material-symbols-rounded text-sm">history_edu</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest">{{ customerTransactions().length }} Total Orders</span>
+                                 </div>
+                              </div>
+                           </div>
+
+                           <!-- 2. Dual Content View -->
+                           <div class="flex-1 flex overflow-hidden">
+                              
+                              <!-- Left: Ledger Table (70%) -->
+                              <div class="flex-[2] overflow-y-auto no-scrollbar p-8 border-r border-slate-100">
+                                 <div class="flex items-center justify-between mb-8">
+                                    <div class="flex items-center gap-4">
+                                       <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center">
+                                          <span class="material-symbols-rounded text-xl">account_balance</span>
+                                       </div>
+                                       <div>
+                                          <h4 class="text-xs font-black uppercase tracking-[0.3em] text-slate-900">Ledger - AC Account</h4>
+                                          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">From: 01-01-2024 To: {{ currentTime() | date:'dd-MM-yyyy' }}</p>
+                                       </div>
+                                    </div>
+                                    <div class="flex items-center gap-4">
+                                       <button (click)="exportToPDF()" class="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                                          <span class="material-symbols-rounded text-sm">picture_as_pdf</span>
+                                          Export PDF
+                                       </button>
+                                       <button (click)="clearCustomer()" class="w-10 h-10 rounded-full border border-slate-100 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-colors">
+                                          <span class="material-symbols-rounded">close</span>
+                                       </button>
+                                    </div>
+                                 </div>
+
+                                 <div class="rounded-3xl border border-slate-100 overflow-hidden bg-white shadow-xl shadow-slate-100">
+                                    <table class="w-full border-collapse">
+                                       <thead>
+                                          <tr class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.1em]">
+                                             <th class="py-4 px-4 text-center border-r border-slate-800">SNo</th>
+                                             <th class="py-4 px-4 text-left border-r border-slate-800">Date</th>
+                                             <th class="py-4 px-4 text-left border-r border-slate-800">Voucher No</th>
+                                             <th class="py-4 px-4 text-left border-r border-slate-800">Branch</th>
+                                             <th class="py-4 px-4 text-center border-r border-slate-800">Curr</th>
+                                             <th class="py-4 px-4 text-left border-r border-slate-800">Contra Account</th>
+                                             <th class="py-4 px-4 text-right border-r border-slate-800">Debit</th>
+                                             <th class="py-4 px-4 text-right border-r border-slate-800">Credit</th>
+                                             <th class="py-4 px-4 text-right">Balance</th>
+                                          </tr>
+                                       </thead>
+                                       <tbody class="text-[10px] font-bold font-mono">
+                                          @for (entry of ledgerEntries(); track entry.id) {
+                                             <tr class="hover:bg-indigo-50/50 transition-colors border-b border-slate-50 last:border-none">
+                                                <td class="py-3 px-4 text-center border-r border-slate-50 text-slate-400">{{ entry.sno }}</td>
+                                                <td class="py-3 px-4 text-left border-r border-slate-50 whitespace-nowrap">{{ entry.created_at | date:'dd-MM-yyyy' }}</td>
+                                                <td class="py-3 px-4 text-left border-r border-slate-50 text-indigo-600 uppercase">{{ entry.voucher_no }}</td>
+                                                <td class="py-3 px-4 text-left border-r border-slate-50 text-slate-500 uppercase">Main Branch</td>
+                                                <td class="py-3 px-4 text-center border-r border-slate-50 text-slate-400">KWD</td>
+                                                <td class="py-3 px-4 text-left border-r border-slate-50">
+                                                   <div class="flex flex-col">
+                                                      <span class="text-slate-900 uppercase">{{ entry.contra_account }}</span>
+                                                      <span class="text-[8px] text-slate-400 font-sans mt-0.5">{{ entry.notes || '' }}</span>
+                                                   </div>
+                                                </td>
+                                                <td class="py-3 px-4 text-right border-r border-slate-50 text-red-500">{{ entry.debit > 0 ? (entry.debit | number:'1.3-3') : '' }}</td>
+                                                <td class="py-3 px-4 text-right border-r border-slate-50 text-emerald-600">{{ entry.credit > 0 ? (entry.credit | number:'1.3-3') : '' }}</td>
+                                                <td class="py-3 px-4 text-right" [class.text-red-600]="entry.running_balance < 0" [class.text-emerald-600]="entry.running_balance >= 0">
+                                                   {{ Math.abs(entry.running_balance) | number:'1.3-3' }} {{ entry.running_balance < 0 ? 'Dr' : 'Cr' }}
+                                                </td>
+                                             </tr>
+                                          }
+                                       </tbody>
+                                       <tfoot class="bg-slate-50 border-t-2 border-slate-900 text-[11px] font-black font-mono">
+                                          <tr>
+                                             <td colspan="6" class="py-4 px-6 text-right uppercase tracking-widest border-r border-slate-200">Account Totals</td>
+                                             <td class="py-4 px-4 text-right border-r border-slate-200 text-red-600">{{ ledgerTotals().debit | number:'1.3-3' }}</td>
+                                             <td class="py-4 px-4 text-right border-r border-slate-200 text-emerald-600">{{ ledgerTotals().credit | number:'1.3-3' }}</td>
+                                             <td class="py-4 px-4 text-right" [class.text-red-700]="ledgerBalance() < 0">
+                                                {{ Math.abs(ledgerBalance()) | number:'1.3-3' }} {{ ledgerBalance() < 0 ? 'DR' : 'CR' }}
+                                             </td>
+                                          </tr>
+                                       </tfoot>
+                                    </table>
+                                 </div>
+
+                              <!-- Right: Recent Order Intelligence (30%) -->
+                              <div class="flex-1 bg-slate-50 overflow-y-auto no-scrollbar p-8">
+                                 <h4 class="text-xs font-black uppercase tracking-[0.3em] text-slate-400 mb-8 flex items-center gap-2">
+                                    <span class="material-symbols-rounded text-lg">receipt_long</span>
+                                    Recent Items
+                                 </h4>
+
+                                 @if (customerRecentItems().length > 0) {
+                                    <div class="space-y-4">
+                                       @for (item of customerRecentItems(); track item.id) {
+                                          <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4 animate-in slide-in-from-right duration-500">
+                                             <div class="w-12 h-12 bg-slate-50 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                                                @if (item.product?.image_url) {
+                                                   <img [src]="item.product?.image_url" class="w-full h-full object-cover">
+                                                } @else {
+                                                   <span class="material-symbols-rounded text-slate-300">inventory_2</span>
+                                                }
+                                             </div>
+                                             <div class="flex-1 min-w-0">
+                                                <p class="text-[10px] font-black uppercase truncate text-slate-900 leading-tight">{{ item.product?.name }}</p>
+                                                <p class="text-[9px] text-slate-400 font-mono mt-0.5">{{ item.quantity }} units &#64; {{ item.price_at_sale | currency: storeService.currentStore()?.config?.currency }}</p>
+                                             </div>
+                                             <div class="text-right">
+                                                <p class="text-[11px] font-black font-mono text-indigo-600">{{ (item.quantity * item.price_at_sale) | currency: storeService.currentStore()?.config?.currency }}</p>
+                                             </div>
+                                          </div>
+                                       }
+                                       
+                                       <div class="pt-6">
+                                          <p class="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-4">Past 30 Days Trends</p>
+                                          <div class="h-32 bg-white rounded-3xl border border-slate-100 p-4 shadow-sm">
+                                             <canvas baseChart
+                                                     [data]="trendChartData()"
+                                                     [options]="trendChartOptions"
+                                                     [type]="'line'">
+                                             </canvas>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 } @else {
+                                    <div class="py-20 text-center opacity-30">
+                                       <span class="material-symbols-rounded text-4xl mb-2">history</span>
+                                       <p class="text-[10px] font-black uppercase">No Recent Order History</p>
+                                    </div>
+                                 }
+                              </div>
+                           </div>
+                        }
+                     </div>
+                  }
               </div>
 
               <!-- Terminal Function Grid (Premium Physical Card View) -->
@@ -322,13 +586,19 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
                  </div>
 
                  <!-- Card 4: Danger Zone -->
-                 <div class="bg-red-50/30 rounded-2xl shadow-sm border border-red-100 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <button (click)="voidTransaction()" class="flex items-center gap-2 w-full text-slate-500 hover:text-red-600 transition-colors group">
-                       <span class="material-symbols-rounded text-lg text-slate-400 group-hover:text-red-500 transition-colors">delete_forever</span>
-                       <span class="text-xs font-bold tracking-wide">Void Sale</span>
-                    </button>
+                  <div class="bg-red-50/30 rounded-2xl shadow-sm border border-red-100 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div class="flex gap-2">
+                       <button (click)="voidTransaction()" class="flex-1 flex items-center justify-center gap-2 h-9 text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors group">
+                          <span class="material-symbols-rounded text-sm">delete</span>
+                          <span class="text-[9px] font-black uppercase tracking-wider">Void</span>
+                       </button>
+                       <button (click)="sharedState.parkCurrentTransaction()" class="flex-1 flex items-center justify-center gap-2 h-9 text-amber-600 bg-white border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors group">
+                          <span class="material-symbols-rounded text-sm">pause_circle</span>
+                          <span class="text-[9px] font-black uppercase tracking-wider">Hold</span>
+                       </button>
+                    </div>
                     <button (click)="clearCustomer()" class="h-11 w-full text-red-500 font-bold rounded-xl bg-white border border-red-200 hover:bg-red-50 transition-all transform active:scale-95 text-[11px] uppercase tracking-wider text-center">Clear Customer</button>
-                 </div>
+                  </div>
 
               </div>
            </div>
@@ -518,6 +788,65 @@ import { OfflineStorageService } from '../../../core/services/offline-storage.se
         </main>
       </div>
     }
+
+    <!-- HELD ORDERS RECALL MODAL -->
+    @if (showHoldModal()) {
+       <div class="fixed inset-0 z-[150] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-300">
+          <div class="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+             <header class="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                   <h2 class="text-2xl font-black tracking-tighter uppercase italic">Held <span class="text-amber-600">Transactions</span></h2>
+                   <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Select a session to resume or discard</p>
+                </div>
+                <button (click)="showHoldModal.set(false)" class="w-12 h-12 rounded-full hover:bg-slate-100 flex items-center justify-center">
+                   <span class="material-symbols-rounded text-2xl">close</span>
+                </button>
+             </header>
+
+             <div class="flex-1 overflow-y-auto p-8 space-y-4 min-h-[400px]">
+                @if (sharedState.parkedTransactions().length === 0) {
+                   <div class="h-full flex flex-col items-center justify-center opacity-20 py-20">
+                      <span class="material-symbols-rounded text-8xl mb-4">inventory_2</span>
+                      <p class="text-xl font-black uppercase tracking-widest">No Parked Sales</p>
+                   </div>
+                }
+
+                @for (session of sharedState.parkedTransactions(); track session.id) {
+                   <div class="p-6 border border-slate-100 rounded-3xl hover:border-amber-500 hover:bg-amber-50/30 transition-all group flex items-center justify-between">
+                      <div class="flex items-center gap-6">
+                         <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex flex-col items-center justify-center">
+                            <span class="text-xs font-black">{{ session.timestamp | date: 'HH:mm' }}</span>
+                            <span class="text-[8px] font-bold uppercase">{{ session.timestamp | date: 'MMM dd' }}</span>
+                         </div>
+                         <div>
+                            <div class="flex items-center gap-2 mb-1">
+                               <span class="text-sm font-black text-slate-900 uppercase">{{ session.customer?.full_name || 'Guest Customer' }}</span>
+                               <span class="px-2 py-0.5 bg-slate-900 text-white text-[8px] font-black rounded uppercase leading-none">{{ session.cart.length }} Items</span>
+                            </div>
+                            <div class="text-xl font-black font-mono text-slate-400">
+                               {{ session.total | currency: storeService.currentStore()?.config?.currency }}
+                            </div>
+                         </div>
+                      </div>
+
+                      <div class="flex items-center gap-3">
+                         <button (click)="sharedState.deleteParkedTransaction(session.id)" class="w-12 h-12 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center">
+                            <span class="material-symbols-rounded">delete</span>
+                         </button>
+                         <button (click)="sharedState.recallTransaction(session.id); showHoldModal.set(false)" class="h-12 px-6 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-600 transition-all active:scale-95">
+                            Resume Sale
+                         </button>
+                      </div>
+                   </div>
+                }
+             </div>
+             
+             <footer class="p-8 bg-slate-50 text-center border-t border-slate-100">
+                <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Manager Authorization Required to Batch Clear</p>
+             </footer>
+          </div>
+       </div>
+    }
   `
 })
 export class EposComponent {
@@ -539,6 +868,7 @@ export class EposComponent {
    showCheckoutModal = signal(false);
    isCompletingSale = signal(false);
    returnMode = signal(false); // Global toggle for returns/refunds
+   showHoldModal = signal(false);
    isOffline = signal(false);
    pendingSyncCount = signal(0);
    currentTime = signal(new Date());
@@ -547,6 +877,26 @@ export class EposComponent {
    ledgerEntries = signal<any[]>([]);
    ledgerBalance = signal<number>(0);
    ledgerTotals = signal<{ debit: number, credit: number }>({ debit: 0, credit: 0 });
+   
+   // Customer Intelligence Signals
+   customerTransactions = signal<Transaction[]>([]);
+   customerRecentItems = signal<TransactionItem[]>([]);
+   customerLifetimeSpend = signal<number>(0);
+
+   // Buying Trends Chart Data
+   trendChartData = signal<ChartData<'line'>>({
+      labels: [],
+      datasets: [{ data: [], label: 'Spend', borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.4 }]
+   });
+
+   trendChartOptions: ChartConfiguration['options'] = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: true, backgroundColor: '#1e293b', titleFont: { size: 10 }, bodyFont: { size: 10 } } },
+      scales: { x: { display: false }, y: { display: false } },
+      elements: { point: { radius: 0 } }
+   };
+   
    allStores = toSignal(this.mockSupabase.getAllStores(), { initialValue: [] as Store[] });
    Math = Math;
 
@@ -679,10 +1029,9 @@ export class EposComponent {
       { initialValue: [] as Customer[] }
    );
 
-   updateCustomerSearch(event: Event) {
-      const q = (event.target as HTMLInputElement).value;
+   updateCustomerSearch(q: string) {
       this.customerSearchQuery.set(q);
-      this.showCustomerDropdown.set(true);
+      this.showCustomerDropdown.set(q.length > 0);
    }
 
    // Promotions
@@ -734,15 +1083,22 @@ export class EposComponent {
          // Sort chronological to calculate running balance correctly
          const calculated = entries
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-            .map(e => {
+            .map((e, index) => {
                running += (e.amount || 0);
 
                // Database Standard: Negative = Debt (Sale), Positive = Credit (Payment)
                if (e.amount < 0) totalDebit += Math.abs(e.amount);
                else totalCredit += (e.amount || 0);
 
+               // Accounting View Mapping
+               const vPrefix = e.type === 'SALE' ? 'CI' : 'REC';
+               const contra = e.type === 'SALE' ? 'Sales Account' : 'Cash Account';
+
                return {
                   ...e,
+                  sno: index + 1,
+                  voucher_no: `${vPrefix} ${e.id.slice(0, 5).toUpperCase()}`,
+                  contra_account: contra,
                   running_balance: running,
                   debit: e.amount < 0 ? Math.abs(e.amount) : 0,
                   credit: e.amount > 0 ? e.amount : 0
@@ -754,6 +1110,26 @@ export class EposComponent {
          this.ledgerBalance.set(running);
          this.ledgerTotals.set({ debit: totalDebit, credit: totalCredit });
       });
+
+      // 1. FETCH LIFETIME SPEND
+      this.mockSupabase.getCustomerTotalSpend(customer.id).subscribe(spend => {
+         this.customerLifetimeSpend.set(spend);
+      });
+
+      // 2. FETCH RECENT TRANSACTIONS
+      this.mockSupabase.getCustomerTransactions(customer.id).subscribe(txs => {
+         this.customerTransactions.set(txs);
+         this.updateTrendChart(txs);
+         
+         // 3. FETCH ITEMS FOR THE MOST RECENT TRANSACTION IF IT EXISTS
+         if (txs.length > 0) {
+            this.mockSupabase.getTransactionItems(txs[0].id).subscribe(items => {
+               this.customerRecentItems.set(items);
+            });
+         } else {
+            this.customerRecentItems.set([]);
+         }
+      });
    }
 
    clearCustomer() {
@@ -761,6 +1137,126 @@ export class EposComponent {
       this.ledgerEntries.set([]);
       this.ledgerBalance.set(0);
       this.ledgerTotals.set({ debit: 0, credit: 0 });
+      this.customerTransactions.set([]);
+      this.customerRecentItems.set([]);
+      this.customerLifetimeSpend.set(0);
+      this.trendChartData.set({ labels: [], datasets: [{ data: [], label: 'Spend' }] });
+   }
+
+   updateTrendChart(txs: Transaction[]) {
+      if (!txs || txs.length === 0) {
+         this.trendChartData.set({ labels: [], datasets: [{ data: [], label: 'Spend' }] });
+         return;
+      }
+
+      // Group by month for the last 6 months
+      const last6Months = Array.from({ length: 6 }, (_, i) => {
+         const d = new Date();
+         d.setMonth(d.getMonth() - i);
+         return d.toLocaleString('default', { month: 'short' });
+      }).reverse();
+
+      const monthlyTotals = last6Months.map(month => {
+         return txs
+            .filter(tx => new Date(tx.created_at).toLocaleString('default', { month: 'short' }) === month)
+            .reduce((sum, tx) => sum + (tx.total_amount || 0), 0);
+      });
+
+      this.trendChartData.set({
+         labels: last6Months,
+         datasets: [{
+            data: monthlyTotals,
+            label: 'Monthly Spend',
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,0.1)',
+            fill: true,
+            tension: 0.4
+         }]
+      });
+   }
+
+   exportToPDF() {
+      const customer = this.sharedState.selectedCustomer();
+      if (!customer) return;
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+
+      const ledger = this.ledgerEntries();
+      const balance = this.ledgerBalance();
+      const currency = this.storeService.currentStore()?.config?.currency || 'GBP';
+
+      const rows = ledger.map(e => `
+         <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 12px; font-size: 11px;">${new Date(e.created_at).toLocaleDateString()}</td>
+            <td style="padding: 12px; font-size: 11px;">${e.notes || e.type}</td>
+            <td style="padding: 12px; font-size: 11px; text-align: right; color: ${e.debit > 0 ? '#ef4444' : '#94a3b8'};">${e.debit > 0 ? e.debit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</td>
+            <td style="padding: 12px; font-size: 11px; text-align: right; color: ${e.credit > 0 ? '#10b981' : '#94a3b8'};">${e.credit > 0 ? e.credit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</td>
+            <td style="padding: 12px; font-size: 11px; text-align: right; font-weight: bold; color: ${e.running_balance < 0 ? '#ef4444' : '#10b981'};">
+               ${Math.abs(e.running_balance).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${e.running_balance < 0 ? 'DR' : 'CR'}
+            </td>
+         </tr>
+      `).join('');
+
+      printWindow.document.write(`
+         <html>
+            <head>
+               <title>Statement - ${customer.full_name}</title>
+               <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+               <style>
+                  body { font-family: 'Outfit', sans-serif; padding: 60px; color: #1e293b; background: white; }
+                  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 60px; padding-bottom: 30px; border-bottom: 4px solid #f1f5f9; }
+                  .comp-info { font-weight: 900; font-size: 28px; letter-spacing: -0.02em; }
+                  .cust-info { margin-top: 10px; }
+                  .cust-name { font-size: 20px; font-weight: 800; color: #4f46e5; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th { text-align: left; background: #1e293b; color: white; padding: 14px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; }
+                  .summary-box { margin-top: 40px; padding: 24px; border-radius: 20px; background: #f8fafc; display: flex; justify-content: flex-end; }
+                  .balance-label { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-right: 20px; margin-top: 4px; }
+                  .balance-val { font-size: 32px; font-weight: 900; letter-spacing: -0.04em; color: ${balance < 0 ? '#ef4444' : '#10b981'}; }
+                  @media print { body { padding: 20px; } .summary-box { background: #f8fafc !important; -webkit-print-color-adjust: exact; } }
+               </style>
+            </head>
+            <body>
+               <div class="header">
+                  <div>
+                     <div class="comp-info">omni<span style="color: #6366f1;">POS</span> Statement</div>
+                     <div class="cust-info">
+                        <div class="cust-name">${customer.full_name}</div>
+                        <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-top: 4px;">${customer.phone || 'No Phone Linked'}</div>
+                     </div>
+                  </div>
+                  <div style="text-align: right;">
+                     <div style="font-size: 10px; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em;">STATEMENT DATE</div>
+                     <div style="font-weight: 700; font-size: 14px;">${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                  </div>
+               </div>
+               <table>
+                  <thead>
+                     <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Debit (+)</th>
+                        <th style="text-align: right;">Credit (-)</th>
+                        <th style="text-align: right;">Running Balance</th>
+                     </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+               </table>
+               <div class="summary-box">
+                  <div class="balance-label">Closing Balance</div>
+                  <div class="balance-val">${Math.abs(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${balance < 0 ? 'DR' : 'CR'}</div>
+               </div>
+               <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; font-weight: 600;">
+                  Thank you for your business. This is a computer generated statement.
+               </div>
+            </body>
+         </html>
+      `);
+      printWindow.document.close();
+      setTimeout(() => {
+         printWindow.print();
+      }, 500);
    }
 
    constructor() {
@@ -810,7 +1306,7 @@ export class EposComponent {
    }
 
    openOrderHistory() {
-      this.dialogService.alert('Admin Dashboard', 'This area requires manager authorization. Please swipe your supervisor card or enter your PIN to access backend reporting and settings.');
+      this.router.navigate(['/admin']);
    }
 
    logout() {

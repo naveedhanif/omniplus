@@ -438,6 +438,14 @@ export class AnalyticsDashboardComponent implements OnInit {
     activeTab = signal<'LEDGER' | 'PRODUCTS' | 'CUSTOMERS' | 'SUPPLIERS'>('LEDGER');
     expandedTxId = signal<string | null>(null);
 
+    constructor() {
+        // Listen to store changes
+        effect(() => {
+            const store = this.storeService.currentStore();
+            if (store) this.loadData();
+        });
+    }
+
     ngOnInit() {
         // Set default custom dates to today
         const now = new Date();
@@ -446,11 +454,6 @@ export class AnalyticsDashboardComponent implements OnInit {
         this.customEnd.set(yyyymmdd);
 
         this.loadData();
-        // Listen to store changes
-        effect(() => {
-            const store = this.storeService.currentStore();
-            if (store) this.loadData();
-        });
     }
 
     async loadData() {
