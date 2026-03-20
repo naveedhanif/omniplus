@@ -117,33 +117,20 @@ Chart.register(...registerables);
                  </h2>
                  
                  <div class="flex items-center gap-4">
-                   <!-- Unified Search Bar -->
+                   <!-- Global Product Search Bar -->
                    <div class="relative group">
                       <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                         {{ leftPanelMode() === 'LEDGER' ? 'person_search' : 'search' }}
+                         search
                       </span>
                       <input 
                         type="text" 
-                        [ngModel]="leftPanelMode() === 'LEDGER' ? customerSearchQuery() : searchQuery()"
-                        (ngModelChange)="leftPanelMode() === 'LEDGER' ? updateCustomerSearch($event) : searchQuery.set($event)"
-                        (keyup.enter)="leftPanelMode() === 'PRODUCTS' || leftPanelMode() === 'BAG' ? onSearchEnter() : null"
-                        [placeholder]="leftPanelMode() === 'LEDGER' ? 'Search Customer...' : 'Quick Search Item...'" 
+                        [ngModel]="searchQuery()"
+                        (ngModelChange)="searchQuery.set($event)"
+                        (keyup.enter)="onSearchEnter()"
+                        placeholder="Quick Search Item..." 
                         class="pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 w-64 outline-none transition-all focus:bg-white focus:shadow-inner"
                         autofocus>
                    </div>
-                   @if (showCustomerDropdown() && filteredCustomers().length > 0 && leftPanelMode() === 'LEDGER') {
-                      <div class="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-[100]">
-                         @for (customer of filteredCustomers(); track customer.id) {
-                            <button (click)="selectCustomer(customer)" class="w-full text-left p-3 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50 last:border-none">
-                               <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">{{ customer.full_name?.charAt(0) }}</div>
-                               <div>
-                                  <div class="text-[10px] font-black uppercase">{{ customer.full_name }}</div>
-                                  <div class="text-[9px] text-slate-400 font-mono">{{ customer.phone }}</div>
-                               </div>
-                            </button>
-                         }
-                      </div>
-                   }
                  </div>
               </div>
 
@@ -223,16 +210,15 @@ Chart.register(...registerables);
                           <tr class="text-[10px] font-black uppercase tracking-widest">
                              <th class="py-4 pl-8 text-left">Item</th>
                              <th class="py-4 text-center">Qty</th>
-                             <th class="py-4 text-right">Price</th>
-                             <th class="py-4 text-center w-20">Edit</th>
-                             <th class="py-4 pr-8 text-right w-20">Remove</th>
+                              <th class="py-4 text-right">Total</th>
+                              <th class="py-4 pr-8 text-right w-20">Remove</th>
                           </tr>
                        </thead>
                        <tbody class="divide-y divide-slate-50">
                           @if (cart().length === 0) {
                              <tr>
-                                <td colspan="5" class="py-32 text-center opacity-20">
-                                   <span class="material-symbols-rounded text-8xl block mb-4">barcode_reader</span>
+                                 <td colspan="4" class="py-32 text-center opacity-20">
+                                    <span class="material-symbols-rounded text-8xl block mb-4">barcode_reader</span>
                                    <p class="text-xl font-black uppercase tracking-[0.2em]">Ready to Sell</p>
                                 </td>
                              </tr>
@@ -248,26 +234,31 @@ Chart.register(...registerables);
                                             <span class="material-symbols-rounded text-3xl">image</span>
                                          }
                                       </div>
-                                      <div>
-                                         <p class="text-sm font-black text-slate-900 mb-1 leading-none">{{ item.product.name }}</p>
-                                         <p class="text-[10px] font-mono text-slate-400 tracking-wider">SKU: {{ item.product.barcode }}</p>
-                                      </div>
+                                       <div>
+                                          <p class="text-sm font-black text-slate-900 mb-1 leading-none">{{ item.product.name }}</p>
+                                          <div class="flex items-center gap-2">
+                                             <p class="text-[10px] font-mono text-slate-400 tracking-wider">SKU: {{ item.product.barcode }}</p>
+                                             <div class="w-1 h-1 rounded-full bg-slate-200"></div>
+                                             <p class="text-[10px] font-bold text-indigo-500 font-mono">{{ item.product.price | currency: storeService.currentStore()?.config?.currency }} / ea</p>
+                                          </div>
+                                       </div>
                                    </div>
                                 </td>
                                 <td class="py-6 text-center">
-                                   <div class="inline-flex flex-col items-center">
-                                      <button (click)="updateQuantity(item, 1)" class="w-8 h-8 rounded-t-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"><span class="material-symbols-rounded text-sm">expand_less</span></button>
-                                      <div class="w-8 h-10 border-x border-slate-100 flex items-center justify-center bg-white font-black text-sm">{{ item.quantity }}</div>
-                                      <button (click)="updateQuantity(item, -1)" class="w-8 h-8 rounded-b-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center disabled:opacity-30" [disabled]="item.quantity <= 1"><span class="material-symbols-rounded text-sm">expand_more</span></button>
-                                   </div>
+                                    <div class="inline-flex items-center rounded-xl bg-slate-50 border border-slate-200 overflow-hidden shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)]">
+                                       <button (click)="updateQuantity(item, -1)" class="w-9 h-10 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500" [disabled]="item.quantity <= 1">
+                                          <span class="material-symbols-rounded text-[17px]">remove</span>
+                                       </button>
+                                       <div class="w-10 h-10 flex items-center justify-center bg-white font-black text-sm text-slate-900 border-x border-slate-200 font-mono">
+                                          {{ item.quantity }}
+                                       </div>
+                                       <button (click)="updateQuantity(item, 1)" class="w-9 h-10 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100 transition-colors">
+                                          <span class="material-symbols-rounded text-[17px]">add</span>
+                                       </button>
+                                    </div>
                                 </td>
-                                <td class="py-6 text-right font-black text-slate-900 font-mono text-base">
-                                   {{ (item.product.price * item.quantity) | currency: storeService.currentStore()?.config?.currency }}
-                                </td>
-                                <td class="py-6 text-center">
-                                   <button class="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-indigo-50 hover:text-indigo-600 active:scale-95 transition-all">
-                                      <span class="material-symbols-rounded text-lg">edit</span>
-                                   </button>
+                                <td class="py-6 text-right">
+                                   <span class="text-lg font-black text-slate-900 font-mono">{{ (item.product.price * item.quantity) | currency: storeService.currentStore()?.config?.currency }}</span>
                                 </td>
                                 <td class="py-6 pr-8 text-right">
                                    <button (click)="updateQuantity(item, -item.quantity)" class="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white active:scale-95 transition-all">
@@ -423,8 +414,8 @@ Chart.register(...registerables);
                            <div class="flex-1 flex overflow-hidden">
                               
                               <!-- Left: Ledger Table (70%) -->
-                              <div class="flex-[2] overflow-y-auto no-scrollbar p-8 border-r border-slate-100">
-                                 <div class="flex items-center justify-between mb-8">
+                              <div class="flex-[2] flex flex-col min-h-0 p-8 border-r border-slate-100">
+                                 <div class="flex items-center justify-between mb-8 shrink-0">
                                     <div class="flex items-center gap-4">
                                        <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center">
                                           <span class="material-symbols-rounded text-xl">account_balance</span>
@@ -445,9 +436,9 @@ Chart.register(...registerables);
                                     </div>
                                  </div>
 
-                                 <div class="rounded-3xl border border-slate-100 overflow-hidden bg-white shadow-xl shadow-slate-100">
-                                    <table class="w-full border-collapse">
-                                       <thead>
+                                 <div class="flex-1 overflow-y-auto no-scrollbar rounded-3xl border border-slate-100 bg-white shadow-xl shadow-slate-100">
+                                    <table class="w-full border-collapse relative">
+                                       <thead class="sticky top-0 z-10 shadow-sm">
                                           <tr class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.1em]">
                                              <th class="py-4 px-4 text-center border-r border-slate-800">SNo</th>
                                              <th class="py-4 px-4 text-left border-r border-slate-800">Date</th>
@@ -482,7 +473,7 @@ Chart.register(...registerables);
                                              </tr>
                                           }
                                        </tbody>
-                                       <tfoot class="bg-slate-50 border-t-2 border-slate-900 text-[11px] font-black font-mono">
+                                       <tfoot class="sticky bottom-0 z-10 bg-slate-50 border-t-2 border-slate-900 text-[11px] font-black font-mono shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                                           <tr>
                                              <td colspan="6" class="py-4 px-6 text-right uppercase tracking-widest border-r border-slate-200">Account Totals</td>
                                              <td class="py-4 px-4 text-right border-r border-slate-200 text-red-600">{{ ledgerTotals().debit | number:'1.3-3' }}</td>
@@ -494,6 +485,7 @@ Chart.register(...registerables);
                                        </tfoot>
                                     </table>
                                  </div>
+                              </div>
 
                               <!-- Right: Recent Order Intelligence (30%) -->
                               <div class="flex-1 bg-slate-50 overflow-y-auto no-scrollbar p-8">
@@ -1297,6 +1289,7 @@ export class EposComponent {
       if (exactMatch && exactMatch.stock_shop > 0) {
          this.addToCart(exactMatch);
          this.searchQuery.set('');
+         this.leftPanelMode.set('BAG'); // Switch to bag view so the cashier can see the scanned item
       }
    }
 
