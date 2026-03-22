@@ -50,21 +50,27 @@ Chart.register(...registerables);
              <!-- Sleek Segmented Control -->
              <div class="flex items-center bg-slate-800/80 p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-md">
                 <!-- Cart / Checkout -->
-                <button (click)="goHome()" [ngClass]="{ 'bg-white text-slate-900 shadow-md transform scale-100': leftPanelMode() === 'BAG', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'BAG' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
+                <button (click)="goHome()" [ngClass]="{ 'bg-white text-slate-900 shadow-md transform scale-100': leftPanelMode() === 'BAG', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'BAG' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-colors font-black text-[10px] uppercase tracking-widest">
                    <span class="material-symbols-rounded text-lg">shopping_basket</span>
                    Cart
                 </button>
 
                 <!-- Catalog -->
-                <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transform scale-100': leftPanelMode() === 'PRODUCTS', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'PRODUCTS' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
+                <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transform scale-100': leftPanelMode() === 'PRODUCTS', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'PRODUCTS' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-colors font-black text-[10px] uppercase tracking-widest">
                    <span class="material-symbols-rounded text-lg">inventory_2</span>
                    Catalog
                 </button>
 
                 <!-- CRM -->
-                <button (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.4)] transform scale-100': leftPanelMode() === 'LEDGER', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'LEDGER' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
-                   <span class="material-symbols-rounded text-lg">groups</span>
+                <button [disabled]="!sharedState.selectedCustomer()" (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transform scale-100': leftPanelMode() === 'LEDGER', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'LEDGER' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-colors font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400">
+                   <span class="material-symbols-rounded text-lg">recent_patient</span>
                    Customers
+                </button>
+
+                <!-- Orders -->
+                <button (click)="leftPanelMode.set('ORDERS')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transform scale-100': leftPanelMode() === 'ORDERS', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'ORDERS' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-colors font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-lg">receipt_long</span>
+                   Orders
                 </button>
              </div>
 
@@ -125,7 +131,7 @@ Chart.register(...registerables);
                         (ngModelChange)="searchQuery.set($event)"
                         (keyup.enter)="onSearchEnter()"
                         placeholder="Quick Search Item..." 
-                        class="pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 w-64 outline-none transition-all focus:bg-white focus:shadow-inner"
+                        class="pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 w-64 outline-none transition focus:bg-white focus:shadow-inner"
                         autofocus>
                    </div>
                  </div>
@@ -202,13 +208,13 @@ Chart.register(...registerables);
                        }
                     </div>
 
-                    <table class="w-full border-collapse">
+                    <table class="w-full border-collapse table-fixed">
                        <thead class="bg-white/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-100 text-slate-400 shadow-sm">
                           <tr class="text-[10px] font-black uppercase tracking-widest">
                              <th class="py-4 pl-8 text-left">Item</th>
-                             <th class="py-4 text-center">Qty</th>
-                              <th class="py-4 text-right">Total</th>
-                              <th class="py-4 pr-8 text-right w-20">Remove</th>
+                             <th class="py-4 text-center w-32">Qty</th>
+                              <th class="py-4 text-right w-28">Total</th>
+                              <th class="py-4 pr-8 text-right w-24">Remove</th>
                           </tr>
                        </thead>
                        <tbody class="divide-y divide-slate-50">
@@ -221,7 +227,7 @@ Chart.register(...registerables);
                              </tr>
                           }
                           @for (item of cart(); track item.product.id) {
-                             <tr class="hover:bg-indigo-50/30 transition-colors animate-in fade-in slide-in-from-top-4">
+                             <tr class="hover:bg-indigo-50/30 transition-colors">
                                 <td class="py-6 pl-8">
                                    <div class="flex items-center gap-4">
                                       <div class="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center text-slate-300 relative overflow-hidden">
@@ -270,9 +276,9 @@ Chart.register(...registerables);
                     <!-- PRODUCTS BROWSER -->
                     <div class="p-6 h-full flex flex-col animate-in fade-in zoom-in duration-300">
                        <div class="flex gap-2 pb-6 overflow-x-auto no-scrollbar shrink-0">
-                          <button (click)="selectedCategory.set(null)" [class.bg-slate-900]="!selectedCategory()" [class.text-white]="!selectedCategory()" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 hover:border-indigo-500 transition-all whitespace-nowrap">All Items</button>
+                          <button (click)="selectedCategory.set(null)" [class.bg-slate-900]="!selectedCategory()" [class.text-white]="!selectedCategory()" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 hover:border-indigo-500 transition-colors whitespace-nowrap">All Items</button>
                           @for (cat of categories(); track cat.id) {
-                             <button (click)="selectedCategory.set(cat.id)" [class.bg-slate-900]="selectedCategory() === cat.id" [class.text-white]="selectedCategory() === cat.id" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 hover:border-indigo-500 transition-all whitespace-nowrap">
+                             <button (click)="selectedCategory.set(cat.id)" [class.bg-slate-900]="selectedCategory() === cat.id" [class.text-white]="selectedCategory() === cat.id" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 hover:border-indigo-500 transition-colors whitespace-nowrap">
                                 {{ cat.name }}
                              </button>
                           }
@@ -280,7 +286,7 @@ Chart.register(...registerables);
                        
                        <div class="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pb-8">
                           @for (product of filteredProducts(); track product.id) {
-                             <button (click)="addToCart(product)" class="p-2 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:translate-y-[-2px] active:translate-y-0 transition-all flex flex-col group relative overflow-hidden">
+                             <button (click)="addToCart(product)" class="p-2 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition flex flex-col group relative overflow-hidden transform-gpu">
                                 <div class="w-full aspect-square bg-slate-50 rounded-xl mb-3 flex items-center justify-center text-slate-200 relative overflow-hidden shadow-inner">
                                    @if (product.image_url) {
                                       <img [src]="product.image_url" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
@@ -298,9 +304,124 @@ Chart.register(...registerables);
                                 </div>
                              </button>
                           }
-                       </div>
-                    </div>
-                 } @else if (leftPanelMode() === 'LEDGER') {
+                        </div>
+                     </div>
+                  } @else if (leftPanelMode() === 'ORDERS') {
+                     <!-- ORDERS SEARCH & RECALL BROWSER -->
+                     <div class="p-6 h-full flex flex-col bg-slate-50/30">
+                        <div class="relative mb-6 shrink-0 z-10 w-3/4 mx-auto mt-6">
+                           <span class="material-symbols-rounded absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
+                           <input type="text" [ngModel]="orderSearchQuery()" (ngModelChange)="searchOrder($event)" placeholder="Scan or Type Order/Receipt Number (e.g. 9b1deb4d...)" class="w-full pl-14 pr-6 py-5 bg-white border border-slate-200 rounded-[2rem] text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-colors focus:border-indigo-500 shadow-xl shadow-slate-200/50 font-bold uppercase tracking-wider text-slate-900 placeholder:normal-case placeholder:tracking-normal placeholder:opacity-50">
+                           @if (orderSearchQuery()) {
+                              <button (click)="searchOrder('')" class="absolute right-6 top-1/2 -translate-y-1/2 w-8 h-8 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors">
+                                 <span class="material-symbols-rounded text-sm">close</span>
+                              </button>
+                           }
+                        </div>
+
+                        <!-- Results Area -->
+                        <div class="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-4 relative">
+                           @if (searchingOrder()) {
+                              <div class="absolute inset-0 flex items-center justify-center">
+                                 <div class="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                              </div>
+                           } @else if (orderSearchResult()) {
+                              <div class="bg-white border border-slate-200 shadow-2xl shadow-slate-200/50 rounded-[2.5rem] p-10 max-w-3xl mx-auto w-full animate-in slide-in-from-bottom-8 duration-500 relative overflow-hidden">
+                                 <!-- Header Ribbon -->
+                                 <div class="absolute top-0 inset-x-0 h-4 bg-indigo-600"></div>
+
+                                 <div class="flex items-center justify-between mb-8 pb-8 border-b border-dashed border-slate-200 mt-4">
+                                    <div class="flex items-center gap-6">
+                                       <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-[1.5rem] flex items-center justify-center">
+                                          <span class="material-symbols-rounded text-[2rem]">receipt_long</span>
+                                       </div>
+                                       <div>
+                                          <h3 class="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-1">Receipt No.</h3>
+                                          <p class="text-2xl font-black font-mono text-slate-900">{{ orderSearchResult().id.slice(0, 8).toUpperCase() }}</p>
+                                       </div>
+                                    </div>
+                                    <div class="text-right">
+                                       <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{{ orderSearchResult().created_at | date:'dd MMM yyyy, HH:mm' }}</p>
+                                       <span class="px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl" [ngClass]="{'bg-emerald-100 text-emerald-700': orderSearchResult().metadata?.status !== 'VOID', 'bg-red-100 text-red-700': orderSearchResult().metadata?.status === 'VOID'}">
+                                          {{ orderSearchResult().metadata?.status === 'VOID' ? 'VOIDED' : 'COMPLETED' }}
+                                       </span>
+                                    </div>
+                                 </div>
+
+                                 @if (orderSearchResult().customer) {
+                                    <div class="mb-8 p-6 bg-slate-50 rounded-3xl flex items-center justify-between border border-slate-100">
+                                       <div class="flex items-center gap-4">
+                                          <div class="w-12 h-12 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-black">{{ orderSearchResult().customer.full_name?.charAt(0) }}</div>
+                                          <div>
+                                             <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Customer Account</p>
+                                             <p class="text-base font-black uppercase text-indigo-900">{{ orderSearchResult().customer.full_name }}</p>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 }
+
+                                 <table class="w-full mb-10">
+                                    <thead class="text-[9px] font-black tracking-[0.2em] uppercase text-slate-400 border-b-2 border-slate-100">
+                                       <tr>
+                                          <th class="text-left pb-4">Item</th>
+                                          <th class="text-center w-24 pb-4">Qty</th>
+                                          <th class="text-right w-32 pb-4">Price</th>
+                                          <th class="text-right w-32 pb-4">Total</th>
+                                       </tr>
+                                    </thead>
+                                    <tbody class="text-sm font-bold border-b border-slate-100">
+                                       @for (item of orderSearchResult().items; track item.id) {
+                                          <tr class="border-b border-slate-50 last:border-none hover:bg-slate-50 transition-colors">
+                                             <td class="py-5 text-slate-900 uppercase text-xs font-black">{{ item.product?.name || 'Unknown Product' }}</td>
+                                             <td class="py-5 text-center font-mono text-slate-500 bg-slate-50/50">{{ item.quantity }}</td>
+                                             <td class="py-5 text-right font-mono text-slate-500">{{ item.price_at_sale | currency: storeService.currentStore()?.config?.currency }}</td>
+                                             <td class="py-5 text-right font-mono font-black text-indigo-600">{{ (item.price_at_sale * item.quantity) | currency: storeService.currentStore()?.config?.currency }}</td>
+                                          </tr>
+                                       }
+                                    </tbody>
+                                 </table>
+
+                                 <div class="flex justify-between items-end mb-12 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <div>
+                                       <p class="text-[10px] font-black tracking-widest uppercase text-slate-400 mb-1">Payment Method</p>
+                                       <div class="flex items-center gap-2 mt-2">
+                                          <span class="material-symbols-rounded text-slate-400">payments</span>
+                                          <p class="text-sm font-black text-slate-900 uppercase tracking-widest">{{ orderSearchResult().payment_method }}</p>
+                                       </div>
+                                    </div>
+                                    <div class="text-right">
+                                       <p class="text-[10px] font-black tracking-[0.3em] uppercase text-indigo-400 mb-2">Total Paid</p>
+                                       <p class="text-5xl font-black font-mono text-slate-900 leading-none">{{ orderSearchResult().total_amount | currency: storeService.currentStore()?.config?.currency }}</p>
+                                    </div>
+                                 </div>
+
+                                 <div class="flex gap-4">
+                                    <button class="flex-1 h-16 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-2xl shadow-slate-900/20 active:scale-95 flex items-center justify-center gap-3">
+                                       <span class="material-symbols-rounded text-xl">print</span> Print Full Data
+                                    </button>
+                                    <button (click)="refundEntireOrder(orderSearchResult())" class="flex-1 h-16 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:shadow-2xl hover:shadow-pink-500/30 transition-all active:scale-95 flex items-center justify-center gap-3 border-none">
+                                       <span class="material-symbols-rounded text-xl">assignment_return</span> Refund Items to Cart
+                                    </button>
+                                 </div>
+                              </div>
+                           } @else if (orderSearchQuery().length >= 4) {
+                              <div class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 opacity-60">
+                                 <span class="material-symbols-rounded text-6xl mb-4 font-light">search_off</span>
+                                 <p class="uppercase font-black tracking-widest text-xs">No matching receipt found.</p>
+                              </div>
+                           } @else {
+                              <div class="absolute inset-0 flex flex-col items-center justify-center text-slate-300 opacity-60 mt-16 scale-95">
+                                 <div class="relative mb-8">
+                                    <span class="material-symbols-rounded text-[8rem] font-light text-indigo-100">receipt_long</span>
+                                    <span class="material-symbols-rounded text-[4rem] absolute -bottom-4 -right-4 bg-white rounded-full text-indigo-500 shadow-xl">barcode_scanner</span>
+                                 </div>
+                                 <h2 class="text-3xl font-black tracking-tighter text-slate-800 mb-2">Order Retrieval</h2>
+                                 <p class="uppercase font-bold tracking-[0.2em] text-xs text-slate-400">Scan a barcode or type receipt ID to view</p>
+                              </div>
+                           }
+                        </div>
+                     </div>
+                  } @else if (leftPanelMode() === 'LEDGER') {
                     <!-- CUSTOMER INTELLIGENCE DASHBOARD -->
                      <div class="h-full flex flex-col animate-in zoom-in-95 duration-300">
                         @if (!sharedState.selectedCustomer()) {
@@ -543,31 +664,31 @@ Chart.register(...registerables);
                  }
                  
                  <!-- Refund Toggle -->
-                 <button (click)="returnMode.set(!returnMode())" class="flex-[1.5] h-14 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 transform active:scale-95 text-[11px] font-black uppercase tracking-widest border shadow-sm" [class.bg-pink-500]="returnMode()" [class.text-white]="returnMode()" [class.border-pink-500]="returnMode()" [class.shadow-[0_8px_25px_rgba(236,72,153,0.3)]]="returnMode()" [class.bg-white]="!returnMode()" [class.text-slate-600]="!returnMode()" [class.border-slate-200]="!returnMode()" [class.hover:border-pink-300]="!returnMode()" [class.hover:bg-pink-50]="!returnMode()" [class.hover:text-pink-600]="!returnMode()">
+                 <button (click)="returnMode.set(!returnMode())" class="flex-[1.5] h-14 rounded-xl flex items-center justify-center gap-3 transition-colors duration-300 transform active:scale-95 text-[11px] font-black uppercase tracking-widest border shadow-sm" [ngClass]="{'bg-pink-500 text-white border-pink-500 shadow-[0_8px_25px_rgba(236,72,153,0.3)]': returnMode(), 'bg-white text-slate-600 border-slate-200 hover:border-pink-300 hover:bg-pink-50 hover:text-pink-600': !returnMode()}">
                     <span class="material-symbols-rounded text-xl" [class.animate-bounce]="returnMode()">assignment_return</span>
-                    {{ returnMode() ? 'Cancel Refund' : 'Initiate Return' }}
+                    {{ returnMode() ? 'Cancel Refund' : 'Refund' }}
                  </button>
 
                  <!-- Vertical Separator -->
                  <div class="w-px h-8 bg-slate-200/70 mx-2"></div>
 
                  <!-- Cart Danger Actions -->
-                 <button (click)="sharedState.parkCurrentTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-amber-600 flex items-center justify-center gap-2 hover:bg-amber-50 hover:border-amber-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                 <button (click)="sharedState.parkCurrentTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-amber-600 flex items-center justify-center gap-2 hover:bg-amber-50 hover:border-amber-300 transition-colors text-[10px] font-black uppercase tracking-wider disabled:opacity-40 active:scale-95 shadow-sm">
                     <span class="material-symbols-rounded text-lg">pause_circle</span> Hold Order
                  </button>
 
-                 <button (click)="voidTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-red-500 flex items-center justify-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                 <button (click)="voidTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-red-500 flex items-center justify-center gap-2 hover:bg-red-50 hover:border-red-300 transition-colors text-[10px] font-black uppercase tracking-wider disabled:opacity-40 active:scale-95 shadow-sm">
                     <span class="material-symbols-rounded text-lg">delete_sweep</span> Void Order
                  </button>
 
-                 <button (click)="clearCustomer()" [disabled]="!sharedState.selectedCustomer()" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                 <button (click)="clearCustomer()" [disabled]="!sharedState.selectedCustomer()" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300 transition-colors text-[10px] font-black uppercase tracking-wider disabled:opacity-40 active:scale-95 shadow-sm">
                     <span class="material-symbols-rounded text-lg">person_remove</span> Clear Customer
                  </button>
               </div>
            </div>
 
            <!-- RIGHT PANEL: COMMAND CENTER -->
-           <div class="flex-1 min-w-[360px] flex flex-col gap-3 h-full">
+           <div class="w-[440px] xl:w-[480px] shrink-0 flex flex-col gap-3 h-full">
               <!-- Expanded Payment Summary -->
               <div class="bg-white rounded-2xl border border-slate-200 shadow-xl p-8 flex-1 flex flex-col justify-between relative overflow-hidden h-full">
                  <!-- Return Mode Indicator -->
@@ -576,33 +697,32 @@ Chart.register(...registerables);
                  }
                  
                  <div>
-                    <div class="flex justify-between items-center mb-5 text-slate-500">
+                    <div class="flex justify-between items-center mb-5 text-slate-500 h-7">
                        <span class="text-[11px] font-black uppercase tracking-[0.2em]">Sub Total</span>
-                       <span class="text-xl font-black font-mono">{{ subtotal() | currency: storeService.currentStore()?.config?.currency }}</span>
+                       <span class="text-xl font-black font-mono tabular-nums text-right w-36 shrink-0">{{ subtotal() | currency: storeService.currentStore()?.config?.currency }}</span>
                     </div>
-                    @if (tax() > 0) {
-                       <div class="flex justify-between items-center mb-5 text-slate-500">
-                          <span class="text-[11px] font-black uppercase tracking-[0.2em]">Tax (VAT)</span>
-                          <span class="text-xl font-black font-mono">{{ tax() | currency: storeService.currentStore()?.config?.currency }}</span>
-                       </div>
-                    }
+                    <!-- Tax Row always present to prevent layout shaking -->
+                    <div class="flex justify-between items-center mb-5 text-slate-500 h-7" [class.opacity-40]="tax() === 0">
+                       <span class="text-[11px] font-black uppercase tracking-[0.2em]">Tax (VAT)</span>
+                       <span class="text-xl font-black font-mono tabular-nums text-right w-36 shrink-0">{{ tax() | currency: storeService.currentStore()?.config?.currency }}</span>
+                    </div>
                     
-                    <div class="flex justify-between items-center mb-6">
-                       <span class="text-[11px] font-black uppercase tracking-[0.2em] text-red-500">Savings</span>
-                       <div class="flex items-center gap-3">
+                    <div class="flex justify-between items-center mb-6 h-7">
+                       <span class="text-[11px] font-black uppercase tracking-[0.2em] text-red-500 shrink-0">Savings</span>
+                       <div class="flex items-center gap-3 h-7 w-full justify-end">
                           @if (sharedState.loyaltyDiscount() === 0) {
-                             <button (click)="applyGlobalDiscount()" class="text-[9px] font-black bg-slate-100/50 hover:bg-slate-200 text-slate-500 px-3 py-1.5 rounded-lg uppercase tracking-widest transition-colors flex items-center gap-1 active:scale-95">
+                             <button (click)="applyGlobalDiscount()" class="text-[9px] font-black bg-slate-100/50 hover:bg-slate-200 text-slate-500 px-3 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1 active:scale-95 whitespace-nowrap shrink-0">
                                 <span class="material-symbols-rounded text-[14px]">loyalty</span> Add Discount
                              </button>
                           }
-                          <span class="text-xl font-black font-mono text-red-500">-{{ (sharedState.loyaltyDiscount() || 0) | currency: storeService.currentStore()?.config?.currency }}</span>
+                          <span class="text-xl font-black font-mono text-red-500 tabular-nums text-right w-24 shrink-0">-{{ (sharedState.loyaltyDiscount() || 0) | currency: storeService.currentStore()?.config?.currency }}</span>
                        </div>
                     </div>
-
-                    <div class="flex justify-between items-end mt-8 border-t border-dashed border-slate-200 pt-6">
-                       <div>
+                    
+                    <div class="flex justify-between items-end mt-8 border-t border-dashed border-slate-200 pt-6 min-h-[140px]">
+                       <div class="w-full">
                           <p class="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 mb-2 mt-2">Total Outstanding</p>
-                          <div class="text-[4rem] 2xl:text-[5rem] leading-none font-black tracking-tighter font-mono" [class.text-pink-600]="returnMode()" [class.text-slate-900]="!returnMode()">
+                          <div class="text-[4rem] 2xl:text-[5rem] overflow-hidden whitespace-nowrap text-ellipsis leading-none font-black tracking-tighter font-mono tabular-nums" [class.text-pink-600]="returnMode()" [class.text-slate-900]="!returnMode()">
                              {{ total() | currency: storeService.currentStore()?.config?.currency }}
                           </div>
                        </div>
@@ -628,10 +748,9 @@ Chart.register(...registerables);
                     <button 
                       (click)="openCheckoutModal()" 
                       [disabled]="cart().length === 0"
-                      class="w-full h-32 disabled:opacity-40 disabled:grayscale transition-all transform active:scale-[0.98] rounded-[2rem] shadow-2xl relative overflow-hidden group border-2"
-                      [class.bg-emerald-500]="!returnMode()" [class.hover:bg-emerald-400]="!returnMode()" [class.shadow-emerald-500/40]="!returnMode()" [class.border-emerald-400]="!returnMode()"
-                      [class.bg-pink-600]="returnMode()" [class.hover:bg-pink-500]="returnMode()" [class.shadow-pink-600/40]="returnMode()" [class.border-pink-500]="returnMode()">
-                       <div class="absolute inset-0 bg-white/20 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                      class="w-full h-32 disabled:opacity-40 transition-transform duration-300 transform active:scale-[0.98] rounded-[2rem] shadow-lg relative overflow-hidden group border-2"
+                      [ngClass]="{'bg-pink-600 hover:bg-pink-500 border-pink-500 shadow-pink-500/30': returnMode(), 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 shadow-emerald-500/30': !returnMode()}">
+                       <div class="absolute inset-0 bg-white/10 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
                        <div class="relative z-10 flex flex-col items-center justify-center text-white h-full gap-2">
                           <span class="text-4xl font-black uppercase tracking-[0.2em] translate-x-1">{{ returnMode() ? 'Refund' : 'Pay' }}</span>
                           <span class="text-[10px] font-black uppercase tracking-[0.4em] opacity-90">{{ returnMode() ? 'Process Money Back' : 'Finalize Sale' }}</span>
@@ -847,7 +966,10 @@ export class EposComponent {
    // State Signals
    viewMode = signal<'GRID' | 'LIST'>('GRID');
    searchQuery = signal('');
-   leftPanelMode = signal<'BAG' | 'LEDGER' | 'PRODUCTS'>('BAG');
+   leftPanelMode = signal<'BAG' | 'LEDGER' | 'PRODUCTS' | 'ORDERS'>('BAG');
+   orderSearchQuery = signal('');
+   searchingOrder = signal(false);
+   orderSearchResult = signal<any>(null);
    selectedCategory = signal<string | null>(null);
    showCustomerInsights = signal(false);
    showCheckoutModal = signal(false);
@@ -862,7 +984,7 @@ export class EposComponent {
    ledgerEntries = signal<any[]>([]);
    ledgerBalance = signal<number>(0);
    ledgerTotals = signal<{ debit: number, credit: number }>({ debit: 0, credit: 0 });
-   
+
    // Customer Intelligence Signals
    customerTransactions = signal<Transaction[]>([]);
    customerRecentItems = signal<TransactionItem[]>([]);
@@ -881,7 +1003,7 @@ export class EposComponent {
       scales: { x: { display: false }, y: { display: false } },
       elements: { point: { radius: 0 } }
    };
-   
+
    allStores = toSignal(this.mockSupabase.getAllStores(), { initialValue: [] as Store[] });
    Math = Math;
 
@@ -1105,7 +1227,7 @@ export class EposComponent {
       this.mockSupabase.getCustomerTransactions(customer.id).subscribe(txs => {
          this.customerTransactions.set(txs);
          this.updateTrendChart(txs);
-         
+
          // 3. FETCH ITEMS FOR THE MOST RECENT TRANSACTION IF IT EXISTS
          if (txs.length > 0) {
             this.mockSupabase.getTransactionItems(txs[0].id).subscribe(items => {
@@ -1568,5 +1690,54 @@ export class EposComponent {
          ...p,
          cash: amount
       }));
+   }
+
+   // --- Order Search & Refund Logic ---
+   searchOrder(query: string) {
+      this.orderSearchQuery.set(query);
+      if (query.length < 4) {
+         this.orderSearchResult.set(null);
+         return;
+      }
+
+      this.searchingOrder.set(true);
+      // Execute the query using the exposed mockSupabase client against transactions and items
+      this.mockSupabase.client
+         .from('transactions')
+         .select('*, customer:customers(*), items:transaction_items(*, product:products(*))')
+         .eq('id', query.trim())
+         .single()
+         .then(({ data, error }) => {
+            this.searchingOrder.set(false);
+            if (data) {
+               this.orderSearchResult.set(data);
+            } else {
+               this.orderSearchResult.set(null);
+            }
+         });
+   }
+
+   refundEntireOrder(order: any) {
+      if (order.metadata?.status === 'VOID' || order.metadata?.status === 'REFUNDED') {
+         this.dialogService.alert('Cannot Refund', 'This order is already voided or refunded.', 'Okay');
+         return;
+      }
+
+      // Add to cart as negative items instantly
+      this.sharedState.clearCart();
+      this.returnMode.set(true);
+
+      for (const item of order.items) {
+         if (item.product) {
+            // Reconstruct a negative cart item
+            const returnItem = { ...item.product, price: -Math.abs(item.price_at_sale) };
+            for (let i = 0; i < item.quantity; i++) {
+               this.sharedState.addToCart(returnItem as any);
+            }
+         }
+      }
+      this.leftPanelMode.set('BAG');
+      this.orderSearchQuery.set('');
+      this.orderSearchResult.set(null);
    }
 }
