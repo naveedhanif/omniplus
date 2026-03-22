@@ -46,40 +46,37 @@ Chart.register(...registerables);
              </div>
           </div>
 
-          <div class="flex-1 flex justify-center gap-2">
-             <!-- Mode 1: Home Mode -->
-             <button (click)="goHome()" [ngClass]="{ 'bg-white text-slate-900 shadow-[0_0_20px_rgba(255,255,255,0.3)] border-white': leftPanelMode() === 'BAG' && cart().length === 0, 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'BAG' || cart().length !== 0 }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
-                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">home</span>
-                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'BAG' && cart().length === 0">Home</span>
-             </button>
+          <div class="flex-1 flex justify-center">
+             <!-- Sleek Segmented Control -->
+             <div class="flex items-center bg-slate-800/80 p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-md">
+                <!-- Cart / Checkout -->
+                <button (click)="goHome()" [ngClass]="{ 'bg-white text-slate-900 shadow-md transform scale-100': leftPanelMode() === 'BAG', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'BAG' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-lg">shopping_basket</span>
+                   Cart
+                </button>
 
-             <!-- Mode 2: Selling Mode -->
-             <button (click)="leftPanelMode.set('BAG')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_25px_rgba(99,102,241,0.5)] border-indigo-400': leftPanelMode() === 'BAG' && cart().length > 0, 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'BAG' || cart().length === 0 }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
-                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">shopping_basket</span>
-                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'BAG' && cart().length > 0">Sell</span>
-             </button>
+                <!-- Catalog -->
+                <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transform scale-100': leftPanelMode() === 'PRODUCTS', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'PRODUCTS' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-lg">inventory_2</span>
+                   Catalog
+                </button>
 
-             <!-- Mode 3: Inventory/Products Mode -->
-             <button (click)="leftPanelMode.set('PRODUCTS')" [ngClass]="{ 'bg-teal-500 text-white shadow-[0_0_25px_rgba(20,184,166,0.5)] border-teal-400': leftPanelMode() === 'PRODUCTS', 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'PRODUCTS' }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
-                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">inventory_2</span>
-                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'PRODUCTS'">Items</span>
-             </button>
+                <!-- CRM -->
+                <button (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.4)] transform scale-100': leftPanelMode() === 'LEDGER', 'text-slate-400 hover:text-white hover:bg-slate-700/50 scale-95': leftPanelMode() !== 'LEDGER' }" class="flex items-center gap-2 px-6 h-[52px] rounded-xl transition-all duration-300 font-black text-[10px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-lg">groups</span>
+                   Customers
+                </button>
+             </div>
 
-             <!-- Mode 4: CRM/Accounts Mode -->
-             <button (click)="leftPanelMode.set('LEDGER')" [ngClass]="{ 'bg-violet-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.5)] border-violet-400': leftPanelMode() === 'LEDGER', 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700 hover:text-white': leftPanelMode() !== 'LEDGER' }" class="flex flex-col items-center justify-center w-[72px] h-[64px] rounded-xl border transition-all group relative overflow-hidden transform active:scale-95">
-                <span class="material-symbols-rounded text-2xl mb-1 group-hover:-translate-y-0.5 transition-transform duration-300">groups</span>
-                <span class="text-[9px] font-black uppercase tracking-widest absolute bottom-1.5 opacity-0 group-hover:opacity-100 transition-opacity" [class.opacity-100]="leftPanelMode() === 'LEDGER'">CRM</span>
-             </button>
-
-             <div class="w-px h-10 bg-slate-700 mx-2 self-center"></div>
+             <div class="w-px h-10 bg-slate-700/50 mx-6 self-center"></div>
 
              <!-- Split Action: EPOS / Admin -->
-             <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-white/5 shadow-inner">
-                <button class="flex items-center gap-2 px-4 h-[56px] rounded-lg bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] font-black text-[10px] uppercase tracking-widest">
-                   <span class="material-symbols-rounded">point_of_sale</span> EPOS
+             <div class="flex items-center bg-slate-800/80 p-1.5 rounded-2xl border border-white/10 shadow-inner">
+                <button class="flex items-center gap-2 px-5 h-[52px] rounded-xl bg-slate-700 text-white shadow-sm font-black text-[9px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-base">point_of_sale</span> EPOS
                 </button>
-                <button (click)="openOrderHistory()" class="flex items-center gap-2 px-4 h-[56px] rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition-all font-black text-[10px] uppercase tracking-widest">
-                   <span class="material-symbols-rounded">admin_panel_settings</span> Admin
+                <button (click)="openOrderHistory()" class="flex items-center gap-2 px-5 h-[52px] rounded-xl text-slate-400 hover:bg-slate-700 hover:text-white transition-all font-black text-[9px] uppercase tracking-widest">
+                   <span class="material-symbols-rounded text-base">admin_panel_settings</span> Admin
                 </button>
              </div>
           </div>
@@ -539,59 +536,33 @@ Chart.register(...registerables);
                   }
               </div>
 
-              <!-- Terminal Function Grid (Premium Physical Card View) -->
-              <div class="h-[140px] bg-slate-50 p-4 shrink-0 grid grid-cols-4 gap-4 border-t border-slate-200">
+              <!-- 💎 Premium Action Dock 💎 -->
+              <div class="h-24 bg-white/80 backdrop-blur-3xl px-6 shrink-0 flex items-center gap-3 border-t border-slate-200/50 relative overflow-hidden z-20 transition-colors duration-500" [class.bg-pink-50]="returnMode()">
+                 @if (returnMode()) {
+                    <div class="absolute inset-x-0 top-0 h-1 bg-pink-500 shadow-[0_0_20px_rgba(236,72,153,0.8)] animate-pulse"></div>
+                 }
                  
-                 <!-- Card 1: Refunds & Adjustments -->
-                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden" [class.border-pink-500]="returnMode()" [class.shadow-[0_0_15px_rgba(236,72,153,0.2)]]="returnMode()">
-                    @if (returnMode()) {
-                        <div class="absolute inset-0 bg-pink-500/5"></div>
-                    }
-                    <div class="flex items-center gap-2 w-full text-slate-500 relative z-10">
-                       <span class="material-symbols-rounded text-lg text-slate-400" [class.text-pink-500]="returnMode()">assignment_return</span>
-                       <span class="text-xs font-bold tracking-wide" [class.text-pink-600]="returnMode()">Returns Desk</span>
-                    </div>
-                    <button (click)="returnMode.set(!returnMode())" class="relative z-10 h-11 w-full font-bold rounded-xl transition-all transform active:scale-95 text-[11px] uppercase tracking-wider" 
-                            [class.bg-pink-500]="returnMode()" [class.text-white]="returnMode()" [class.hover:bg-pink-600]="returnMode()"
-                            [class.bg-white]="!returnMode()" [class.text-slate-900]="!returnMode()" [class.border]="!returnMode()" [class.border-slate-300]="!returnMode()" [class.hover:bg-slate-50]="!returnMode()">
-                       {{ returnMode() ? 'Cancel Refund' : 'Initiate Refund' }}
-                    </button>
-                 </div>
+                 <!-- Refund Toggle -->
+                 <button (click)="returnMode.set(!returnMode())" class="flex-[1.5] h-14 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 transform active:scale-95 text-[11px] font-black uppercase tracking-widest border shadow-sm" [class.bg-pink-500]="returnMode()" [class.text-white]="returnMode()" [class.border-pink-500]="returnMode()" [class.shadow-[0_8px_25px_rgba(236,72,153,0.3)]]="returnMode()" [class.bg-white]="!returnMode()" [class.text-slate-600]="!returnMode()" [class.border-slate-200]="!returnMode()" [class.hover:border-pink-300]="!returnMode()" [class.hover:bg-pink-50]="!returnMode()" [class.hover:text-pink-600]="!returnMode()">
+                    <span class="material-symbols-rounded text-xl" [class.animate-bounce]="returnMode()">assignment_return</span>
+                    {{ returnMode() ? 'Cancel Refund' : 'Initiate Return' }}
+                 </button>
 
-                 <!-- Card 2: Financial & CRM -->
-                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <button (click)="applyGlobalDiscount()" class="flex items-center gap-2 w-full text-slate-500 hover:text-indigo-600 transition-colors group">
-                       <span class="material-symbols-rounded text-lg text-slate-400 group-hover:text-indigo-500 transition-colors">loyalty</span>
-                       <span class="text-xs font-bold tracking-wide">Discounts</span>
-                    </button>
-                    <button (click)="leftPanelMode.set('LEDGER')" class="h-11 w-full border border-indigo-600 text-indigo-600 font-bold rounded-xl bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all transform active:scale-95 text-[11px] uppercase tracking-wider" [class.bg-indigo-600]="leftPanelMode() === 'LEDGER'" [class.text-white]="leftPanelMode() === 'LEDGER'">A/C Statement</button>
-                 </div>
+                 <!-- Vertical Separator -->
+                 <div class="w-px h-8 bg-slate-200/70 mx-2"></div>
 
-                 <!-- Card 3: Primary Action (Fulfillment) -->
-                 <div class="bg-white rounded-2xl shadow-sm border border-emerald-200 p-3 flex flex-col justify-between hover:shadow-md transition-shadow hover:border-emerald-400 overflow-hidden relative group">
-                    <div class="absolute inset-0 bg-gradient-to-br from-emerald-50 to-teal-50/20 z-0"></div>
-                    <div class="flex items-center gap-2 w-full text-slate-500 relative z-10 opacity-70">
-                       <span class="material-symbols-rounded text-lg text-emerald-500 group-hover:scale-110 transition-transform">point_of_sale</span>
-                       <span class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Fulfillment</span>
-                    </div>
-                    <button (click)="openCheckoutModal()" class="relative z-10 h-11 w-full text-white font-black rounded-xl bg-emerald-500 hover:bg-emerald-600 transition-all transform active:scale-95 text-xs uppercase tracking-[0.1em] shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.4)]">Pay & Complete</button>
-                 </div>
+                 <!-- Cart Danger Actions -->
+                 <button (click)="sharedState.parkCurrentTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-amber-600 flex items-center justify-center gap-2 hover:bg-amber-50 hover:border-amber-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                    <span class="material-symbols-rounded text-lg">pause_circle</span> Hold Order
+                 </button>
 
-                 <!-- Card 4: Danger Zone -->
-                  <div class="bg-red-50/30 rounded-2xl shadow-sm border border-red-100 p-3 flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <div class="flex gap-2">
-                       <button (click)="voidTransaction()" class="flex-1 flex items-center justify-center gap-2 h-9 text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors group">
-                          <span class="material-symbols-rounded text-sm">delete</span>
-                          <span class="text-[9px] font-black uppercase tracking-wider">Void</span>
-                       </button>
-                       <button (click)="sharedState.parkCurrentTransaction()" class="flex-1 flex items-center justify-center gap-2 h-9 text-amber-600 bg-white border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors group">
-                          <span class="material-symbols-rounded text-sm">pause_circle</span>
-                          <span class="text-[9px] font-black uppercase tracking-wider">Hold</span>
-                       </button>
-                    </div>
-                    <button (click)="clearCustomer()" class="h-11 w-full text-red-500 font-bold rounded-xl bg-white border border-red-200 hover:bg-red-50 transition-all transform active:scale-95 text-[11px] uppercase tracking-wider text-center">Clear Customer</button>
-                  </div>
+                 <button (click)="voidTransaction()" [disabled]="cart().length === 0" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-red-500 flex items-center justify-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                    <span class="material-symbols-rounded text-lg">delete_sweep</span> Void Order
+                 </button>
 
+                 <button (click)="clearCustomer()" [disabled]="!sharedState.selectedCustomer()" class="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300 transition-all text-[10px] font-black uppercase tracking-wider disabled:opacity-40 disabled:grayscale active:scale-95 shadow-sm">
+                    <span class="material-symbols-rounded text-lg">person_remove</span> Clear Customer
+                 </button>
               </div>
            </div>
 
@@ -601,48 +572,70 @@ Chart.register(...registerables);
               <div class="bg-white rounded-2xl border border-slate-200 shadow-xl p-8 flex-1 flex flex-col justify-between relative overflow-hidden h-full">
                  <!-- Return Mode Indicator -->
                  @if (returnMode()) {
-                    <div class="absolute top-0 right-0 bg-red-500 text-white px-8 py-2 rotate-45 translate-x-10 translate-y-2 text-[10px] font-black uppercase tracking-widest">Returns</div>
+                    <div class="absolute top-0 right-0 bg-pink-500 text-white px-8 py-2 rotate-45 translate-x-10 translate-y-2 text-[10px] font-black uppercase tracking-widest shadow-lg z-10">Returns</div>
                  }
                  
                  <div>
-                    <div class="flex justify-between items-center mb-6 text-slate-400">
-                       <span class="text-sm font-black uppercase tracking-widest">Sub Total</span>
+                    <div class="flex justify-between items-center mb-5 text-slate-500">
+                       <span class="text-[11px] font-black uppercase tracking-[0.2em]">Sub Total</span>
                        <span class="text-xl font-black font-mono">{{ subtotal() | currency: storeService.currentStore()?.config?.currency }}</span>
                     </div>
                     @if (tax() > 0) {
-                       <div class="flex justify-between items-center mb-6 text-slate-400">
-                          <span class="text-sm font-black uppercase tracking-widest">Tax (VAT)</span>
+                       <div class="flex justify-between items-center mb-5 text-slate-500">
+                          <span class="text-[11px] font-black uppercase tracking-[0.2em]">Tax (VAT)</span>
                           <span class="text-xl font-black font-mono">{{ tax() | currency: storeService.currentStore()?.config?.currency }}</span>
                        </div>
                     }
-                    <div class="flex justify-between items-center mb-8 text-red-500">
-                       <span class="text-sm font-black uppercase tracking-widest">Savings</span>
-                       <span class="text-xl font-black font-mono">-{{ (sharedState.loyaltyDiscount() || 0) | currency: storeService.currentStore()?.config?.currency }}</span>
+                    
+                    <div class="flex justify-between items-center mb-6">
+                       <span class="text-[11px] font-black uppercase tracking-[0.2em] text-red-500">Savings</span>
+                       <div class="flex items-center gap-3">
+                          @if (sharedState.loyaltyDiscount() === 0) {
+                             <button (click)="applyGlobalDiscount()" class="text-[9px] font-black bg-slate-100/50 hover:bg-slate-200 text-slate-500 px-3 py-1.5 rounded-lg uppercase tracking-widest transition-colors flex items-center gap-1 active:scale-95">
+                                <span class="material-symbols-rounded text-[14px]">loyalty</span> Add Discount
+                             </button>
+                          }
+                          <span class="text-xl font-black font-mono text-red-500">-{{ (sharedState.loyaltyDiscount() || 0) | currency: storeService.currentStore()?.config?.currency }}</span>
+                       </div>
                     </div>
-                    <div class="h-[2px] bg-slate-100 mb-8"></div>
-                    <div class="flex justify-between items-end">
+
+                    <div class="flex justify-between items-end mt-8 border-t border-dashed border-slate-200 pt-6">
                        <div>
-                          <p class="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 mb-2">Total Outstanding</p>
-                          <span class="text-6xl font-black text-slate-900 tracking-tighter font-mono" [class.text-red-600]="returnMode()">
+                          <p class="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 mb-2 mt-2">Total Outstanding</p>
+                          <div class="text-[4rem] 2xl:text-[5rem] leading-none font-black tracking-tighter font-mono" [class.text-pink-600]="returnMode()" [class.text-slate-900]="!returnMode()">
                              {{ total() | currency: storeService.currentStore()?.config?.currency }}
-                          </span>
+                          </div>
                        </div>
                     </div>
                  </div>
 
-                 <div class="mt-12">
+                 <div class="mt-8 flex flex-col gap-3">
                     @if (sharedState.selectedCustomer()) {
-                       <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl mb-6 text-center animate-pulse">
-                          <p class="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1">On Account Processing</p>
-                          <p class="text-xs font-bold text-indigo-700 leading-tight">{{ sharedState.selectedCustomer()?.full_name }}</p>
+                       <div class="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center justify-between">
+                          <div class="flex items-center gap-3 text-left">
+                             <div class="w-10 h-10 rounded-full bg-white shadow-sm text-indigo-600 flex items-center justify-center font-black">{{ sharedState.selectedCustomer()?.full_name?.charAt(0) }}</div>
+                             <div>
+                                <p class="text-[8px] font-black uppercase text-indigo-400 tracking-widest leading-none mb-1">Billing Account</p>
+                                <p class="text-xs font-bold text-indigo-700 leading-none">{{ sharedState.selectedCustomer()?.full_name }}</p>
+                             </div>
+                          </div>
+                          @if (sharedState.selectedCustomer()?.is_vip) {
+                             <span class="material-symbols-rounded text-amber-500 ml-auto">stars</span>
+                          }
                        </div>
                     }
+                    
                     <button 
                       (click)="openCheckoutModal()" 
                       [disabled]="cart().length === 0"
-                      class="w-full h-32 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 disabled:grayscale text-white rounded-[2rem] shadow-2xl shadow-emerald-500/30 flex flex-col items-center justify-center gap-2 active:scale-[0.98] transition-all transform hover:-translate-y-1">
-                       <span class="text-4xl font-black uppercase tracking-[0.3em] translate-x-2">Confirm</span>
-                       <span class="text-[11px] font-black uppercase tracking-[0.5em] opacity-80">Finalize Transaction</span>
+                      class="w-full h-32 disabled:opacity-40 disabled:grayscale transition-all transform active:scale-[0.98] rounded-[2rem] shadow-2xl relative overflow-hidden group border-2"
+                      [class.bg-emerald-500]="!returnMode()" [class.hover:bg-emerald-400]="!returnMode()" [class.shadow-emerald-500/40]="!returnMode()" [class.border-emerald-400]="!returnMode()"
+                      [class.bg-pink-600]="returnMode()" [class.hover:bg-pink-500]="returnMode()" [class.shadow-pink-600/40]="returnMode()" [class.border-pink-500]="returnMode()">
+                       <div class="absolute inset-0 bg-white/20 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                       <div class="relative z-10 flex flex-col items-center justify-center text-white h-full gap-2">
+                          <span class="text-4xl font-black uppercase tracking-[0.2em] translate-x-1">{{ returnMode() ? 'Refund' : 'Pay' }}</span>
+                          <span class="text-[10px] font-black uppercase tracking-[0.4em] opacity-90">{{ returnMode() ? 'Process Money Back' : 'Finalize Sale' }}</span>
+                       </div>
                     </button>
                  </div>
               </div>
