@@ -102,6 +102,7 @@ export interface Category {
     sort_order: number;
     parent_id?: string; // Phase 3: Hierarchy
     path_ltree?: string; // Phase 4 (Spare Parts): Ltree materialized path
+    metadata?: any;
 }
 
 // --- Phase 4 (Spare Parts) Dynamic Schema Engines ---

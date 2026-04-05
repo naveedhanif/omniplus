@@ -1,9 +1,9 @@
-import { Component, inject, signal, Signal, computed, effect } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators, FormGroup, FormsModule } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { switchMap, of, BehaviorSubject, combineLatest, firstValueFrom } from 'rxjs';
-import { MockSupabaseService, Category, Product, AttributeDefinition } from '../../../../core/services/mock-supabase.service';
+import { switchMap, of, BehaviorSubject } from 'rxjs';
+import { MockSupabaseService, Category, Product } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
 import { DialogService } from '../../../../core/services/dialog.service';
 
@@ -12,295 +12,437 @@ import { DialogService } from '../../../../core/services/dialog.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe],
   template: `
-    <div class="h-[calc(100vh-180px)] flex bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden relative">
-      
-      <!-- ══ COLUMN 1: CATEGORY TREE & NAVIGATION ════════════════════════ -->
-      <div class="w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/50">
-        
-        <!-- Search & Control -->
-        <div class="p-6 space-y-4 border-b border-slate-200 dark:border-slate-800">
-          <div class="flex items-center justify-between">
-            <h2 class="text-xs font-black uppercase tracking-widest text-slate-400">Classifications</h2>
-            <button (click)="openAddMode()" 
-                    class="w-8 h-8 flex items-center justify-center bg-[var(--primary-color)] text-white rounded-lg shadow-lg hover:scale-110 active:scale-95 transition-all">
-              <span class="material-symbols-rounded text-lg">add</span>
+    <div class="h-[calc(100vh-140px)] flex flex-col pt-4">
+
+      <!-- TOP BAR (Global Search & Actions) -->
+      <div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 border-x rounded-t-2xl shadow-sm z-10">
+        <div class="relative w-96">
+          <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+          <input type="text" [(ngModel)]="globalSearch" placeholder="Search categories..."
+                 class="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-blue-500 transition-all font-medium">
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Export</button>
+          <button class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Import</button>
+          <button (click)="openAddMode()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2">
+            <span class="material-symbols-rounded text-sm">add</span> New Category
+          </button>
+        </div>
+      </div>
+
+      <!-- MAIN LAYOUT -->
+      <div class="flex-1 flex bg-white dark:bg-slate-900 rounded-b-2xl border border-t-0 border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden relative">
+
+        <!-- LEFT PANEL: CATEGORY TREE (30%) -->
+        <div class="w-[30%] flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 relative">
+          
+          <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-10 shadow-sm">
+            <h2 class="text-[11px] font-black uppercase tracking-widest text-slate-400">Category Master Tree</h2>
+            <button class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+              <span class="material-symbols-rounded text-sm">filter_list</span>
             </button>
           </div>
-          <div class="relative">
-            <span class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-            <input type="text" [(ngModel)]="searchQuery" 
-                   placeholder="Search categories..."
-                   class="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all">
+
+          <div class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
+            @for (group of hierarchicalCategories(); track group.parent.id) {
+              <!-- Parent Row -->
+              <div class="group relative flex flex-col"
+                   draggable="true"
+                   (dragstart)="onDragStart(group.parent.id, $event)"
+                   (dragover)="onDragOver(group.parent.id, $event)"
+                   (dragleave)="onDragLeave()"
+                   (drop)="onDrop(group.parent.id, $event)">
+                <div class="flex items-center gap-2 p-2 rounded-xl transition-all border"
+                     [ngClass]="{
+                       'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm': selectedCategoryId() === group.parent.id,
+                       'hover:bg-white/60 dark:hover:bg-slate-800/60 border-transparent': selectedCategoryId() !== group.parent.id && dropTargetId() !== group.parent.id,
+                       'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30 scale-[1.01] shadow-lg relative z-10': dropTargetId() === group.parent.id
+                     }">
+                  
+                  <input type="checkbox" 
+                         [checked]="selectedCategories().has(group.parent.id)"
+                         (change)="toggleCategorySelection(group.parent.id, $event)"
+                         class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
+                         
+                  <button (click)="selectCategory(group.parent)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
+                    <span class="material-symbols-rounded text-slate-300 text-sm p-0.5 hover:bg-slate-200 rounded cursor-pointer" 
+                          (click)="toggleExpand(group.parent.id, $event)">
+                      {{ expandedCategories().has(group.parent.id) ? 'keyboard_arrow_down' : 'chevron_right' }}
+                    </span>
+                    <div class="w-2.5 h-2.5 rounded-full shadow-sm" [style.backgroundColor]="group.parent.color || '#3b82f6'"></div>
+                    <span class="text-sm font-semibold truncate flex-1 text-slate-800 dark:text-slate-200">{{ group.parent.name }}</span>
+                    @if(group.children.length > 0) {
+                      <span class="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{{group.children.length}}</span>
+                    }
+                  </button>
+
+                  <div class="relative">
+                    <button (click)="toggleMenu(group.parent.id, $event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
+                      <span class="material-symbols-rounded text-sm">more_vert</span>
+                    </button>
+                    @if (activeMenuId() === group.parent.id) {
+                      <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
+                        <button (click)="selectCategory(group.parent); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
+                        <button (click)="addSubcategoryFromMenu(group.parent.id)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">subdirectory_arrow_right</span> Add Subcategory</button>
+                        <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
+                        <button (click)="quickDelete(group.parent)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <!-- Children Rows -->
+                @if (expandedCategories().has(group.parent.id)) {
+                  <div class="ml-9 mt-1 space-y-1 relative before:absolute before:border-l-2 before:border-slate-200 dark:before:border-slate-700 before:-left-3 before:top-0 before:bottom-3">
+                    @for (child of group.children; track child.id) {
+                      <div class="flex items-center gap-2 p-2 rounded-xl transition-all border group/child"
+                           draggable="true"
+                           (dragstart)="onDragStart(child.id, $event)"
+                           (dragover)="onDragOver(child.id, $event)"
+                           (dragleave)="onDragLeave()"
+                           (drop)="onDrop(child.id, $event)"
+                           [ngClass]="{
+                             'bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-900/50 shadow-sm': selectedCategoryId() === child.id,
+                             'hover:bg-white/60 dark:hover:bg-slate-800/60 border-transparent': selectedCategoryId() !== child.id && dropTargetId() !== child.id,
+                             'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30 shadow-md relative z-10': dropTargetId() === child.id
+                           }">
+                        <input type="checkbox" 
+                               [checked]="selectedCategories().has(child.id)"
+                               (change)="toggleCategorySelection(child.id, $event)"
+                               class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
+                        <button (click)="selectCategory(child)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
+                           <div class="w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" [style.backgroundColor]="child.color || group.parent.color"></div>
+                           <span class="text-[13px] font-medium truncate flex-1 text-slate-600 dark:text-slate-300">{{ child.name }}</span>
+                        </button>
+                        
+                        <div class="relative">
+                          <button (click)="toggleMenu(child.id, $event)" class="opacity-0 group-[.group/child]:hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
+                            <span class="material-symbols-rounded text-xs">more_vert</span>
+                          </button>
+                          @if (activeMenuId() === child.id) {
+                            <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
+                              <button (click)="selectCategory(child); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
+                              <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
+                              <button (click)="quickDelete(child)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
+                            </div>
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            } @empty {
+              <div class="text-center py-20 text-slate-400">
+                <span class="material-symbols-rounded text-4xl mb-2 opacity-50">account_tree</span>
+                <p class="text-xs font-bold uppercase">No records found</p>
+              </div>
+            }
           </div>
         </div>
 
-        <!-- Scrollable Tree -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
-          @for (group of hierarchicalCategories(); track group.parent.id) {
-            <div class="space-y-1">
-              <!-- Parent Item -->
-              <button (click)="selectCategory(group.parent)"
-                      class="w-full text-left p-3 rounded-xl flex items-center justify-between group transition-all border-2"
-                      [ngClass]="{
-                        'bg-white dark:bg-slate-800 border-[var(--primary-color)] shadow-md': selectedCategoryId() === group.parent.id,
-                        'border-transparent hover:bg-white dark:hover:bg-slate-800/50 hover:border-slate-100 dark:hover:border-slate-700': selectedCategoryId() !== group.parent.id
-                      }">
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-black shadow-sm" [style.backgroundColor]="group.parent.color || '#3b82f6'">
-                    {{ group.parent.name[0] }}
-                  </div>
-                  <span class="text-sm font-black text-slate-700 dark:text-slate-200">{{ group.parent.name }}</span>
+        <!-- RIGHT PANEL: EDITOR (70%) -->
+        <div class="w-[70%] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+          
+          @if (panelMode() === 'EMPTY') {
+            <div class="flex-1 flex flex-col items-center justify-center text-center p-12 text-slate-400">
+               <span class="material-symbols-rounded text-6xl mb-4 opacity-20">category</span>
+               <h3 class="text-xl font-bold text-slate-700 dark:text-slate-200 mb-2">Select a category</h3>
+               <p class="text-sm max-w-md">Choose a category from the tree on the left to edit its identity, pricing rules, and inventory thresholds, or create a new one.</p>
+               <button (click)="openAddMode()" class="mt-6 px-6 py-2.5 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-bold rounded-xl hover:bg-blue-100 transition-colors">
+                 Create Category
+               </button>
+            </div>
+          } @else {
+            
+            <!-- Breadcrumb & Header -->
+            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-20">
+              <div>
+                <div class="flex items-center gap-2 text-xs font-bold text-slate-400 mb-2">
+                  <span class="material-symbols-rounded text-sm">home</span>
+                  <span>/</span>
+                  <span class="text-slate-600 dark:text-slate-300">Categories</span>
+                  <span>/</span>
+                  <span class="text-blue-600">{{ panelMode() === 'ADD' ? 'New Entry' : selectedCategory()?.name }}</span>
                 </div>
-                @if (group.children.length > 0) {
-                  <span class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-400 uppercase">{{ group.children.length }}</span>
-                }
-              </button>
-
-              <!-- Child Items -->
-              <div class="ml-6 space-y-1 relative before:absolute before:left-[-14px] before:top-0 before:bottom-3 before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
-                @for (child of group.children; track child.id) {
-                  <button (click)="selectCategory(child)"
-                          class="w-full text-left p-2.5 pl-4 rounded-xl flex items-center gap-3 transition-all border-2 hover:translate-x-1"
-                          [ngClass]="{
-                            'bg-white dark:bg-slate-800 border-[var(--primary-color)] shadow-sm': selectedCategoryId() === child.id,
-                            'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-100': selectedCategoryId() !== child.id
-                          }">
-                    <div class="w-1.5 h-1.5 rounded-full" [style.backgroundColor]="child.color || group.parent.color"></div>
-                    <span class="text-xs font-bold">{{ child.name }}</span>
-                  </button>
-                }
+                <h1 class="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+                  <div class="w-4 h-4 rounded-full" [style.backgroundColor]="categoryForm.get('color')?.value || '#3b82f6'"></div>
+                  {{ panelMode() === 'ADD' ? 'New Category' : selectedCategory()?.name }}
+                </h1>
+              </div>
+              <div class="flex items-center gap-3">
+                <button (click)="cancelPanel()" class="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">Cancel</button>
+                <button (click)="saveCategory()"
+                        [disabled]="categoryForm.invalid"
+                        class="px-8 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-black rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
+                  {{ panelMode() === 'ADD' ? 'Create' : 'Save Changes' }}
+                </button>
               </div>
             </div>
-          } @empty {
-            <div class="py-20 flex flex-col items-center opacity-30 text-center px-6">
-              <span class="material-symbols-rounded text-5xl mb-2">grid_view</span>
-              <p class="text-xs font-bold uppercase tracking-widest">No Categories Found</p>
+
+            <!-- Tabs Navigation -->
+            <div class="flex items-center gap-8 px-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30 overflow-x-auto no-scrollbar">
+              @for (tab of ['GENERAL', 'PRICING RULES', 'INVENTORY RULES', 'TAX SETTINGS', 'ANALYTICS']; track tab) {
+                <button (click)="activeTab.set(tab)"
+                        class="py-4 text-[11px] font-black tracking-[0.1em] uppercase transition-colors relative whitespace-nowrap"
+                        [class.text-blue-600]="activeTab() === tab"
+                        [class.text-slate-400]="activeTab() !== tab"
+                        [class.hover:text-slate-700]="activeTab() !== tab">
+                  {{ tab }}
+                  @if (activeTab() === tab) {
+                    <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"></div>
+                  }
+                </button>
+              }
+            </div>
+
+            <!-- Tab Content Area -->
+            <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <form [formGroup]="categoryForm" class="max-w-3xl space-y-8 pb-20">
+                
+                <!-- 1. GENERAL TAB -->
+                <div [hidden]="activeTab() !== 'GENERAL'" class="space-y-8 animate-in fade-in duration-300">
+                  <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                       <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Category Name</label>
+                       <input formControlName="name" type="text" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-base font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all">
+                    </div>
+                    <div>
+                       <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Parent Category</label>
+                       <select formControlName="parent_id" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                          <option [value]="null">Top Level (None)</option>
+                          @for (cat of topLevelCategories(); track cat.id) {
+                            <option [value]="cat.id" [disabled]="cat.id === selectedCategoryId()">{{ cat.name }}</option>
+                          }
+                       </select>
+                    </div>
+                    <div>
+                       <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Display Order</label>
+                       <input formControlName="sort_order" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    <div class="col-span-2">
+                       <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Internal Description</label>
+                       <textarea formControlName="description" rows="3" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all resize-none"></textarea>
+                    </div>
+                  </div>
+
+                  <div class="pt-6 border-t border-slate-200 dark:border-slate-800">
+                    <label class="block text-[11px] font-black uppercase text-slate-500 mb-4">Visual Identity</label>
+                    <div class="flex items-start gap-8">
+                       <div>
+                         <div class="text-xs font-bold text-slate-400 mb-2">Color Label</div>
+                         <div class="flex items-center gap-3">
+                           <input type="color" formControlName="color" class="w-12 h-12 p-0.5 rounded-lg bg-white border border-slate-200 cursor-pointer">
+                           <div class="grid grid-cols-6 gap-1 p-1">
+                              @for (color of categoryColors; track color) {
+                                <button type="button" (click)="categoryForm.patchValue({color: color})" 
+                                        class="w-6 h-6 rounded-md hover:scale-110 transition-transform" 
+                                        [style.backgroundColor]="color"
+                                        [class.ring-2]="categoryForm.get('color')?.value === color" [class.ring-slate-400]="categoryForm.get('color')?.value === color"></button>
+                              }
+                           </div>
+                         </div>
+                       </div>
+                       <div>
+                         <div class="text-xs font-bold text-slate-400 mb-2">Icon Identifier</div>
+                         <div class="flex gap-2">
+                            <span class="w-12 h-12 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-xl text-slate-600 material-symbols-rounded">
+                              {{ categoryForm.get('icon')?.value || 'category' }}
+                            </span>
+                            <div class="grid grid-cols-4 gap-1.5">
+                               <!-- Small quick select icons -->
+                               @for(icon of ['category', 'hardware', 'build', 'handyman', 'plumbing', 'electrical_services', 'bolt', 'home_repair_service']; track icon) {
+                                 <button type="button" (click)="categoryForm.patchValue({icon: icon})"
+                                     class="w-10 h-10 rounded text-slate-500 bg-slate-50 border border-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors material-symbols-rounded text-sm"
+                                     [class.bg-blue-100]="categoryForm.get('icon')?.value === icon">{{icon}}</button>
+                               }
+                            </div>
+                         </div>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. PRICING RULES TAB -->
+                <div [hidden]="activeTab() !== 'PRICING RULES'" class="space-y-6 animate-in fade-in duration-300">
+                   <div class="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl mb-6 flex gap-3">
+                     <span class="material-symbols-rounded text-blue-500">info</span>
+                     <p class="text-sm font-medium text-blue-800 dark:text-blue-300">These rules are applied automatically when creating products in this category, but can be overridden per product.</p>
+                   </div>
+
+                   <div class="grid grid-cols-2 gap-8">
+                      <div>
+                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Default Margin %</label>
+                        <div class="relative">
+                          <input formControlName="default_margin_percent" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-3 text-lg font-bold focus:border-blue-500 outline-none">
+                          <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2 font-medium">Auto-calculates product retail price from cost.</p>
+                      </div>
+
+                      <div>
+                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Markup Type</label>
+                        <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                          <button type="button" (click)="categoryForm.patchValue({markup_type: 'MARGIN'})"
+                                  [class.bg-white]="categoryForm.get('markup_type')?.value === 'MARGIN'"
+                                  [class.shadow]="categoryForm.get('markup_type')?.value === 'MARGIN'"
+                                  class="flex-1 py-2.5 rounded-lg text-sm font-bold text-slate-700 transition-all">Margin %</button>
+                          <button type="button" (click)="categoryForm.patchValue({markup_type: 'FIXED'})"
+                                  [class.bg-white]="categoryForm.get('markup_type')?.value === 'FIXED'"
+                                  [class.shadow]="categoryForm.get('markup_type')?.value === 'FIXED'"
+                                  class="flex-1 py-2.5 rounded-lg text-sm font-bold text-slate-700 transition-all">Fixed Amount</button>
+                        </div>
+                      </div>
+                      
+                      <div class="col-span-2 pt-6 border-t border-slate-200 dark:border-slate-800">
+                        <label class="flex items-center gap-4 cursor-pointer group">
+                           <div class="relative">
+                             <input type="checkbox" formControlName="discount_allowed" class="sr-only peer">
+                             <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                           </div>
+                           <div>
+                             <div class="text-sm font-bold text-slate-800 dark:text-slate-200">Allow POS Discounts</div>
+                             <div class="text-xs text-slate-500 font-medium mt-0.5">Permit manual discounts on items in this category at checkout.</div>
+                           </div>
+                        </label>
+                      </div>
+                   </div>
+                </div>
+
+                <!-- 3. INVENTORY RULES TAB -->
+                <div [hidden]="activeTab() !== 'INVENTORY RULES'" class="space-y-8 animate-in fade-in duration-300">
+                  <div class="grid grid-cols-2 gap-8">
+                     <div>
+                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Low Stock Threshold</label>
+                        <input formControlName="low_stock_threshold" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base font-bold focus:border-blue-500 outline-none">
+                        <p class="text-[11px] text-slate-400 mt-2 font-medium">Triggers low stock warnings in POS & Dashboard.</p>
+                     </div>
+                     <div>
+                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Maximum Stock Level</label>
+                        <input formControlName="max_stock_level" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base font-bold focus:border-blue-500 outline-none">
+                     </div>
+                  </div>
+
+                  <div class="pt-6 border-t border-slate-200 dark:border-slate-800">
+                     <label class="flex items-center gap-4 cursor-pointer group">
+                        <div class="relative">
+                          <input type="checkbox" formControlName="auto_reorder" class="sr-only peer">
+                          <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                        <div>
+                          <div class="text-sm font-bold text-slate-800 dark:text-slate-200">Enable Auto-Reorder</div>
+                          <div class="text-xs text-slate-500 font-medium mt-0.5">Automatically add to Purchase Order draft when threshold hit.</div>
+                        </div>
+                     </label>
+                  </div>
+                </div>
+
+                <!-- 4. TAX SETTINGS TAB -->
+                <div [hidden]="activeTab() !== 'TAX SETTINGS'" class="space-y-8 animate-in fade-in duration-300">
+                  <div class="w-1/2">
+                    <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Default Tax Rate (%)</label>
+                    <input formControlName="default_tax_rate" type="number" step="0.1" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-lg font-bold focus:border-blue-500 outline-none">
+                  </div>
+                  
+                  <div class="pt-6 border-t border-slate-200 dark:border-slate-800">
+                     <label class="flex items-center gap-4 cursor-pointer group">
+                        <div class="relative">
+                          <input type="checkbox" formControlName="override_product_tax" class="sr-only peer">
+                          <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                        <div>
+                          <div class="text-sm font-bold text-red-600 dark:text-red-400">Enforce Category Tax Rules</div>
+                          <div class="text-xs text-slate-500 font-medium mt-0.5">If active, ignores individual product tax profiles and applies this category rate.</div>
+                        </div>
+                     </label>
+                  </div>
+                </div>
+
+                <!-- 5. ANALYTICS TAB -->
+                <div [hidden]="activeTab() !== 'ANALYTICS'" class="space-y-6 animate-in fade-in duration-300">
+                  @if (panelMode() === 'ADD') {
+                    <div class="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
+                      <span class="material-symbols-rounded text-4xl mb-2 opacity-50">analytics</span>
+                      <p class="text-sm font-bold">Analytics are available after category creation</p>
+                    </div>
+                  } @else {
+                    <div class="grid grid-cols-2 gap-6">
+                       <!-- KPI 1 -->
+                       <div class="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <div class="flex items-center justify-between mb-4">
+                            <span class="text-[11px] font-black tracking-widest uppercase text-slate-500">Products in Category</span>
+                            <span class="material-symbols-rounded text-slate-400 text-lg">inventory_2</span>
+                          </div>
+                          <div class="text-4xl font-black text-slate-800 dark:text-slate-100">{{ categoryStats().productCount }}</div>
+                          <div class="mt-2 text-xs font-bold text-green-600 flex items-center gap-1"><span class="material-symbols-rounded text-[14px]">arrow_upward</span> active SKUs</div>
+                       </div>
+                       
+                       <!-- KPI 2 -->
+                       <div class="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <div class="flex items-center justify-between mb-4">
+                            <span class="text-[11px] font-black tracking-widest uppercase text-slate-500">Total Stock Value</span>
+                            <span class="material-symbols-rounded text-slate-400 text-lg">account_balance_wallet</span>
+                          </div>
+                          <div class="text-4xl font-black text-slate-800 dark:text-slate-100">{{ categoryStats().totalValue | currency:storeService.currency() }}</div>
+                          <div class="mt-2 text-xs font-bold text-blue-600">Calculated at cost price</div>
+                       </div>
+
+                       <!-- KPI 3 (Simulated Data for Demo) -->
+                       <div class="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <div class="flex items-center justify-between mb-4">
+                            <span class="text-[11px] font-black tracking-widest uppercase text-slate-500">30-Day Revenue</span>
+                            <span class="material-symbols-rounded text-slate-400 text-lg">payments</span>
+                          </div>
+                          <div class="text-3xl font-black text-slate-800 dark:text-slate-100">{{ (categoryStats().totalValue * 1.35) | currency:storeService.currency() }}</div>
+                          <div class="mt-2 text-xs font-bold text-slate-500">Estimated value derived from stock</div>
+                       </div>
+
+                       <!-- KPI 4 -->
+                       <div class="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <div class="flex items-center justify-between mb-4">
+                            <span class="text-[11px] font-black tracking-widest uppercase text-slate-500">Avg. Profit Margin</span>
+                            <span class="material-symbols-rounded text-slate-400 text-lg">trending_up</span>
+                          </div>
+                          <div class="text-3xl font-black text-slate-800 dark:text-slate-100">{{ categoryForm.get('default_margin_percent')?.value }}%</div>
+                          <div class="mt-2 text-xs font-bold text-slate-500">Based on default category rules</div>
+                       </div>
+                    </div>
+                  }
+                </div>
+
+              </form>
             </div>
           }
         </div>
-      </div>
-
-      <!-- ══ COLUMN 2: COMMAND CENTER (DETAILS & SMART TEMPLATES) ══════ -->
-      <div class="flex-1 flex flex-col bg-white dark:bg-slate-900">
         
-        @if (panelMode() === 'EMPTY') {
-          <div class="flex-1 flex flex-col items-center justify-center text-center px-12 animate-in fade-in zoom-in duration-500">
-             <div class="w-24 h-24 rounded-3xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 mb-6 group cursor-pointer hover:scale-110 transition-transform shadow-xl shadow-slate-100 dark:shadow-none">
-                <span class="material-symbols-rounded text-6xl text-slate-200 group-hover:text-[var(--primary-color)] transition-colors">category</span>
-             </div>
-             <h3 class="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter">Category Architecture</h3>
-             <p class="mt-3 text-sm text-slate-400 leading-relaxed max-w-sm">Select a category to manage its hierarchy, color identity, and smart technical templates.</p>
-             <button (click)="openAddMode()" class="mt-8 px-8 py-3.5 bg-[var(--primary-color)] text-white text-xs font-black rounded-2xl shadow-xl hover:-translate-y-1 transition-all flex items-center gap-2 uppercase tracking-widest">
-               <span class="material-symbols-rounded text-sm">add_circle</span>
-               Initialize Category
-             </button>
-          </div>
-        } @else {
-          
-          <!-- Detail Header -->
-          <div class="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <div class="flex items-center gap-4">
-              <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-lg shadow-blue-500/20" 
-                   [style.backgroundColor]="panelMode() === 'ADD' ? '#3b82f6' : (selectedCategory()?.color || '#3b82f6')">
-                {{ panelMode() === 'ADD' ? '+' : (selectedCategory()?.name?.[0] || 'C') }}
-              </div>
-              <div>
-                <h2 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                  {{ panelMode() === 'ADD' ? 'Initialize Topology' : selectedCategory()?.name }}
-                </h2>
-                <div class="flex items-center gap-2 mt-0.5">
-                   <div class="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                   <span class="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-                     {{ panelMode() === 'ADD' ? 'New classification node' : 'Category Node Manager' }}
-                   </span>
-                </div>
-              </div>
+        <!-- BULK ACTION BAR -->
+        @if (selectedCategories().size > 0) {
+          <div class="absolute bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-5 z-50">
+            <div class="text-sm font-bold flex items-center gap-2">
+              <span class="bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-lg text-xs">{{selectedCategories().size}}</span>
+              <span class="text-slate-300">selected</span>
             </div>
-            <div class="flex items-center gap-3">
-              @if (panelMode() === 'DETAIL') {
-                <button (click)="showDeleteConfirm()" class="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-all">
-                  <span class="material-symbols-rounded">delete</span>
-                </button>
-              }
-              <button (click)="cancelPanel()" class="px-4 py-2 text-xs font-black text-slate-400 hover:text-slate-700 transition-colors">Discard</button>
-              <button (click)="saveCategory()" 
-                      [disabled]="categoryForm.invalid"
-                      class="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-black rounded-xl shadow-lg hover:scale-105 transition-all disabled:opacity-50">
-                {{ panelMode() === 'ADD' ? 'Commit Node' : 'Update Architecture' }}
-              </button>
+            <div class="h-5 w-px bg-slate-700"></div>
+            <div class="flex items-center gap-2 text-sm font-semibold">
+              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">drive_file_move</span> Move</button>
+              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">merge</span> Merge</button>
+              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">download</span> Export</button>
+              <div class="h-4 w-px bg-slate-700 mx-1"></div>
+              <button (click)="bulkDeleteConfirm()" class="px-3 py-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete</button>
             </div>
-          </div>
-
-          <!-- Detail Body -->
-          <div class="flex-1 flex overflow-hidden">
-            
-            <!-- Left Sub-Column: Configuration -->
-            <div class="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-              
-              <!-- Identity Configuration -->
-              <div class="space-y-6">
-                <div class="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                  <span class="material-symbols-rounded text-sm">settings_input_component</span>
-                  Core Configuration
-                </div>
-                <form [formGroup]="categoryForm" class="grid grid-cols-2 gap-6">
-                  <div class="col-span-2">
-                    <label class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Internal Title</label>
-                    <input formControlName="name" type="text" 
-                           class="w-full bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all">
-                  </div>
-                  <div>
-                    <label class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Relational Parent</label>
-                    <select formControlName="parent_id" class="w-full bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 text-sm font-bold focus:border-[var(--primary-color)] outline-none transition-all appearance-none">
-                      <option [value]="null">No Parent (Master Category)</option>
-                      @for (cat of topLevelCategories(); track cat.id) {
-                        <option [value]="cat.id">{{ cat.name }}</option>
-                      }
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Visual Branding</label>
-                    <div class="flex gap-2">
-                       <input type="color" formControlName="color" class="w-14 h-14 p-1 rounded-xl bg-white border-2 border-slate-100 outline-none cursor-pointer">
-                       <div class="flex-1 grid grid-cols-6 gap-1.5 p-1 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                          @for (color of categoryColors; track color) {
-                            <button type="button" (click)="categoryForm.patchValue({color: color})" 
-                                    class="w-full aspect-square rounded-md transition-all hover:scale-110" 
-                                    [style.backgroundColor]="color"
-                                    [class.ring-2]="categoryForm.get('color')?.value === color"
-                                    [class.ring-slate-400]="categoryForm.get('color')?.value === color"></button>
-                          }
-                       </div>
-                    </div>
-                  </div>
-                </form>
-              </div>
-
-              <!-- SMART TEMPLATE DESIGNER -->
-              @if (panelMode() === 'DETAIL') {
-                <div class="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                      <span class="material-symbols-rounded text-sm">psychology</span>
-                      Smart Input Logic (Templates)
-                    </div>
-                    <button (click)="showNewAttributeForm = true" 
-                            class="text-[10px] font-black text-[var(--primary-color)] hover:underline flex items-center gap-1">
-                      <span class="material-symbols-rounded text-sm">add</span> Add Field
-                    </button>
-                  </div>
-
-                  <!-- List of existing Smart Fields -->
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    @for (attr of activeAttributes(); track attr.id) {
-                      <div class="p-4 bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 rounded-2xl flex items-center justify-between group">
-                        <div class="flex items-center gap-3">
-                           <div class="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 flex items-center justify-center">
-                              <span class="material-symbols-rounded text-sm text-[var(--primary-color)]">
-                                {{ attr.data_type === 'NUMBER' ? 'numbers' : (attr.data_type === 'BOOLEAN' ? 'toggle_on' : 'text_fields') }}
-                              </span>
-                           </div>
-                           <div>
-                              <div class="font-bold text-xs text-slate-700 dark:text-slate-200">{{ attr.name }}</div>
-                              <div class="text-[9px] font-mono text-slate-400">{{ attr.json_key }} · {{ attr.data_type }}</div>
-                           </div>
-                        </div>
-                        <button (click)="removeAttribute(attr.id)" class="p-1.5 text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                          <span class="material-symbols-rounded text-sm">close</span>
-                        </button>
-                      </div>
-                    } @empty {
-                       <div class="col-span-2 py-8 text-center bg-slate-50 dark:bg-slate-800/20 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-800">
-                          <span class="material-symbols-rounded text-slate-200 text-3xl mb-2">dynamic_form</span>
-                          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No smart attributes defined</p>
-                       </div>
-                    }
-
-                    <!-- New Attribute Inline Form -->
-                    @if (showNewAttributeForm) {
-                      <div class="col-span-2 p-6 bg-blue-50/30 dark:bg-blue-900/10 border-2 border-blue-200 dark:border-blue-700/50 rounded-2xl animate-in slide-in-from-top-2">
-                         <div class="grid grid-cols-3 gap-4">
-                            <div class="col-span-2">
-                               <label class="block text-[9px] font-black uppercase text-blue-800 dark:text-blue-300 mb-1">Display Label</label>
-                               <input #attrName type="text" placeholder="e.g., Voltage Rating" class="w-full p-2.5 rounded-xl border-2 border-blue-100 outline-none focus:border-blue-400 text-sm font-bold">
-                            </div>
-                            <div>
-                               <label class="block text-[9px] font-black uppercase text-blue-800 dark:text-blue-300 mb-1">Data Type</label>
-                               <select #attrType class="w-full p-2.5 rounded-xl border-2 border-blue-100 outline-none focus:border-blue-400 text-sm font-bold">
-                                  <option value="STRING">Text</option>
-                                  <option value="NUMBER">Number</option>
-                                  <option value="BOOLEAN">Yes/No</option>
-                               </select>
-                            </div>
-                         </div>
-                         <div class="flex justify-end gap-2 mt-4">
-                            <button (click)="showNewAttributeForm = false" class="px-4 py-2 text-[10px] font-bold text-slate-400">Cancel</button>
-                            <button (click)="addNewAttribute(attrName.value, attrType.value)" class="px-6 py-2 bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-lg">Register Field</button>
-                         </div>
-                      </div>
-                    }
-                  </div>
-                </div>
-              }
-            </div>
-
-            <!-- Right Sub-Column: Summary & Intelligence -->
-            <div class="w-80 flex-shrink-0 border-l border-slate-100 dark:border-slate-800 p-8 space-y-8 bg-slate-50/20 dark:bg-slate-900/30">
-               
-               <div class="text-xs font-black text-slate-400 uppercase tracking-widest">Global Insights</div>
-               
-               <!-- KPI Cards -->
-               <div class="space-y-4">
-                  <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
-                     <div class="text-[10px] font-black text-slate-400 uppercase mb-1">Asset Volume</div>
-                     <div class="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{{ categoryStats().productCount }}</div>
-                     <div class="text-[9px] font-bold text-green-500 mt-1">Unique SKUs in Category</div>
-                  </div>
-                  
-                  <div class="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
-                     <div class="text-[10px] font-black text-slate-400 uppercase mb-1">Warehouse Value</div>
-                     <div class="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{{ categoryStats().totalValue | currency:storeService.currency() }}</div>
-                     <div class="text-[9px] font-bold text-blue-500 mt-1">At Current Average Cost</div>
-                  </div>
-
-                  <div class="p-5 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xl shadow-indigo-500/20">
-                     <div class="text-[10px] font-black uppercase opacity-80 mb-1">Smart Coverage</div>
-                     <div class="text-3xl font-black tracking-tighter">{{ activeAttributes().length }}</div>
-                     <div class="text-[9px] font-bold opacity-80 mt-1">Technical Template Fields</div>
-                  </div>
-               </div>
-
-               @if (selectedCategory()) {
-                  <div class="pt-6 space-y-4">
-                     <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Category Ecosystem</h4>
-                     <ul class="space-y-3">
-                        <li class="flex items-center gap-3 text-xs font-bold text-slate-600 dark:text-slate-400">
-                           <span class="material-symbols-rounded text-sm text-green-500">check_circle</span>
-                           Automatic Barcode Routing
-                        </li>
-                        <li class="flex items-center gap-3 text-xs font-bold text-slate-600 dark:text-slate-400">
-                           <span class="material-symbols-rounded text-sm text-green-500">check_circle</span>
-                           Dynamic Search Filtering
-                        </li>
-                        <li class="flex items-center gap-3 text-xs font-bold text-slate-600 dark:text-slate-400">
-                           <span class="material-symbols-rounded text-sm text-green-500">check_circle</span>
-                           Custom Export Definition
-                        </li>
-                     </ul>
-                  </div>
-               }
-            </div>
+            <button (click)="clearSelection()" class="ml-2 p-1 text-slate-500 hover:text-slate-300 rounded-full hover:bg-slate-800"><span class="material-symbols-rounded text-sm">close</span></button>
           </div>
         }
-      </div>
 
+      </div>
     </div>
   `,
   styles: [`
-    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
   `]
 })
 export class CategoriesManagerComponent {
@@ -309,23 +451,129 @@ export class CategoriesManagerComponent {
   dialog = inject(DialogService);
   fb = inject(FormBuilder);
 
-  // Identity State
-  searchQuery = '';
+  clearSelection() {
+    this.selectedCategories.set(new Set());
+  }
+
+  // Menus
+  activeMenuId = signal<string | null>(null);
+
+  toggleMenu(id: string, event: Event) {
+    event.stopPropagation();
+    this.activeMenuId.set(this.activeMenuId() === id ? null : id);
+  }
+
+  addSubcategoryFromMenu(parentId: string) {
+    this.activeMenuId.set(null);
+    this.selectedCategoryId.set(null);
+    this.categoryForm.reset({ 
+      name: '', parent_id: parentId, sort_order: 0, color: '#3b82f6', description: '', icon: 'category',
+      default_margin_percent: 20, markup_type: 'MARGIN', discount_allowed: true,
+      low_stock_threshold: 5, auto_reorder: false, max_stock_level: 100, default_tax_rate: 23, override_product_tax: false
+    });
+    this.panelMode.set('ADD');
+    this.activeTab.set('GENERAL');
+  }
+
+  async quickDelete(cat: Category) {
+    this.activeMenuId.set(null);
+    if (await this.dialog.confirm('Critical Deletion', 'Removing this node will detach all linked assets and templates. Proceed?')) {
+      // MockSupabaseService would theoretically have deleteCategory, if not we ignore or use mock log.
+      // Assuming deleteCategory exists based on previous code.
+      (this.supabase as any).deleteCategory?.(cat.id).subscribe(() => {
+        this.refreshTrigger.next();
+        if (this.selectedCategoryId() === cat.id) this.panelMode.set('EMPTY');
+        this.dialog.alert('Success', 'Classification node removed.');
+      });
+    }
+  }
+
+  // Drag and Drop
+  draggedCategoryId = signal<string | null>(null);
+  dropTargetId = signal<string | null>(null);
+
+  onDragStart(id: string, event: DragEvent) {
+    this.draggedCategoryId.set(id);
+    if(event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  onDragOver(id: string, event: DragEvent) {
+    event.preventDefault();
+    this.dropTargetId.set(id);
+  }
+
+  onDragLeave() {
+    this.dropTargetId.set(null);
+  }
+
+  isDescendant(parentId: string, childId: string): boolean {
+    if (parentId === childId) return true;
+    const child = this.categories().find(c => c.id === childId);
+    if (!child || !child.parent_id) return false;
+    return this.isDescendant(parentId, child.parent_id);
+  }
+
+  onDrop(targetId: string, event: DragEvent) {
+    event.preventDefault();
+    const draggedId = this.draggedCategoryId();
+    this.draggedCategoryId.set(null);
+    this.dropTargetId.set(null);
+
+    if (!draggedId || draggedId === targetId) return;
+
+    if (this.isDescendant(draggedId, targetId)) {
+       this.dialog.alert('Invalid Move', 'You cannot move a category into its own subcategory. This creates a circular loop.');
+       return;
+    }
+
+    const draggedCat = this.categories().find(c => c.id === draggedId);
+    if (draggedCat && draggedCat.parent_id !== targetId) {
+      this.supabase.updateCategory(draggedId, { parent_id: targetId }).subscribe(() => {
+         this.refreshTrigger.next();
+         const newSet = new Set(this.expandedCategories());
+         newSet.add(targetId);
+         this.expandedCategories.set(newSet);
+      });
+    }
+  }
+
+  // Global State
+  globalSearch = '';
   panelMode = signal<'EMPTY' | 'DETAIL' | 'ADD'>('EMPTY');
   selectedCategoryId = signal<string | null>(null);
-  showNewAttributeForm = false;
-  activeAttributes = signal<AttributeDefinition[]>([]);
+  activeTab = signal<'GENERAL' | 'PRICING RULES' | 'INVENTORY RULES' | 'TAX SETTINGS' | 'ANALYTICS'>('GENERAL');
+  
+  // Tree State
+  expandedCategories = signal<Set<string>>(new Set());
+  selectedCategories = signal<Set<string>>(new Set());
 
   categoryColors = [
     '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
     '#6366f1', '#14b8a6', '#f97316', '#06b6d4', '#4b5563', '#000000'
   ];
 
-  // Form
+  // Forms
   categoryForm: FormGroup = this.fb.group({
     name: ['', Validators.required],
+    parent_id: [null],
+    sort_order: [0],
+    description: [''],
     color: ['#3b82f6'],
-    parent_id: [null]
+    icon: ['category'],
+    
+    // Pricing
+    default_margin_percent: [20],
+    markup_type: ['MARGIN'],
+    discount_allowed: [true],
+    
+    // Inventory
+    low_stock_threshold: [5],
+    auto_reorder: [false],
+    max_stock_level: [100],
+    
+    // Tax
+    default_tax_rate: [23],
+    override_product_tax: [false]
   });
 
   // Data Loading
@@ -344,15 +592,14 @@ export class CategoriesManagerComponent {
   );
   products = toSignal(this.products$, { initialValue: [] as Product[] });
 
-  // Computed signals
+  // Computed
   hierarchicalCategories = computed(() => {
-    const q = this.searchQuery.toLowerCase().trim();
+    const q = this.globalSearch.toLowerCase().trim();
     const all = this.categories();
 
-    // Simple filter
     const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q)) : all;
-
     const parents = filtered.filter(c => !c.parent_id);
+    
     return parents.map(p => ({
       parent: p,
       children: all.filter(c => c.parent_id === p.id)
@@ -360,7 +607,7 @@ export class CategoriesManagerComponent {
   });
 
   topLevelCategories = computed(() => this.categories().filter(c => !c.parent_id));
-
+  
   selectedCategory = computed(() => this.categories().find(c => c.id === this.selectedCategoryId()) || null);
 
   categoryStats = computed(() => {
@@ -372,24 +619,59 @@ export class CategoriesManagerComponent {
     };
   });
 
-  // ── Handlers ──────────────────────────────────────────────────────────
+  // Handlers
+  toggleExpand(id: string, event: Event) {
+    event.stopPropagation();
+    const current = new Set(this.expandedCategories());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    this.expandedCategories.set(current);
+  }
+
+  toggleCategorySelection(id: string, event: Event) {
+    event.stopPropagation();
+    const current = new Set(this.selectedCategories());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    this.selectedCategories.set(current);
+  }
 
   selectCategory(cat: Category) {
     this.selectedCategoryId.set(cat.id);
+    
+    // Parse metadata safely
+    const meta = cat.metadata || {};
+
     this.categoryForm.patchValue({
       name: cat.name,
+      parent_id: cat.parent_id,
+      sort_order: cat.sort_order || 0,
       color: cat.color || '#3b82f6',
-      parent_id: cat.parent_id
+      description: meta.description || '',
+      icon: meta.icon || 'category',
+      default_margin_percent: meta.default_margin_percent ?? 20,
+      markup_type: meta.markup_type || 'MARGIN',
+      discount_allowed: meta.discount_allowed ?? true,
+      low_stock_threshold: meta.low_stock_threshold ?? 5,
+      auto_reorder: meta.auto_reorder ?? false,
+      max_stock_level: meta.max_stock_level ?? 100,
+      default_tax_rate: meta.default_tax_rate ?? 23,
+      override_product_tax: meta.override_product_tax ?? false
     });
+    
     this.panelMode.set('DETAIL');
-    this.loadAttributes(cat.id);
+    this.activeTab.set('GENERAL');
   }
 
   openAddMode() {
     this.selectedCategoryId.set(null);
-    this.categoryForm.reset({ name: '', color: '#3b82f6', parent_id: null });
+    this.categoryForm.reset({ 
+      name: '', parent_id: null, sort_order: 0, color: '#3b82f6', description: '', icon: 'category',
+      default_margin_percent: 20, markup_type: 'MARGIN', discount_allowed: true,
+      low_stock_threshold: 5, auto_reorder: false, max_stock_level: 100, default_tax_rate: 23, override_product_tax: false
+    });
     this.panelMode.set('ADD');
-    this.activeAttributes.set([]);
+    this.activeTab.set('GENERAL');
   }
 
   cancelPanel() {
@@ -397,77 +679,53 @@ export class CategoriesManagerComponent {
     this.selectedCategoryId.set(null);
   }
 
-  async loadAttributes(catId: string) {
-    const store = this.storeService.currentStore();
-    if (!store) return;
-    this.supabase.getAttributeDefinitions(store.id, catId).subscribe(defs => {
-      this.activeAttributes.set(defs);
-    });
-  }
-
   saveCategory() {
     const store = this.storeService.currentStore();
     if (!store || this.categoryForm.invalid) return;
 
     const val = this.categoryForm.getRawValue();
-    const payload = { ...val, store_id: store.id };
+    
+    // Package form into base entity + metadata payload
+    const payload: Partial<Category> = {
+      store_id: store.id,
+      name: val.name,
+      parent_id: val.parent_id,
+      color: val.color,
+      sort_order: val.sort_order,
+      metadata: {
+        description: val.description,
+        icon: val.icon,
+        default_margin_percent: val.default_margin_percent,
+        markup_type: val.markup_type,
+        discount_allowed: val.discount_allowed,
+        low_stock_threshold: val.low_stock_threshold,
+        auto_reorder: val.auto_reorder,
+        max_stock_level: val.max_stock_level,
+        default_tax_rate: val.default_tax_rate,
+        override_product_tax: val.override_product_tax
+      }
+    };
 
     if (this.panelMode() === 'ADD') {
-      this.supabase.addCategory(payload).subscribe(() => {
+      this.supabase.addCategory(payload as Category).subscribe(() => {
         this.refreshTrigger.next();
         this.panelMode.set('EMPTY');
-        this.dialog.alert('Success', 'Node initialized in category topology.');
+        this.dialog.alert('Success', 'New Category created successfully.');
       });
     } else {
       const id = this.selectedCategoryId()!;
       this.supabase.updateCategory(id, payload).subscribe(() => {
         this.refreshTrigger.next();
-        this.dialog.alert('Success', 'Architecture updated.');
+        this.dialog.alert('Success', 'Category rules updated.');
       });
     }
   }
-
-  async showDeleteConfirm() {
-    const id = this.selectedCategoryId();
-    if (!id) return;
-
-    if (await this.dialog.confirm('Critical Deletion', 'Removing this node will detach all linked assets and templates. Proceed?')) {
-      this.supabase.deleteCategory(id).subscribe(() => {
-        this.refreshTrigger.next();
-        this.panelMode.set('EMPTY');
-        this.dialog.alert('Success', 'Classification node removed.');
-      });
-    }
-  }
-
-  // Smart Template Methods
-  addNewAttribute(name: string, type: string) {
-    const store = this.storeService.currentStore();
-    const catId = this.selectedCategoryId();
-    if (!store || !catId || !name) return;
-
-    // Create a snake_case key
-    const json_key = name.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-
-    const payload = {
-      store_id: store.id,
-      category_id: catId,
-      name,
-      json_key,
-      data_type: type,
-      is_required: false
-    };
-
-    this.supabase.addAttributeDefinition(payload).subscribe(() => {
-      this.loadAttributes(catId);
-      this.showNewAttributeForm = false;
-    });
-  }
-
-  removeAttribute(attrId: string) {
-    this.supabase.deleteAttributeDefinition(attrId).subscribe(() => {
-      const catId = this.selectedCategoryId();
-      if (catId) this.loadAttributes(catId);
-    });
+  
+  async bulkDeleteConfirm() {
+     if (this.selectedCategories().size === 0) return;
+     if (await this.dialog.confirm('Bulk Deletion Warning', 'You are about to delete ' + this.selectedCategories().size + ' categories. This action cannot be undone. Proceed?')) {
+        // Mock bulk delete loop
+        this.dialog.alert('Processing', 'Bulk delete not yet implemented on backend mock layer.');
+     }
   }
 }
