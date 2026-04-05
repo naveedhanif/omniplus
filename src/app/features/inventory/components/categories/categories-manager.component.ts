@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, HostListener } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators, FormGroup, FormsModule } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { DragDropModule, CdkDragDrop, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import { switchMap, of, BehaviorSubject } from 'rxjs';
 import { MockSupabaseService, Category, Product } from '../../../../core/services/mock-supabase.service';
 import { StoreConfigService } from '../../../../core/services/store-config.service';
@@ -10,7 +11,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
 @Component({
   selector: 'app-categories-manager',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe, DragDropModule],
   template: `
     <div class="h-[calc(100vh-140px)] flex flex-col pt-4">
 
@@ -43,101 +44,122 @@ import { DialogService } from '../../../../core/services/dialog.service';
             </button>
           </div>
 
-          <div class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
-            @for (group of hierarchicalCategories(); track group.parent.id) {
-              <!-- Parent Row -->
-              <div class="group relative flex flex-col"
-                   draggable="true"
-                   (dragstart)="onDragStart(group.parent.id, $event)"
-                   (dragover)="onDragOver(group.parent.id, $event)"
-                   (dragleave)="onDragLeave()"
-                   (drop)="onDrop(group.parent.id, $event)">
-                <div class="flex items-center gap-2 p-2 rounded-xl transition-all border"
-                     [ngClass]="{
-                       'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm': selectedCategoryId() === group.parent.id,
-                       'hover:bg-white/60 dark:hover:bg-slate-800/60 border-transparent': selectedCategoryId() !== group.parent.id && dropTargetId() !== group.parent.id,
-                       'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30 scale-[1.01] shadow-lg relative z-10': dropTargetId() === group.parent.id
-                     }">
+          <div class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar" 
+               cdkDropListGroup>
+            
+            <div cdkDropList 
+                 [cdkDropListData]="null"
+                 (cdkDropListDropped)="onCdkDrop($event)"
+                 class="space-y-1 min-h-[50px]">
+              
+              @for (group of hierarchicalCategories(); track group.parent.id) {
+                <!-- Parent Row -->
+                <div class="group relative flex flex-col"
+                     cdkDrag [cdkDragData]="group.parent">
                   
-                  <input type="checkbox" 
-                         [checked]="selectedCategories().has(group.parent.id)"
-                         (change)="toggleCategorySelection(group.parent.id, $event)"
-                         class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
-                         
-                  <button (click)="selectCategory(group.parent)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
-                    <span class="material-symbols-rounded text-slate-300 text-sm p-0.5 hover:bg-slate-200 rounded cursor-pointer" 
-                          (click)="toggleExpand(group.parent.id, $event)">
-                      {{ expandedCategories().has(group.parent.id) ? 'keyboard_arrow_down' : 'chevron_right' }}
-                    </span>
-                    <div class="w-2.5 h-2.5 rounded-full shadow-sm" [style.backgroundColor]="group.parent.color || '#3b82f6'"></div>
-                    <span class="text-sm font-semibold truncate flex-1 text-slate-800 dark:text-slate-200">{{ group.parent.name }}</span>
-                    @if(group.children.length > 0) {
-                      <span class="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{{group.children.length}}</span>
-                    }
-                  </button>
+                  <!-- Custom Drag Preview -->
+                  <div *cdkDragPreview class="bg-white dark:bg-slate-800 border-blue-500 border-2 rounded-xl p-2 w-64 shadow-xl flex items-center gap-3">
+                     <span class="material-symbols-rounded text-slate-300">drag_indicator</span>
+                     <span class="text-sm font-semibold truncate">{{ group.parent.name }}</span>
+                  </div>
 
-                  <div class="relative">
-                    <button (click)="toggleMenu(group.parent.id, $event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
-                      <span class="material-symbols-rounded text-sm">more_vert</span>
+                  <!-- Drag Placeholder -->
+                  <div *cdkDragPlaceholder class="bg-slate-100 dark:bg-slate-800/50 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl h-10 my-1"></div>
+
+                  <div class="flex items-center gap-2 p-2 rounded-xl transition-all border"
+                       [ngClass]="{
+                         'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm': selectedCategoryId() === group.parent.id,
+                         'hover:bg-white/60 dark:hover:bg-slate-800/60 border-transparent': selectedCategoryId() !== group.parent.id
+                       }">
+                    
+                    <span cdkDragHandle class="material-symbols-rounded text-slate-300 cursor-grab active:cursor-grabbing hover:text-slate-500">drag_indicator</span>
+                    
+                    <input type="checkbox" 
+                           [checked]="selectedCategories().has(group.parent.id)"
+                           (change)="toggleCategorySelection(group.parent.id, $event)"
+                           class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
+                           
+                    <button (click)="selectCategory(group.parent)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
+                      <span class="material-symbols-rounded text-slate-300 text-sm p-0.5 hover:bg-slate-200 rounded cursor-pointer" 
+                            (click)="toggleExpand(group.parent.id, $event)">
+                        {{ expandedCategories().has(group.parent.id) ? 'keyboard_arrow_down' : 'chevron_right' }}
+                      </span>
+                      <div class="w-2.5 h-2.5 rounded-full shadow-sm" [style.backgroundColor]="group.parent.color || '#3b82f6'"></div>
+                      <span class="text-sm font-semibold truncate flex-1 text-slate-800 dark:text-slate-200">{{ group.parent.name }}</span>
+                      @if(group.children.length > 0) {
+                        <span class="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{{group.children.length}}</span>
+                      }
                     </button>
-                    @if (activeMenuId() === group.parent.id) {
-                      <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
-                        <button (click)="selectCategory(group.parent); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
-                        <button (click)="addSubcategoryFromMenu(group.parent.id)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">subdirectory_arrow_right</span> Add Subcategory</button>
-                        <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
-                        <button (click)="quickDelete(group.parent)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
-                      </div>
-                    }
-                  </div>
-                </div>
 
-                <!-- Children Rows -->
-                @if (expandedCategories().has(group.parent.id)) {
-                  <div class="ml-9 mt-1 space-y-1 relative before:absolute before:border-l-2 before:border-slate-200 dark:before:border-slate-700 before:-left-3 before:top-0 before:bottom-3">
-                    @for (child of group.children; track child.id) {
-                      <div class="flex items-center gap-2 p-2 rounded-xl transition-all border group/child"
-                           draggable="true"
-                           (dragstart)="onDragStart(child.id, $event)"
-                           (dragover)="onDragOver(child.id, $event)"
-                           (dragleave)="onDragLeave()"
-                           (drop)="onDrop(child.id, $event)"
-                           [ngClass]="{
-                             'bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-900/50 shadow-sm': selectedCategoryId() === child.id,
-                             'hover:bg-white/60 dark:hover:bg-slate-800/60 border-transparent': selectedCategoryId() !== child.id && dropTargetId() !== child.id,
-                             'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30 shadow-md relative z-10': dropTargetId() === child.id
-                           }">
-                        <input type="checkbox" 
-                               [checked]="selectedCategories().has(child.id)"
-                               (change)="toggleCategorySelection(child.id, $event)"
-                               class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
-                        <button (click)="selectCategory(child)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
-                           <div class="w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" [style.backgroundColor]="child.color || group.parent.color"></div>
-                           <span class="text-[13px] font-medium truncate flex-1 text-slate-600 dark:text-slate-300">{{ child.name }}</span>
-                        </button>
-                        
-                        <div class="relative">
-                          <button (click)="toggleMenu(child.id, $event)" class="opacity-0 group-[.group/child]:hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
-                            <span class="material-symbols-rounded text-xs">more_vert</span>
-                          </button>
-                          @if (activeMenuId() === child.id) {
-                            <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
-                              <button (click)="selectCategory(child); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
-                              <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
-                              <button (click)="quickDelete(child)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
-                            </div>
-                          }
+                    <div class="relative">
+                      <button (click)="toggleMenu(group.parent.id, $event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
+                        <span class="material-symbols-rounded text-sm">more_vert</span>
+                      </button>
+                      @if (activeMenuId() === group.parent.id) {
+                        <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
+                          <button (click)="selectCategory(group.parent); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
+                          <button (click)="addSubcategoryFromMenu(group.parent.id)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">subdirectory_arrow_right</span> Add Subcategory</button>
+                          <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
+                          <button (click)="quickDelete(group.parent)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
                         </div>
-                      </div>
-                    }
+                      }
+                    </div>
                   </div>
-                }
-              </div>
-            } @empty {
-              <div class="text-center py-20 text-slate-400">
-                <span class="material-symbols-rounded text-4xl mb-2 opacity-50">account_tree</span>
-                <p class="text-xs font-bold uppercase">No records found</p>
-              </div>
-            }
+
+                  <!-- Children Drop List -->
+                  @if (expandedCategories().has(group.parent.id)) {
+                    <div class="ml-9 mt-1 space-y-1 relative before:absolute before:border-l-2 before:border-slate-200 dark:before:border-slate-700 before:-left-3 before:top-0 before:bottom-3"
+                         cdkDropList 
+                         [cdkDropListData]="group.parent.id"
+                         (cdkDropListDropped)="onCdkDrop($event)">
+                      
+                      <div class="min-h-[10px] pb-1 w-full rounded border border-transparent"
+                           [ngClass]="{'bg-blue-50/50 dark:bg-blue-900/20 border-dashed border-blue-200': true}">
+                        @for (child of group.children; track child.id) {
+                          <div class="flex items-center gap-2 p-2 rounded-xl transition-all border group/child bg-white dark:bg-slate-900 mb-1"
+                               cdkDrag [cdkDragData]="child"
+                               [ngClass]="{
+                                 'bg-slate-50 dark:bg-slate-800 border-blue-200 dark:border-blue-900/50 shadow-sm': selectedCategoryId() === child.id,
+                                 'hover:bg-slate-50/80 dark:hover:bg-slate-800/60 border-slate-100 dark:border-slate-800': selectedCategoryId() !== child.id
+                               }">
+                               
+                            <span cdkDragHandle class="material-symbols-rounded text-slate-200 cursor-grab active:cursor-grabbing hover:text-slate-400 scale-75">drag_indicator</span>
+
+                            <input type="checkbox" 
+                                   [checked]="selectedCategories().has(child.id)"
+                                   (change)="toggleCategorySelection(child.id, $event)"
+                                   class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600">
+                            <button (click)="selectCategory(child)" class="flex-1 flex items-center gap-3 text-left overflow-hidden">
+                               <div class="w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" [style.backgroundColor]="child.color || group.parent.color"></div>
+                               <span class="text-[13px] font-medium truncate flex-1 text-slate-600 dark:text-slate-300">{{ child.name }}</span>
+                            </button>
+                            
+                            <div class="relative">
+                              <button (click)="toggleMenu(child.id, $event)" class="opacity-0 group-[.group/child]:hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 transition-all">
+                                <span class="material-symbols-rounded text-xs">more_vert</span>
+                              </button>
+                              @if (activeMenuId() === child.id) {
+                                <div class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 z-[100] animate-in fade-in zoom-in duration-200">
+                                  <button (click)="selectCategory(child); activeMenuId.set(null)" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"><span class="material-symbols-rounded text-sm">edit</span> Edit Rules</button>
+                                  <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>
+                                  <button (click)="quickDelete(child)" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete Node</button>
+                                </div>
+                              }
+                            </div>
+                          </div>
+                        }
+                      </div>
+
+                    </div>
+                  }
+                </div>
+              } @empty {
+                <div class="text-center py-20 text-slate-400">
+                  <span class="material-symbols-rounded text-4xl mb-2 opacity-50">account_tree</span>
+                  <p class="text-xs font-bold uppercase">No records found</p>
+                </div>
+              }
+            </div>
           </div>
         </div>
 
@@ -153,6 +175,45 @@ import { DialogService } from '../../../../core/services/dialog.service';
                  Create Category
                </button>
             </div>
+          } @else if (panelMode() === 'BULK_MOVE') {
+            
+            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-20">
+              <div>
+                <h1 class="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+                  <span class="material-symbols-rounded text-blue-500">drive_file_move</span>
+                  Bulk Move Categories
+                </h1>
+                <p class="text-sm text-slate-500 font-medium mt-1">Moving {{selectedCategories().size}} selected categories to a new parent.</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <button (click)="cancelPanel()" class="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">Cancel</button>
+                <button (click)="executeBulkMove()"
+                        class="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-black rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                  Apply Move
+                </button>
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <div class="max-w-2xl">
+                 <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Target Parent Category</label>
+                 <select [(ngModel)]="bulkMoveTargetId" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-base !text-black dark:!text-white font-semibold focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer mb-6">
+                    <option [value]="'NONE'">Top Level (None)</option>
+                    @for (cat of categories(); track cat.id) {
+                      <option [value]="cat.id" [disabled]="selectedCategories().has(cat.id)">{{ cat.name }}</option>
+                    }
+                 </select>
+                 
+                 <div class="p-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30 rounded-xl flex items-start gap-3">
+                    <span class="material-symbols-rounded text-yellow-500 text-xl mt-0.5">warning</span>
+                    <div>
+                      <h4 class="text-sm font-bold text-yellow-800 dark:text-yellow-500">Notice</h4>
+                      <p class="text-sm text-yellow-700 dark:text-yellow-600/80">Moving these categories will update their hierarchical paths. Any products underneath them will retain their pricing schemas unless category inheritance overrides are enabled.</p>
+                    </div>
+                 </div>
+              </div>
+            </div>
+
           } @else {
             
             <!-- Breadcrumb & Header -->
@@ -205,11 +266,11 @@ import { DialogService } from '../../../../core/services/dialog.service';
                   <div class="grid grid-cols-2 gap-6">
                     <div class="col-span-2">
                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Category Name</label>
-                       <input formControlName="name" type="text" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-base font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all">
+                       <input formControlName="name" type="text" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-base !text-black dark:!text-white font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all">
                     </div>
                     <div>
                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Parent Category</label>
-                       <select formControlName="parent_id" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                       <select formControlName="parent_id" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm !text-black dark:!text-white font-semibold focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
                           <option [value]="null">Top Level (None)</option>
                           @for (cat of topLevelCategories(); track cat.id) {
                             <option [value]="cat.id" [disabled]="cat.id === selectedCategoryId()">{{ cat.name }}</option>
@@ -218,11 +279,11 @@ import { DialogService } from '../../../../core/services/dialog.service';
                     </div>
                     <div>
                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Display Order</label>
-                       <input formControlName="sort_order" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all">
+                       <input formControlName="sort_order" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm !text-black dark:!text-white font-semibold focus:border-blue-500 outline-none transition-all">
                     </div>
                     <div class="col-span-2">
                        <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Internal Description</label>
-                       <textarea formControlName="description" rows="3" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm font-semibold focus:border-blue-500 outline-none transition-all resize-none"></textarea>
+                       <textarea formControlName="description" rows="3" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-sm !text-black dark:!text-white font-semibold focus:border-blue-500 outline-none transition-all resize-none"></textarea>
                     </div>
                   </div>
 
@@ -274,7 +335,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
                       <div>
                         <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Default Margin %</label>
                         <div class="relative">
-                          <input formControlName="default_margin_percent" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-3 text-lg font-bold focus:border-blue-500 outline-none">
+                          <input formControlName="default_margin_percent" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-3 text-lg !text-black dark:!text-white font-bold focus:border-blue-500 outline-none">
                           <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                         </div>
                         <p class="text-xs text-slate-400 mt-2 font-medium">Auto-calculates product retail price from cost.</p>
@@ -314,12 +375,12 @@ import { DialogService } from '../../../../core/services/dialog.service';
                   <div class="grid grid-cols-2 gap-8">
                      <div>
                         <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Low Stock Threshold</label>
-                        <input formControlName="low_stock_threshold" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base font-bold focus:border-blue-500 outline-none">
+                        <input formControlName="low_stock_threshold" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base !text-black dark:!text-white font-bold focus:border-blue-500 outline-none">
                         <p class="text-[11px] text-slate-400 mt-2 font-medium">Triggers low stock warnings in POS & Dashboard.</p>
                      </div>
                      <div>
                         <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Maximum Stock Level</label>
-                        <input formControlName="max_stock_level" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base font-bold focus:border-blue-500 outline-none">
+                        <input formControlName="max_stock_level" type="number" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-base !text-black dark:!text-white font-bold focus:border-blue-500 outline-none">
                      </div>
                   </div>
 
@@ -341,7 +402,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
                 <div [hidden]="activeTab() !== 'TAX SETTINGS'" class="space-y-8 animate-in fade-in duration-300">
                   <div class="w-1/2">
                     <label class="block text-[11px] font-black uppercase text-slate-500 mb-2">Default Tax Rate (%)</label>
-                    <input formControlName="default_tax_rate" type="number" step="0.1" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-lg font-bold focus:border-blue-500 outline-none">
+                    <input formControlName="default_tax_rate" type="number" step="0.1" class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-lg !text-black dark:!text-white font-bold focus:border-blue-500 outline-none">
                   </div>
                   
                   <div class="pt-6 border-t border-slate-200 dark:border-slate-800">
@@ -424,13 +485,23 @@ import { DialogService } from '../../../../core/services/dialog.service';
             </div>
             <div class="h-5 w-px bg-slate-700"></div>
             <div class="flex items-center gap-2 text-sm font-semibold">
-              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">drive_file_move</span> Move</button>
-              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">merge</span> Merge</button>
-              <button class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">download</span> Export</button>
+              <button (click)="bulkMove()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">drive_file_move</span> Move</button>
+              <button (click)="bulkMerge()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">merge</span> Merge</button>
+              <button (click)="bulkExport()" class="px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">download</span> Export</button>
               <div class="h-4 w-px bg-slate-700 mx-1"></div>
               <button (click)="bulkDeleteConfirm()" class="px-3 py-1.5 text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors flex items-center gap-2"><span class="material-symbols-rounded text-sm">delete</span> Delete</button>
             </div>
             <button (click)="clearSelection()" class="ml-2 p-1 text-slate-500 hover:text-slate-300 rounded-full hover:bg-slate-800"><span class="material-symbols-rounded text-sm">close</span></button>
+          </div>
+        }
+
+        <!-- UNDO TOAST -->
+        @if (showUndoToast()) {
+          <div class="absolute bottom-8 right-8 bg-slate-900 border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 z-50 text-sm font-medium">
+             <span>Category moved successfully.</span>
+             <button (click)="undoLastAction()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 transition-colors flex items-center gap-1.5">
+               <span class="material-symbols-rounded text-sm">undo</span> Undo <span class="opacity-50 text-[10px] ml-1 border border-slate-500 rounded px-1">Ctrl Z</span>
+             </button>
           </div>
         }
 
@@ -488,24 +559,46 @@ export class CategoriesManagerComponent {
     }
   }
 
-  // Drag and Drop
-  draggedCategoryId = signal<string | null>(null);
-  dropTargetId = signal<string | null>(null);
+  // Undo History Stack
+  undoStack: Array<{ categoryId: string, oldParentId: string | null, oldSortOrder: number }> = [];
+  showUndoToast = signal<boolean>(false);
+  undoTimeout: any;
 
-  onDragStart(id: string, event: DragEvent) {
-    this.draggedCategoryId.set(id);
-    if(event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+      this.undoLastAction();
+      event.preventDefault();
+    }
   }
 
-  onDragOver(id: string, event: DragEvent) {
-    event.preventDefault();
-    this.dropTargetId.set(id);
+  undoLastAction() {
+    const action = this.undoStack.pop();
+    if (!action) return;
+    
+    this.showUndoToast.set(false);
+    clearTimeout(this.undoTimeout);
+
+    // Call update to reverse the last action
+    this.supabase.updateCategory(action.categoryId, { 
+      parent_id: action.oldParentId, 
+      sort_order: action.oldSortOrder 
+    }).subscribe(() => {
+      this.refreshTrigger.next();
+      this.dialog.alert('Undo successful', 'The category move has been reverted.');
+    });
   }
 
-  onDragLeave() {
-    this.dropTargetId.set(null);
+  pushUndoState(categoryId: string, oldParentId: string | null, oldSortOrder: number) {
+    this.undoStack.push({ categoryId, oldParentId, oldSortOrder });
+    this.showUndoToast.set(true);
+    clearTimeout(this.undoTimeout);
+    this.undoTimeout = setTimeout(() => {
+      this.showUndoToast.set(false);
+    }, 8000);
   }
 
+  // Enhanced Drag and Drop with Angular CDK Drag & Drop
   isDescendant(parentId: string, childId: string): boolean {
     if (parentId === childId) return true;
     const child = this.categories().find(c => c.id === childId);
@@ -513,36 +606,79 @@ export class CategoriesManagerComponent {
     return this.isDescendant(parentId, child.parent_id);
   }
 
-  onDrop(targetId: string, event: DragEvent) {
-    event.preventDefault();
-    const draggedId = this.draggedCategoryId();
-    this.draggedCategoryId.set(null);
-    this.dropTargetId.set(null);
-
-    if (!draggedId || draggedId === targetId) return;
-
-    if (this.isDescendant(draggedId, targetId)) {
+  onCdkDrop(event: CdkDragDrop<any>) {
+    const draggedCat: Category = event.item.data;
+    const targetParentId: string | null = event.container.data; // new parent_id (null for root list)
+    
+    // Prevent moving into own sub-tree (circular dependency)
+    if (targetParentId && this.isDescendant(draggedCat.id, targetParentId)) {
        this.dialog.alert('Invalid Move', 'You cannot move a category into its own subcategory. This creates a circular loop.');
        return;
     }
 
-    const draggedCat = this.categories().find(c => c.id === draggedId);
-    if (draggedCat && draggedCat.parent_id !== targetId) {
-      this.supabase.updateCategory(draggedId, { parent_id: targetId }).subscribe(() => {
-         this.refreshTrigger.next();
-         const newSet = new Set(this.expandedCategories());
-         newSet.add(targetId);
-         this.expandedCategories.set(newSet);
-      });
+    const previousParentId = draggedCat.parent_id || null;
+    const isChangingParent = previousParentId !== targetParentId;
+    
+    // We get the target siblings based on where it dropped
+    const targetSiblings = this.categories()
+      .filter(c => (c.parent_id || null) === targetParentId)
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+    // Calculate new sort_order based on event.currentIndex
+    let newSortOrder = 0;
+    if (targetSiblings.length > 0) {
+       // Standard insertion ordering logic: find elements before and after
+       const insertIndex = event.currentIndex;
+
+       if (insertIndex === 0) {
+         // Insert at the beginning
+         newSortOrder = (targetSiblings[0].sort_order || 0) - 10;
+       } else if (insertIndex >= targetSiblings.length) {
+         // Insert at the end
+         newSortOrder = (targetSiblings[targetSiblings.length - 1].sort_order || 0) + 10;
+       } else {
+         // Insert somewhere in the middle
+         const prevItem = targetSiblings[insertIndex - 1];
+         let nextItem = targetSiblings[insertIndex];
+         
+         // If moving in the SAME parent, adjust for the item shifting
+         if (!isChangingParent && event.previousIndex < event.currentIndex) {
+            nextItem = targetSiblings[insertIndex + 1] || nextItem;
+         }
+
+         const prevOrder = prevItem?.sort_order || 0;
+         const nextOrder = nextItem?.sort_order || prevOrder + 20;
+         newSortOrder = Math.floor((prevOrder + nextOrder) / 2);
+       }
     }
+
+    // Save state for Undo
+    this.pushUndoState(draggedCat.id, previousParentId, draggedCat.sort_order || 0);
+
+    // If nesting visually (changing parent), expand the new parent so we can see it
+    if (isChangingParent && targetParentId) {
+      const newExp = new Set(this.expandedCategories());
+      newExp.add(targetParentId);
+      this.expandedCategories.set(newExp);
+    }
+
+    // Update via Supabase mock
+    this.supabase.updateCategory(draggedCat.id, { 
+      parent_id: targetParentId,
+      sort_order: newSortOrder
+    }).subscribe(() => {
+       this.refreshTrigger.next();
+    });
   }
 
   // Global State
   globalSearch = '';
-  panelMode = signal<'EMPTY' | 'DETAIL' | 'ADD'>('EMPTY');
+  panelMode = signal<'EMPTY' | 'DETAIL' | 'ADD' | 'BULK_MOVE'>('EMPTY');
   selectedCategoryId = signal<string | null>(null);
   activeTab = signal<'GENERAL' | 'PRICING RULES' | 'INVENTORY RULES' | 'TAX SETTINGS' | 'ANALYTICS'>('GENERAL');
   
+  bulkMoveTargetId: string = 'NONE';
+
   // Tree State
   expandedCategories = signal<Set<string>>(new Set());
   selectedCategories = signal<Set<string>>(new Set());
@@ -595,7 +731,7 @@ export class CategoriesManagerComponent {
   // Computed
   hierarchicalCategories = computed(() => {
     const q = this.globalSearch.toLowerCase().trim();
-    const all = this.categories();
+    const all = this.categories().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
     const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q)) : all;
     const parents = filtered.filter(c => !c.parent_id);
@@ -681,42 +817,53 @@ export class CategoriesManagerComponent {
 
   saveCategory() {
     const store = this.storeService.currentStore();
-    if (!store || this.categoryForm.invalid) return;
+    
+    if (!store) {
+      this.dialog.alert('Configuration Error', 'No active store found. Please verify your connection.');
+      return;
+    }
+    
+    if (this.categoryForm.invalid) {
+      this.dialog.alert('Form Invalid', 'Please correctly fill out all required fields.');
+      return;
+    }
 
     const val = this.categoryForm.getRawValue();
     
-    // Package form into base entity + metadata payload
+    // Package form into base entity
+    // Note: 'metadata' is removed temporarily because the Supabase 'categories' table schema 
+    // does not currently have a 'metadata' JSONB column, throwing a PGRST204 error.
     const payload: Partial<Category> = {
       store_id: store.id,
       name: val.name,
       parent_id: val.parent_id,
       color: val.color,
       sort_order: val.sort_order,
-      metadata: {
-        description: val.description,
-        icon: val.icon,
-        default_margin_percent: val.default_margin_percent,
-        markup_type: val.markup_type,
-        discount_allowed: val.discount_allowed,
-        low_stock_threshold: val.low_stock_threshold,
-        auto_reorder: val.auto_reorder,
-        max_stock_level: val.max_stock_level,
-        default_tax_rate: val.default_tax_rate,
-        override_product_tax: val.override_product_tax
-      }
     };
 
     if (this.panelMode() === 'ADD') {
-      this.supabase.addCategory(payload as Category).subscribe(() => {
-        this.refreshTrigger.next();
-        this.panelMode.set('EMPTY');
-        this.dialog.alert('Success', 'New Category created successfully.');
+      this.supabase.addCategory(payload as Category).subscribe({
+        next: () => {
+          this.refreshTrigger.next();
+          this.panelMode.set('EMPTY');
+          this.dialog.alert('Success', 'New Category created successfully.');
+        },
+        error: (err) => {
+          console.error(err);
+          this.dialog.alert('Error', 'Failed to create category on backend.');
+        }
       });
     } else {
       const id = this.selectedCategoryId()!;
-      this.supabase.updateCategory(id, payload).subscribe(() => {
-        this.refreshTrigger.next();
-        this.dialog.alert('Success', 'Category rules updated.');
+      this.supabase.updateCategory(id, payload).subscribe({
+        next: () => {
+          this.refreshTrigger.next();
+          this.dialog.alert('Success', 'Category rules updated.');
+        },
+        error: (err) => {
+          console.error(err);
+          this.dialog.alert('Error', 'Failed to update category on backend.');
+        }
       });
     }
   }
@@ -724,8 +871,87 @@ export class CategoriesManagerComponent {
   async bulkDeleteConfirm() {
      if (this.selectedCategories().size === 0) return;
      if (await this.dialog.confirm('Bulk Deletion Warning', 'You are about to delete ' + this.selectedCategories().size + ' categories. This action cannot be undone. Proceed?')) {
-        // Mock bulk delete loop
-        this.dialog.alert('Processing', 'Bulk delete not yet implemented on backend mock layer.');
+        const ids = Array.from(this.selectedCategories());
+        
+        try {
+          const { error } = await this.supabase.client.from('categories').delete().in('id', ids);
+          if (error) throw error;
+          
+          this.selectedCategories.set(new Set());
+          this.panelMode.set('EMPTY');
+          this.refreshTrigger.next();
+          this.dialog.alert('Success', 'Categories deleted successfully.');
+        } catch (err: any) {
+          console.error(err);
+          this.dialog.alert('Deletion Failed', err.message || 'Unable to complete bulk deletion.');
+        }
      }
+  }
+
+  // BULK ACTIONS
+  bulkMove() {
+     this.bulkMoveTargetId = 'NONE';
+     this.panelMode.set('BULK_MOVE');
+  }
+
+  async executeBulkMove() {
+     const ids = Array.from(this.selectedCategories());
+     const parentId = this.bulkMoveTargetId === 'NONE' ? null : this.bulkMoveTargetId;
+     
+     try {
+       const { error } = await this.supabase.client.from('categories')
+         .update({ parent_id: parentId })
+         .in('id', ids);
+       
+       if (error) throw error;
+       
+       this.refreshTrigger.next();
+       this.panelMode.set('EMPTY');
+       this.selectedCategories.set(new Set());
+       this.dialog.alert('Move Applied', `Successfully moved ${ids.length} categories.`);
+       
+       if (parentId) {
+         const exp = new Set(this.expandedCategories());
+         exp.add(parentId);
+         this.expandedCategories.set(exp);
+       }
+     } catch (err: any) {
+       console.error(err);
+       this.dialog.alert('Move Failed', err.message || 'An error occurred during bulk move.');
+     }
+  }
+
+  bulkMerge() {
+     this.dialog.alert('Merge Functionality', 'Category merge relies on safely migrating attached items to a new category node. This feature is coming soon after the core Product Engine is finalized!');
+  }
+
+  bulkExport() {
+     if (this.selectedCategories().size === 0) return;
+     const allCats = this.categories();
+     const selectedData = Array.from(this.selectedCategories())
+        .map(id => allCats.find(c => c.id === id))
+        .filter(c => c != null) as Category[];
+        
+     // Basic CSV construction
+     const headers = ['ID', 'Name', 'Parent_ID', 'Sort_Order', 'Color'];
+     const rows = selectedData.map(c => [
+        c.id, 
+        `"${c.name}"`, 
+        c.parent_id || '', 
+        c.sort_order, 
+        c.color || ''
+     ].join(','));
+     
+     const csvContent = [headers.join(','), ...rows].join('\n');
+     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+     const link = document.createElement("a");
+     
+     const url = URL.createObjectURL(blob);
+     link.setAttribute("href", url);
+     link.setAttribute("download", `categories_export_${new Date().toISOString().split('T')[0]}.csv`);
+     link.style.visibility = 'hidden';
+     document.body.appendChild(link);
+     link.click();
+     document.body.removeChild(link);
   }
 }

@@ -1023,6 +1023,10 @@ export class MockSupabaseService {
         if (cleanProduct.stock_warehouse) cleanProduct.stock_warehouse = Number(cleanProduct.stock_warehouse);
         if (cleanProduct.stock_quantity) cleanProduct.stock_quantity = Number(cleanProduct.stock_quantity);
 
+        // Strip virtual or unsupported columns before inserting
+        delete cleanProduct.compatible_models;
+        delete cleanProduct.metadata;
+
         console.log('Adding Product (Cleaned):', cleanProduct); // DEBUG LOG
 
         const promise = this.supabase
@@ -1057,6 +1061,10 @@ export class MockSupabaseService {
         if (cleanUpdates.stock_warehouse) cleanUpdates.stock_warehouse = Number(cleanUpdates.stock_warehouse);
         if (cleanUpdates.stock_quantity) cleanUpdates.stock_quantity = Number(cleanUpdates.stock_quantity);
 
+        // Strip virtual or unsupported columns before updating
+        delete cleanUpdates.compatible_models;
+        delete cleanUpdates.metadata;
+
         const promise = this.supabase
             .from('products')
             .update(cleanUpdates)
@@ -1082,6 +1090,11 @@ export class MockSupabaseService {
             if (!clean.expiry_date || (typeof clean.expiry_date === 'string' && clean.expiry_date.trim() === '')) {
                 clean.expiry_date = null;
             }
+            
+            // Strip virtual or unsupported columns before bulk inserting
+            delete clean.compatible_models;
+            delete clean.metadata;
+            
             return clean;
         });
 
