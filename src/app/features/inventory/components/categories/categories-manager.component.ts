@@ -13,7 +13,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe, DragDropModule],
   template: `
-    <div class="h-[calc(100vh-140px)] flex flex-col pt-0">
+    <div class="h-full flex flex-col pt-0">
 
       <!-- TOP BAR (Global Search & Actions) -->
       <div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 border-x rounded-t-2xl shadow-sm z-10">
@@ -956,41 +956,75 @@ export class CategoriesManagerComponent {
      document.body.removeChild(link);
   }
   exportAllCategories() {
-    if (this.categories().length === 0) {
-      this.dialog.alert('Export Alert', 'No categories to export.');
-      return;
+    const data = this.categories();
+    if (data.length === 0) {
+       this.dialog.alert('Export Error', 'No categories to export.');
+       return;
     }
-    const allCats = this.categories();
-    
-    // Basic CSV construction
-    const headers = ['ID', 'Name', 'Parent_ID', 'Sort_Order', 'Color'];
-    const rows = allCats.map(c => [
-       c.id, 
-       `"${c.name}"`, 
-       c.parent_id || '', 
-       c.sort_order, 
-       c.color || ''
-    ].join(','));
-    
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `all_categories_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `categories_export_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    this.dialog.alert('Export Successful', `Exported ${data.length} categories.`);
   }
 
-  importCategories(event: any) {
-    const file = event.target.files[0];
-    if (!file) return;
+  importCategories(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const contents = e.target?.result as string;
 
-    this.dialog.alert('Import Placeholder', 'File selected: ' + file.name + '\\n\\nIn a full implementation, this will parse your CSV/JSON file and map it to your category table schema.');
-    // Reset input so the same file could be selected again if needed
-    event.target.value = '';
+          let imported: any[] = [];
+          if (file.name.endsWith('.csv')) {
+            // very simple CSV parser, assuming same format as CSV export
+            const lines = contents.split('\n');
+            const headers = lines[0].split(',');
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const parts = lines[i].split(',');
+                imported.push({
+                    name: parts[1].replace(/"/g, ''),
+                    parent_id: parts[2] || null,
+                    sort_order: parseInt(parts[3]) || 0,
+                    color: parts[4] || '#3b82f6',
+                    icon: 'category'
+                });
+            }
+          } else {
+             imported = JSON.parse(contents);
+          }
+          
+          if (Array.isArray(imported)) {
+            const storeId = this.storeService.currentStore()?.id;
+            if (!storeId) {
+              this.dialog.alert('Error', 'No active store found.');
+              return;
+            }
+            const toImport = imported.map((cat: any) => {
+               const { id, created_at, ...rest } = cat;
+               return { ...rest, store_id: storeId };
+            });
+            this.supabase.addBulkCategories(toImport).subscribe({
+              next: () => {
+                 this.refreshTrigger.next();
+                 this.dialog.alert('Import Successful', `Imported ${toImport.length} categories.`);
+              },
+              error: () => this.dialog.alert('Import Error', 'Failed to import categories.')
+            });
+          }
+        } catch (err) {
+          this.dialog.alert('Import Error', 'Failed to parse file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+    input.value = '';
   }
 }
