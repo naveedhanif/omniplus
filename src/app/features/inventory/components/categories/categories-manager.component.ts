@@ -13,7 +13,7 @@ import { DialogService } from '../../../../core/services/dialog.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, FormsModule, CurrencyPipe, DragDropModule],
   template: `
-    <div class="h-[calc(100vh-140px)] flex flex-col pt-4">
+    <div class="h-[calc(100vh-140px)] flex flex-col pt-0">
 
       <!-- TOP BAR (Global Search & Actions) -->
       <div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 border-x rounded-t-2xl shadow-sm z-10">
@@ -23,8 +23,9 @@ import { DialogService } from '../../../../core/services/dialog.service';
                  class="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-blue-500 transition-all font-medium">
         </div>
         <div class="flex items-center gap-3">
-          <button class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Export</button>
-          <button class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Import</button>
+          <button (click)="exportAllCategories()" class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Export</button>
+          <button (click)="fileInput.click()" class="px-5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Import</button>
+          <input type="file" #fileInput (change)="importCategories($event)" accept=".csv,.json" class="hidden">
           <button (click)="openAddMode()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2">
             <span class="material-symbols-rounded text-sm">add</span> New Category
           </button>
@@ -953,5 +954,43 @@ export class CategoriesManagerComponent {
      document.body.appendChild(link);
      link.click();
      document.body.removeChild(link);
+  }
+  exportAllCategories() {
+    if (this.categories().length === 0) {
+      this.dialog.alert('Export Alert', 'No categories to export.');
+      return;
+    }
+    const allCats = this.categories();
+    
+    // Basic CSV construction
+    const headers = ['ID', 'Name', 'Parent_ID', 'Sort_Order', 'Color'];
+    const rows = allCats.map(c => [
+       c.id, 
+       `"${c.name}"`, 
+       c.parent_id || '', 
+       c.sort_order, 
+       c.color || ''
+    ].join(','));
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `all_categories_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  importCategories(event: any) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    this.dialog.alert('Import Placeholder', 'File selected: ' + file.name + '\\n\\nIn a full implementation, this will parse your CSV/JSON file and map it to your category table schema.');
+    // Reset input so the same file could be selected again if needed
+    event.target.value = '';
   }
 }

@@ -1090,11 +1090,11 @@ export class MockSupabaseService {
             if (!clean.expiry_date || (typeof clean.expiry_date === 'string' && clean.expiry_date.trim() === '')) {
                 clean.expiry_date = null;
             }
-            
+
             // Strip virtual or unsupported columns before bulk inserting
             delete clean.compatible_models;
             delete clean.metadata;
-            
+
             return clean;
         });
 

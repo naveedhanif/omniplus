@@ -126,7 +126,7 @@ import { DeliveryNotesComponent } from '../../sales/components/delivery-notes/de
       <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         
         <!-- Header -->
-        <header class="px-6 pt-6 pb-6 flex-shrink-0 flex justify-between items-center bg-transparent z-10">
+        <header class="px-6 pt-6 pb-3 flex-shrink-0 flex justify-between items-center bg-transparent z-10">
           <div>
             <h1 class="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Admin Dashboard</h1>
             <p class="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1">Manage your enterprise</p>
