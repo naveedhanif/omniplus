@@ -9,6 +9,7 @@ const STORES = {
     CATEGORIES: 'categories',
     STAFF: 'app_users',
     SUPPLIERS: 'suppliers',
+    SHIFTS: 'shifts',
     SYNC_QUEUE: 'sync_queue',    // Pending transactions waiting to go to Supabase
 };
 
@@ -49,6 +50,9 @@ export class OfflineStorageService {
                 }
                 if (!db.objectStoreNames.contains(STORES.SUPPLIERS)) {
                     db.createObjectStore(STORES.SUPPLIERS, { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains(STORES.SHIFTS)) {
+                    db.createObjectStore(STORES.SHIFTS, { keyPath: 'id' });
                 }
                 if (!db.objectStoreNames.contains(STORES.SYNC_QUEUE)) {
                     // autoIncrement so every queued item gets a unique local ID

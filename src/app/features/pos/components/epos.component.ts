@@ -11,6 +11,7 @@ import { FormsModule } from '@angular/forms';
 import { SyncService } from '../../../core/services/sync.service';
 import { ConnectivityService } from '../../../core/services/connectivity.service';
 import { OfflineStorageService } from '../../../core/services/offline-storage.service';
+import { ShiftManagementService } from '../../../core/services/shift-management.service';
 import { BaseChartDirective } from 'ng2-charts';
 import { Chart, registerables, ChartConfiguration, ChartData } from 'chart.js';
 
@@ -32,6 +33,40 @@ Chart.register(...registerables);
     </style>
 
     @if (allStores().length > 0) {
+       <!-- SHIFT LOCK SCREEN -->
+       @if (!shiftService.activeShift()) {
+          <div class="absolute inset-0 z-[9999] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center p-8">
+             <div class="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+                <div class="p-10 text-center border-b border-slate-100 bg-slate-50">
+                   <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span class="material-symbols-rounded text-3xl">lock_open</span>
+                   </div>
+                   <h2 class="text-3xl font-black italic tracking-tighter uppercase mb-1">Start <span class="text-indigo-600">Shift</span></h2>
+                   <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verify Opening Cash Float</p>
+                </div>
+                <div class="p-10 flex flex-col">
+                   <p class="text-[9px] font-black uppercase text-slate-400 tracking-[0.3em] mb-4 text-center">Cash currently in drawer</p>
+                   <div class="text-6xl font-black font-mono tabular-nums text-emerald-500 text-center mb-8 pb-6 border-b-2 border-slate-100">
+                      {{ openingFloatInput() | currency: storeService.currentStore()?.config?.currency }}
+                   </div>
+                   <div class="grid grid-cols-3 gap-3 mb-8">
+                      @for (num of ['7','8','9','4','5','6','1','2','3','C','0','00']; track num) {
+                         <button (click)="handleFloatNumpad(num)" class="h-16 bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-300 rounded-2xl text-2xl font-black text-slate-800 transition-all active:scale-95">{{num}}</button>
+                      }
+                   </div>
+                   <button 
+                     (click)="openShift()" 
+                     class="w-full h-20 bg-indigo-600 text-white font-black text-sm uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-500 active:scale-95 transition-all shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3">
+                      Unlock Till <span class="material-symbols-rounded">arrow_forward</span>
+                   </button>
+                </div>
+             </div>
+             <div class="text-center mt-8 text-white/50 text-[10px] font-black uppercase tracking-widest">
+                OmniPOS | EPOS Terminal 01
+             </div>
+          </div>
+       }
+
       <div class="h-screen flex flex-col overflow-hidden bg-[#F2F4F7] text-slate-900 font-['Outfit'] selection:bg-indigo-100">
         
         <!-- 1. Premium Top Navigation Bar -->
@@ -745,17 +780,30 @@ Chart.register(...registerables);
                        </div>
                     }
                     
-                    <button 
-                      (click)="openCheckoutModal()" 
-                      [disabled]="cart().length === 0"
-                      class="w-full h-32 disabled:opacity-40 transition-transform duration-300 transform active:scale-[0.98] rounded-[2rem] shadow-lg relative overflow-hidden group border-2"
-                      [ngClass]="{'bg-pink-600 hover:bg-pink-500 border-pink-500 shadow-pink-500/30': returnMode(), 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 shadow-emerald-500/30': !returnMode()}">
-                       <div class="absolute inset-0 bg-white/10 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
-                       <div class="relative z-10 flex flex-col items-center justify-center text-white h-full gap-2">
-                          <span class="text-4xl font-black uppercase tracking-[0.2em] translate-x-1">{{ returnMode() ? 'Refund' : 'Pay' }}</span>
-                          <span class="text-[10px] font-black uppercase tracking-[0.4em] opacity-90">{{ returnMode() ? 'Process Money Back' : 'Finalize Sale' }}</span>
-                       </div>
-                    </button>
+                    <div class="flex gap-3">
+                       <button 
+                         (click)="openCheckoutModal()" 
+                         [disabled]="cart().length === 0"
+                         class="flex-1 h-32 disabled:opacity-40 transition-transform duration-300 transform active:scale-[0.98] rounded-[2rem] shadow-lg relative overflow-hidden group border-2"
+                         [ngClass]="{'bg-pink-600 hover:bg-pink-500 border-pink-500 shadow-pink-500/30': returnMode(), 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 shadow-emerald-500/30': !returnMode()}">
+                          <div class="absolute inset-0 bg-white/10 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                          <div class="relative z-10 flex flex-col items-center justify-center text-white h-full gap-2">
+                             <span class="text-3xl font-black uppercase tracking-[0.2em] translate-x-1">{{ returnMode() ? 'Refund' : 'Pay' }}</span>
+                             <span class="text-[9px] font-black uppercase tracking-[0.4em] opacity-90">{{ returnMode() ? 'Process Money Back' : 'Finalize Sale' }}</span>
+                          </div>
+                       </button>
+
+                       @if (!returnMode()) {
+                          <button 
+                            (click)="expressCardPayment()" 
+                            [disabled]="cart().length === 0"
+                            class="w-[120px] h-32 disabled:opacity-40 transition-transform duration-300 transform active:scale-[0.98] rounded-[2rem] shadow-lg relative overflow-hidden group border-2 bg-indigo-600 hover:bg-indigo-500 border-indigo-500 shadow-indigo-500/30 flex flex-col items-center justify-center text-white gap-2 shrink-0">
+                             <div class="absolute inset-0 bg-white/10 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                             <span class="relative z-10 material-symbols-rounded text-4xl">contactless</span>
+                             <span class="relative z-10 text-[9px] font-black uppercase tracking-widest text-center leading-tight">Fast<br>Card</span>
+                          </button>
+                       }
+                    </div>
                  </div>
               </div>
            </div>
@@ -860,6 +908,17 @@ Chart.register(...registerables);
                        </div>
                     </div>
                     
+                    <!-- Quick Tender Keys -->
+                    <div class="grid grid-cols-4 gap-3">
+                       @for(amount of [5, 10, 20, 50]; track amount) {
+                          <button 
+                             (click)="paymentInputString.set(amount.toString())" 
+                             class="h-16 bg-white border-2 border-emerald-100 text-emerald-700 rounded-2xl font-black text-2xl hover:border-emerald-500 hover:bg-emerald-50 active:scale-95 transition-all shadow-sm">
+                             {{ amount | currency: storeService.currentStore()?.config?.currency:'symbol':'1.0-0' }}
+                          </button>
+                       }
+                    </div>
+                    
                     <div class="grid grid-cols-2 gap-4">
                        <button (click)="setExactCash()" class="h-24 bg-white border-2 border-slate-900 text-slate-900 rounded-[2rem] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all transform hover:scale-[1.02] active:scale-[0.98]">Exact Amount</button>
                        <button (click)="completeSale()" [disabled]="paymentBalance() > 0 || isCompletingSale()" class="h-24 bg-emerald-500 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] shadow-2xl shadow-emerald-500/30 disabled:opacity-30 disabled:hover:scale-100 flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
@@ -958,6 +1017,7 @@ export class EposComponent {
    mockSupabase = inject(MockSupabaseService);
    dialogService = inject(DialogService);
    sharedState = inject(POSSharedStateService);
+   shiftService = inject(ShiftManagementService);
    syncService = inject(SyncService);
    connectivity = inject(ConnectivityService);
    offlineStorage = inject(OfflineStorageService);
@@ -979,6 +1039,13 @@ export class EposComponent {
    isOffline = signal(false);
    pendingSyncCount = signal(0);
    currentTime = signal(new Date());
+
+   // Shift Logic
+   openingFloatInput = signal(0);
+   openingFloatInputString = signal('');
+   showZReportModal = signal(false);
+   closingCashInputString = signal('');
+   zReportPreview = signal<any>(null);
 
    // Ledger Signals
    ledgerEntries = signal<any[]>([]);
@@ -1390,6 +1457,29 @@ export class EposComponent {
       this.sharedState.updateQuantity(item.product.id, item.quantity + delta);
    }
 
+   handleFloatNumpad(num: string) {
+      if (num === 'C') {
+         this.openingFloatInputString.set('');
+      } else if (num === '00') {
+         this.openingFloatInputString.update(v => v + '00');
+      } else {
+         this.openingFloatInputString.update(v => v + num);
+      }
+      const val = parseFloat(this.openingFloatInputString()) || 0;
+      this.openingFloatInput.set(val / 100);
+   }
+
+   async openShift() {
+      const floatAmount = this.openingFloatInput();
+      await this.shiftService.openShift(floatAmount);
+   }
+
+   ngOnInit() {
+      this.selectedCategory.set(null);
+      this.searchQuery.set('');
+      this.leftPanelMode.set('BAG');
+   }
+
    goHome() {
       this.selectedCategory.set(null);
       this.searchQuery.set('');
@@ -1460,6 +1550,13 @@ export class EposComponent {
          case 'card': return 'credit_card';
          default: return 'account_balance_wallet';
       }
+   }
+
+   async expressCardPayment() {
+      if (this.isCompletingSale() || this.cart().length === 0) return;
+      this.activePaymentMethod.set('card');
+      this.paymentAllocations.set({ cash: 0, card: this.total() });
+      await this.completeSale();
    }
 
    async completeSale() {
@@ -1717,7 +1814,7 @@ export class EposComponent {
          });
    }
 
-   refundEntireOrder(order: any) {
+   async refundEntireOrder(order: any) {
       if (order.metadata?.status === 'VOID' || order.metadata?.status === 'REFUNDED') {
          this.dialogService.alert('Cannot Refund', 'This order is already voided or refunded.', 'Okay');
          return;
@@ -1729,15 +1826,25 @@ export class EposComponent {
 
       for (const item of order.items) {
          if (item.product) {
-            // Reconstruct a negative cart item
             const returnItem = { ...item.product, price: -Math.abs(item.price_at_sale) };
             for (let i = 0; i < item.quantity; i++) {
                this.sharedState.addToCart(returnItem as any);
             }
          }
       }
+
+      // Auto-assign the original payment method for the refund
+      const origMethod = order.payment_method?.toLowerCase() === 'card' ? 'card' : 'cash';
+      this.activePaymentMethod.set(origMethod);
+      this.paymentAllocations.set({ cash: 0, card: 0, [origMethod]: this.total() } as any);
+
+      // Express refund execution
+      await this.completeSale();
+
       this.leftPanelMode.set('BAG');
       this.orderSearchQuery.set('');
       this.orderSearchResult.set(null);
+      this.returnMode.set(false);
+      this.dialogService.alert('Refund Successful', 'The full order has been automatically reversed.');
    }
 }
